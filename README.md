@@ -116,6 +116,23 @@ the fewest part bodies, then the holes nearest the pins, then the shortest. Give
 yourself when both ends are rails (`[top+28, top-28]` for a decoupling cap), since there's no other
 end to steer by.
 
+### Automatic wiring
+
+With `autowire: true` at the top of the file, bbgen adds the wires itself: place the parts, list
+the nets, and leave `wires` out (or write only the ones you want a say in; they're kept). Each net
+is joined with the fewest, shortest wires it can find, preferring straight runs and rail drops
+from the row next to the rail. A wire that would cross a part is bent around it, and each
+off-board pin gets its own flying lead. The checklist lists them by net, rails' nets first.
+
+Which rail a net runs on comes from, in order:
+
+- the rails its parts already plug into (a decoupling cap with a leg in `top+28`)
+- `rail:` on the net: `VSYS: {pins: [...], rail: top+}`, or a list, `rail: [top-, bot-]`
+- a net named like ground (`GND`, ...) takes the `-` rails no other net uses, and one named like a
+  supply (`VSYS`, `VBUS`, `5V`, ...) a free `+` rail
+
+Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
+
 ### Straight, not slanted
 
 Wires and parts that slant are hard to trace and get in the way. bbgen warns (`DIAGONAL`) only
@@ -134,7 +151,9 @@ off-board pins don't count. When a slant is the right call, say why, and the war
 
 A wire or two-lead part lying over a part's body hides its pins and has to come out before the
 part can. bbgen warns (`OVER_PART`), and for a wire suggests bends that take it around:
-`via: [d43, g43]`. The checklist lists the bends with the wire.
+`via: [d43, g43]`. The checklist lists the bends with the wire. It also warns about a wire that
+ends in a hole under a two-lead part's body (a resistor standing up to a rail covers the holes
+between its legs), and one that runs along another wire or part, hiding it. Wires may cross.
 
 ### Where parts land
 
@@ -188,10 +207,11 @@ it's a supply (`VSYS`, `5V`, ...), and otherwise a colour no other net has, unti
 | `HOLE_TAKEN` | two things in one hole, or a hole under a part's body |
 | `OFF_HOLES` | a pin lands in the trench or off the board |
 | `NOT_PLACED`, `TWO_NETS`, `BAD_*` | a pin in a net isn't on the board; a pin in two nets; a reference that doesn't resolve |
+| `BAD_RAIL` | a net's `rail:` isn't a rail, or names one another net already uses |
 | `DANGLING` (warning) | a wire ends in a strip with nothing else in it |
 | `NO_EFFECT` (warning) | both ends of a wire are in the same strip |
 | `DIAGONAL` (warning) | a wire or two-lead part slants where it could run straight; the message says how |
-| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body; for a wire, the message gives bends around it |
+| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body (for a wire, the message gives bends around it), a wire ends under a two-lead part, or runs along another wire or part |
 
 ## With Claude Code
 

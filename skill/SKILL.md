@@ -15,9 +15,10 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 1. **Get the nets right first.** Take them from the project's own design (schematic, netlist,
    design doc), not from memory. Every pin that should connect to something goes in `nets`.
 2. **Write the YAML** next to the project's other hardware files (e.g. `hardware/breadboard/`).
-   Place the big parts first (`at`, `rot`), then the two-lead parts, then the wires, grouped in
-   the order the user should build them (power, then signals, ...). Follow the layout rules
-   below while placing: that's cheaper than moving parts later.
+   Place the big parts first (`at`, `rot`), then the two-lead parts. Follow the layout rules
+   below while placing: that's cheaper than moving parts later. Then set `autowire: true` and
+   let bbgen add the wires; give a net `rail:` when it should run on a rail its parts don't
+   already reach. Write a wire yourself only where you need a particular one.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
    layout with errors, and never silence one by dropping a pin from `nets`.
 4. **Work through the warnings.** Each says how to fix it:
@@ -26,6 +27,7 @@ parts land" and the rail columns under "Holes": placing parts needs both.
      settle for the slant. If a slant really is the best option, record why with
      `slant: <reason>` instead of leaving the warning.
    - `OVER_PART`: add the `via` bends it suggests, or move the part.
+   - On a wire bbgen added, the fix is always placement: move the part it names.
 
    Rebuild after each round.
 5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each

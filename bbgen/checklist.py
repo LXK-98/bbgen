@@ -68,6 +68,8 @@ def checklist(c: Circuit, result: Result) -> str:
     out += ["", "## Wires"]
     for group in c.groups:
         wires = [w for w in c.wires if w.group == group]
+        if not wires:
+            continue
         out += ["", f"### {group} ({len(wires)})", ""]
         for w in wires:
             if not (w.a and w.b):

@@ -91,6 +91,16 @@ class OverPartTest(unittest.TestCase):
         c, r = build({"U1": self.OPAMP}, [{"from": "U1.OUT", "to": "U1.IN-", "via": ["d39", "g39"]}])
         self.assertIn("bent over `d39`, `g39`", checklist(c, r))
 
+    def test_wire_end_under_a_standing_part(self):
+        # R1 stands from d25 up to the rail, over a25-c25; the wire ends in b25
+        _, r = build({"R1": {"type": "resistor", "pins": ["d25", "top-25"]}}, [["b25", "b30"]])
+        self.assertIn("W1 ends in b25, under R1", next(i.message for i in r.issues if i.code == "OVER_PART"))
+
+    def test_wire_along_another(self):
+        _, r = build({}, [["a10", "a20"], ["a12", "a18"]])
+        msgs = [i.message for i in r.issues if i.code == "OVER_PART"]
+        self.assertTrue(any(m.startswith("W2 runs along W1") for m in msgs), msgs)
+
 
 if __name__ == "__main__":
     unittest.main()

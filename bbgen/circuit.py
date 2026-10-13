@@ -67,6 +67,7 @@ class Wire:
     color: str | None
     via: list[str]
     slant: str | None = None  # why it may lie slanted
+    auto: bool = False        # added by autowire, not written in the file
     a: End | None = None
     b: End | None = None
     via_xy: list = field(default_factory=list)
@@ -77,6 +78,7 @@ class Net:
     name: str
     pins: list[Pin]
     color: str
+    rails: list[str] = field(default_factory=list)  # rails it should run on (autowire)
 
 
 @dataclass
@@ -152,11 +154,15 @@ class Circuit:
         self._segments: list[tuple] = []           # (a, b, who) for each wire run and two-lead part
         self._bodies: list[tuple] = []             # (box, ref) for each footprint part
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
+        self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
         self._load_boards(data.get("boards") or [{"type": "full"}])
         self._load_parts(data.get("parts") or {})
         self._load_wires(data.get("wires") or [])
         self._place()
         self._load_nets(data.get("nets") or {})
+        if data.get("autowire"):
+            from .autowire import autowire  # it builds on the check, which imports this module
+            autowire(self)
         self._find_slants()
         self._find_over_parts()
 
@@ -240,7 +246,11 @@ class Circuit:
                 pins += [p for p in found if p not in pins]
             colors[name] = (str(spec["color"]) if spec.get("color") else
                             "black" if _GROUND.match(name) else "red" if _SUPPLY.match(name) else None)
-            self.nets[name] = Net(name, pins, "")
+            rails = spec.get("rail") or []
+            rails = [rails] if isinstance(rails, str) else rails
+            if not isinstance(rails, list):
+                raise CircuitError(f"nets.{name}: rail is a rail name or a list of them (top+, bot-, ...)")
+            self.nets[name] = Net(name, pins, "", [str(r) for r in rails])
         # the rest take palette colours that no net has already
         used = {color_hex(c).lower() for c in colors.values() if c}
         palette = cycle([c for c in NET_PALETTE if color_hex(c).lower() not in used] or NET_PALETTE)
@@ -360,7 +370,10 @@ class Circuit:
                 pin.hole = self._take(option, f"{part.ref} leg {i + 1}").hole
                 pin.xy = option.xy
         if all(p.xy for p in part.pins):
-            self._segments.append((part.pins[0].xy, part.pins[1].xy, part.ref))
+            a, b = part.pins[0].xy, part.pins[1].xy
+            self._segments.append((a, b, part.ref))
+            if _aligned(a, b):  # it lies over the holes between its legs
+                self._covered.update((k, part.ref) for k in self._between(a, b))
 
     def _route(self, w: Wire) -> None:
         sa, sb = w.spec
@@ -432,19 +445,20 @@ class Circuit:
         """Warn about wires and two-lead parts that lie slanted where they could run straight."""
         for w in self.wires:
             if w.a and w.b and w.a.hole and w.b.hole and not w.via and not w.slant:
-                self._slant(f"W{w.num}", w.spec, (w.a.hole, w.b.hole))
+                self._slant(f"W{w.num}", w.spec, (w.a.hole, w.b.hole), w.auto)
         for part in self.parts.values():
             if part.kind in LEAD_KINDS and not part.slant and all(p.hole for p in part.pins):
                 self._slant(part.ref, part.legs, tuple(p.hole for p in part.pins))
 
-    def _slant(self, name: str, specs, holes: tuple[Hole, Hole]) -> None:
+    def _slant(self, name: str, specs, holes: tuple[Hole, Hole], auto: bool = False) -> None:
         if holes[0].board != holes[1].board:
             return
         board = self.boards[holes[0].board]
         if _aligned(board.xy(holes[0]), board.xy(holes[1])):
             return
         route = f"{name} slants ({self.hole_name(holes[0])} → {self.hole_name(holes[1])})"
-        accept = f"or accept it with slant: <reason> on {name}"
+        accept = ("or place the parts so it can run straight" if auto else
+                  f"or accept it with slant: <reason> on {name}")
         strips = [board.strip_holes(board.strip(h)) for h in holes]
         straight = [(p, q) for p in strips[0] for q in strips[1]
                     if p != q and _aligned(board.xy(p), board.xy(q))]
@@ -501,21 +515,34 @@ class Circuit:
             if who not in names:
                 names.append(who)
         what = f" (by {', '.join(names[:5])})" if names else ""
-        self.issues.append(Issue("warning", "DIAGONAL", f"{route}: every straight route is blocked{what}. "
-                                 f"Move parts to make room, bend it with via:, {accept}", holes=list(holes)))
+        fix = "Move parts to make room" if auto else f"Move parts to make room, bend it with via:, {accept}"
+        self.issues.append(Issue("warning", "DIAGONAL", f"{route}: every straight route is blocked{what}. {fix}",
+                                 holes=list(holes)))
 
     def _find_over_parts(self) -> None:
         """Warn about wires and two-lead parts lying over a part's body: they hide its pins and have to come
         out before it can."""
         for w in self.wires:
+            name = f"W{w.num}"
+            for end in (w.a, w.b):  # an end under a two-lead part can't be plugged in or pulled out
+                if end and end.hole and _key(self.end_xy(end)) in self._covered:
+                    ref = self._covered[_key(self.end_xy(end))]
+                    self.issues.append(Issue("warning", "OVER_PART", f"{name} ends in {self.hole_name(end.hole)}, "
+                                             f"under {ref}: move one of them", holes=[end.hole]))
             if not (w.a and w.b and w.a.hole and w.b.hole):
                 continue  # flying leads are in the air
             pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
+            ends = f"({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
+            along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for a, b, who in self._segments
+                                       if who != name and _along((p, q), (a, b))))
+            if along:
+                self.issues.append(Issue("warning", "OVER_PART", f"{name} runs along {' and '.join(along)} {ends}, "
+                                         "hiding it: move one of them", holes=[w.a.hole, w.b.hole]))
             refs = list(dict.fromkeys(r for p, q in zip(pts, pts[1:]) for r in self._bodies_crossed(p, q)))
             if not refs:
                 continue
-            route = f"W{w.num} runs over {' and '.join(refs)} ({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
-            detour = None if w.via else self._detour(w.a.hole, w.b.hole)
+            route = f"{name} runs over {' and '.join(refs)} {ends}"
+            detour = None if w.via else self._detour(w.a.hole, w.b.hole, name)
             fix = (f"bend it around with via: [{', '.join(detour)}]" if detour else
                    "move the bends in its via" if w.via else "move a part to make room")
             self.issues.append(Issue("warning", "OVER_PART", f"{route}: {fix}", holes=[w.a.hole, w.b.hole]))
@@ -528,9 +555,14 @@ class Circuit:
                         f"({self.hole_name(part.pins[0].hole)} → {self.hole_name(part.pins[1].hole)}): "
                         "put its legs where it clears the part", holes=[p.hole for p in part.pins]))
 
-    def _detour(self, a: Hole, b: Hole) -> list[str] | None:
-        """Bends (one or two holes) that take a wire from a to b around every part body, passing as few
-        holes in use as possible, then shortest."""
+    def _detour(self, a: Hole, b: Hole, who: str = "") -> list[str] | None:
+        found = self._detour_cost(a, b, who)
+        return found[1] if found else None
+
+    def _detour_cost(self, a: Hole, b: Hole, who: str = "") -> tuple[tuple, list[str]] | None:
+        """Bends (one or two holes) that take a wire from a to b around every part body, lying along as few
+        other wires and parts and passing as few holes in use or under parts as possible, then shortest;
+        with that cost, (trouble, length)."""
         if a.board != b.board:
             return None
         board = self.boards[a.board]
@@ -541,13 +573,15 @@ class Circuit:
             if not all(board.has(row, col) for row, col in route):
                 continue
             pts = [board.xy(a), *(board.xy(Hole(board.id, row, col)) for row, col in route), board.xy(b)]
-            if any(self._bodies_crossed(p, q) for p, q in zip(pts, pts[1:])):
+            segs = list(zip(pts, pts[1:]))
+            if any(self._bodies_crossed(p, q) for p, q in segs):
                 continue
-            over = sum(k in self._used for p, q in zip(pts, pts[1:]) for k in self._between(p, q))
-            cost = (over, round(sum(math.dist(p, q) for p, q in zip(pts, pts[1:])), 6))
+            along = sum(_along((p, q), (s, t)) for p, q in segs for s, t, other in self._segments if other != who)
+            over = 10 * along + sum(k in self._used or k in self._covered for p, q in segs for k in self._between(p, q))
+            cost = (over, round(sum(math.dist(p, q) for p, q in segs), 6))
             if best is None or cost < best[0]:
                 best = (cost, [self.hole_name(Hole(board.id, row, col)) for row, col in route])
-        return best[1] if best else None
+        return best
 
     # ---- resolving holes and pins ----
 
