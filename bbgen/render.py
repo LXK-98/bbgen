@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from xml.sax.saxutils import escape
 
 from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, TRENCH_Y, Board
@@ -24,6 +25,45 @@ LEAD_STYLE = {
     "diode": ("#2a2a2a", "#000000", 0.45, 1.3),
     "led": ("#e8463a", "#8e1d14", 0.8, 0.8),
 }
+
+# resistor colour code: digit (or multiplier exponent) -> band colour
+BAND = ("#1a1a1a", "#7a4a2a", "#d0281c", "#f07c12", "#f4d21a",
+        "#2e9a3a", "#2152c4", "#7d3fb0", "#8c8c8c", "#f9f9f9")
+GOLD, SILVER = "#c9a227", "#b8bcc2"
+_OHMS = re.compile(r"^(\d*)(?:[.,](\d+))?([rkm]?)$|^(\d+)([rkm])(\d+)$")  # 4.7k, or 4k7
+
+
+def resistor_bands(value: str) -> list[str] | None:
+    """Colour bands for a resistance like 10k, 330R, 4k7, 2.2M or 100: two digits, multiplier and gold
+    (5 %), or three digits, multiplier and brown (1 %) when two digits can't say it. None if unreadable."""
+    s = value.strip().lower().replace("ω", "").replace("ohms", "").replace("ohm", "").replace(" ", "")
+    m = _OHMS.match(s)
+    if not m or not (m[1] or m[2] or m[4]):
+        return None
+    whole, frac, suffix = (m[1], m[2], m[3]) if m[4] is None else (m[4], m[6], m[5])
+    ohms = float(f"{whole or 0}.{frac or 0}") * {"k": 1e3, "m": 1e6}.get(suffix, 1)
+    if ohms == 0:
+        return [BAND[0]]
+    for digits, tolerance in ((2, GOLD), (3, BAND[1])):
+        exp = math.floor(math.log10(ohms)) - digits + 1
+        sig = round(ohms / 10 ** exp)
+        if sig == 10 ** digits:  # 99.96 rounds up a decade
+            sig, exp = sig // 10, exp + 1
+        if abs(sig * 10.0 ** exp - ohms) <= ohms * 1e-9 or digits == 3:
+            break
+    if not -2 <= exp <= 9:
+        return None
+    mult = GOLD if exp == -1 else SILVER if exp == -2 else BAND[exp]
+    return [BAND[int(d)] for d in str(sig)] + [mult, tolerance]
+
+
+def _outline(color: str) -> str:
+    """Dark outline around a wire, or a light one when the wire itself is dark (black, dark blue...)."""
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        r, g, b = (int(color[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        if 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.25:
+            return "#c2c2c2"
+    return "#1d1d1d"
 
 
 class _Canvas:
@@ -167,9 +207,20 @@ def _lead(cv: _Canvas, part: Part) -> None:
     cv.line(bx, by, *e2, "#8d8d8d", 0.1)
     angle = math.degrees(math.atan2(uy, ux))
     w, h = blen * P, thick * P
+    cv.add(f'<g transform="translate({cv.X(cx):.1f} {cv.Y(cy):.1f}) rotate({angle:.1f})">')
     cv.add(f'<rect x="{-w / 2:.1f}" y="{-h / 2:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{h / 3:.1f}" '
-           f'fill="{part.color or fill}" stroke="{stroke}" stroke-width="1" '
-           f'transform="translate({cv.X(cx):.1f} {cv.Y(cy):.1f}) rotate({angle:.1f})"/>')
+           f'fill="{part.color or fill}" stroke="{stroke}" stroke-width="1"/>')
+    bands = resistor_bands(part.value) if part.kind == "resistor" else None
+    if bands:  # read left to right (or top to bottom), the tolerance band set apart at the end
+        span = w - 2 * h / 3  # clear of the rounded ends
+        bw = min(span / (len(bands) + 2), 3.4)
+        at = [-span / 2 + (i + 0.5) * span / (len(bands) + 1) for i in range(len(bands) - 1)] + [span / 2 - bw / 2]
+        if ux < -1e-6 or (abs(ux) <= 1e-6 and uy < 0):  # leg 1 is on the right or at the bottom
+            at = [-x for x in at]
+        for x, band in zip(at, bands):
+            cv.add(f'<rect x="{x - bw / 2:.1f}" y="{-h / 2 + 0.5:.1f}" width="{bw:.1f}" height="{h - 1:.1f}" '
+                   f'fill="{band}" stroke="#00000040" stroke-width="0.5"/>')
+    cv.add("</g>")
     if part.kind in ("diode", "led"):  # cathode band, toward leg 2
         k = (e2[0] - ux * 0.18, e2[1] - uy * 0.18)
         cv.line(k[0] - nx * thick / 2, k[1] - ny * thick / 2, k[0] + nx * thick / 2, k[1] + ny * thick / 2,
@@ -257,11 +308,11 @@ def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> No
         else:
             d = "M " + " L ".join(f"{cv.X(x):.1f} {cv.Y(y):.1f}" for x, y in pts)
         cv.add(f'<g opacity="{0.14 if dim else 1}">')
-        for stroke, width in (("#1d1d1d", 0.34), (color, 0.24)):
+        for stroke, width in ((_outline(color), 0.34), (color, 0.24)):
             cv.add(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{width * P:.1f}" '
                    f'stroke-linecap="round" stroke-linejoin="round"/>')
         for x, y in (pts[0], pts[-1]):
-            cv.circle(x, y, 0.15, color, "#1d1d1d", 1)
+            cv.circle(x, y, 0.15, color, _outline(color), 1)
         cv.add("</g>")
         if not dim:
             drawn.append((w, mid, color))
@@ -317,7 +368,8 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
 
     x = minx + 0.8
     for net in c.nets.values():
-        cv.rect(x, legend_y - 0.25, x + 0.9, legend_y + 0.25, color_hex(net.color), "#1d1d1d", 1, rx=0.1)
+        swatch = color_hex(net.color)
+        cv.rect(x, legend_y - 0.25, x + 0.9, legend_y + 0.25, swatch, _outline(swatch), 1, rx=0.1)
         cv.text(x + 1.15, legend_y, net.name, 6.5, "start")
         x += 1.15 + len(net.name) * 0.24 + 1.2
 
