@@ -146,6 +146,21 @@ def _board(cv: _Canvas, c: Circuit, result: Result, b: Board) -> None:
         cv.text(b.x0 + col - 1, 14.95, str(col), 5.5, fill=MUTED)
 
 
+def _keepouts(cv: _Canvas, c: Circuit, part: Part) -> None:
+    """Room a part needs beyond its body (a USB cable's plug), hatched, as far as it lies on a board."""
+    if not part.keepouts or part.pins[0].xy is None or part.pins[0].hole is None:
+        return
+    board = c.boards[part.pins[0].hole.board]
+    for what, rect in part.keepouts:
+        x0, y0, x1, y1 = placed_box(part, rect)
+        x0, x1 = max(x0, board.left + 0.3), min(x1, board.right - 0.3)
+        y0, y1 = max(y0, OUTLINE_Y[0] + 0.3), min(y1, OUTLINE_Y[1] - 0.3)
+        if x1 - x0 < 0.3 or y1 - y0 < 0.3:
+            continue
+        cv.rect(x0, y0, x1, y1, "url(#keepout)", "#b0a58c", 1, rx=0.15, extra=' stroke-dasharray="4 3"')
+        cv.text((x0 + x1) / 2, (y0 + y1) / 2, what, 6, fill="#7d7258", weight="bold", halo=BOARD, late=True)
+
+
 def _footprint(cv: _Canvas, part: Part) -> None:
     if part.pins[0].xy is None:
         return
@@ -360,6 +375,8 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
     for board in c.boards.values():
         _board(cv, c, result, board)
     for part in c.parts.values():
+        _keepouts(cv, c, part)
+    for part in c.parts.values():
         if part.kind in ("pico", "dip", "sip"):
             _footprint(cv, part)
         elif part.kind == "offboard":
@@ -380,4 +397,7 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
 
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
             f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="{FONT}">\n'
+            f'<defs><pattern id="keepout" width="8" height="8" patternUnits="userSpaceOnUse" '
+            f'patternTransform="rotate(45)"><rect width="8" height="8" fill="#efe9dc"/>'
+            f'<line x1="0" y1="0" x2="0" y2="8" stroke="#d3c9b1" stroke-width="3"/></pattern></defs>\n'
             f'<rect width="100%" height="100%" fill="#ffffff"/>\n' + "\n".join(cv.out) + "\n</svg>\n")

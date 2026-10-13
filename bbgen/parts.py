@@ -24,6 +24,9 @@ PICO_PINS = {
 }
 # Joined on the Pico's own board. AGND (33) is left out: wire it if you use it.
 PICO_GND = (3, 8, 13, 18, 23, 28, 38)
+# Room for a USB cable's plug past the Pico's USB end, relative to pin 1: the "USB Cable" courtyard zone
+# of KiCad's Module:RaspberryPi_Pico_Common_THT footprint (x 3.14-14.64 mm, y -3.57 to -23.07 mm).
+PICO_USB_KEEPOUT = (-9.08, -5.76, -1.41, -1.24)
 
 LEAD_KINDS = {
     "resistor": ("1", "2"),
@@ -79,6 +82,7 @@ class Part:
     slant: str | None = None  # two-lead parts: why it may lie slanted
     near: str | None = None   # a part to keep it close to, when bbgen places it
     auto: bool = False        # placed by bbgen, not the file
+    keepouts: list = field(default_factory=list)  # (what, rect relative to pin 1): room it needs that isn't body
     cols: int = 1            # off-board layout
     numbering: str = "row"
     place: str = "right"
@@ -173,6 +177,7 @@ def make_part(ref: str, spec: dict) -> Part:
             part.pins.append(Pin(part, n, name, (n - 1, 0) if bottom else (40 - n, -7),
                                  (0, -1) if bottom else (0, 1)))
         part.buses.append(tuple(part.pins[n - 1] for n in PICO_GND))
+        part.keepouts.append(("USB cable", PICO_USB_KEEPOUT))
     elif kind == "dip":
         n = _count(spec, ref)
         if n % 2:

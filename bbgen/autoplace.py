@@ -36,6 +36,7 @@ CROWD_COST = 6.0       # per signal wire past what a column has room for
 LINK_COST = 1.0        # per hole between the nets a two-lead part joins
 OFFBOARD_COST = 0.15   # per column between an off-board pin's net and the board's edge
 SPACE_COST = 4.0       # per column short of three between two footprint parts
+KEEP_COST = 0.2        # per column of keep-out on the board (a USB cable is best off its edge)
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
 
 # two-lead parts' legs
@@ -350,7 +351,8 @@ class _Model:
                     self.fixed[ref] = self._layout(part, parsed[1], parsed[2], part.rot)
 
     def _layout(self, part, row: str, col: int, rot: int):
-        """(at, rot, {pin: (x, y)}, [(half, lo, hi)]) for pin 1 in row/col, or None if a pin misses."""
+        """(at, rot, {pin: (x, y)}, body [(half, lo, hi)], keep-out [(half, lo, hi)]) for pin 1 in row/col, or
+        None if a pin misses the holes."""
         ax, ay = col, ROW_Y[row]
         xy = {}
         for pin in part.pins:
@@ -363,7 +365,16 @@ class _Model:
         halves = {"top" if y < 8 else "bot" for _, y in xy.values()}
         if part.kind != "sip":
             halves = {"top", "bot"}  # a DIP or Pico straddles the trench
-        return f"{row}{col}", rot, xy, [(h, min(xs), max(xs)) for h in halves]
+        keep = []
+        for _, rect in part.keepouts:  # the columns and halves of holes inside it, on the board
+            corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
+            x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
+            y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
+            lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
+            rows = [y for y in ROW_Y.values() if y0 < y < y1]
+            if lo <= hi and rows:
+                keep += [(h, lo, hi) for h in {"top" if y < 8 else "bot" for y in rows}]
+        return f"{row}{col}", rot, xy, [(h, min(xs), max(xs)) for h in halves], keep
 
     def _choices(self, part) -> list:
         cols = range(1, self.board.columns + 1)
@@ -389,6 +400,12 @@ class _Model:
                     if gap < 1:
                         return math.inf
                     cost += SPACE_COST * max(0, 3 - gap)
+        for ref, lay in layouts.items():  # nothing in another part's keep-out (a USB cable's plug)
+            for h1, a1, b1 in lay[4]:
+                cost += KEEP_COST * (b1 - a1 + 1)
+                for other, lay2 in layouts.items():
+                    if other != ref and any(h1 == h2 and a1 <= b2 and a2 <= b1 for h2, a2, b2 in lay2[3]):
+                        return math.inf
         where = {pin: xy for lay in layouts.values() for pin, xy in lay[2].items()}
         crowd: dict = {}
         for name, pins in self.nets.items():
@@ -503,7 +520,7 @@ def autoplace(data: dict, source: str) -> dict:
         candidates[()] = (0.0, {})
     best = None
     for _, state in sorted(candidates.values(), key=lambda t: t[0])[:KEEP * 2]:
-        trial = _with(base, {ref: {"at": at, "rot": rot} for ref, (at, rot, _, _) in state.items()})
+        trial = _with(base, {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()})
         score, c = _evaluate(trial, source)
         if best is None or score < best[0]:
             best = (score, trial, c)

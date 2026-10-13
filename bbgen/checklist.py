@@ -17,7 +17,7 @@ def _where(c: Circuit, part: Part) -> str:
     first = part.pins[0].hole
     at = f"`{c.hole_name(first)}`" if first else f"`{part.at}` (not placed)"
     if part.kind == "pico":
-        return f"pin 1 in {at}, USB pointing {POINTS[part.rot]}"
+        return f"pin 1 in {at}, USB pointing {POINTS[part.rot]}{_keep_clear(c, part)}"
     if part.kind == "dip":
         return (f"pin 1 in {at}, notch (pin-1 end) pointing {POINTS[part.rot]}; "
                 f"{len(part.pins)} pins, rows {part.width / 10:g} in apart")
@@ -28,6 +28,21 @@ def _where(c: Circuit, part: Part) -> str:
         polarity = {"electrolytic": " (+ leg first)", "diode": " (anode first)", "led": " (anode first)"}
         return f"legs in {legs[0]} and {legs[1]}{polarity.get(part.kind, '')}"
     return "off the breadboard: reached with flying leads"
+
+
+def _keep_clear(c: Circuit, part: Part) -> str:
+    """'; keep e1-e5 and f1-f5 clear for its USB cable', for the holes a part's keep-outs reserve."""
+    out = []
+    for what, _ in part.keepouts:
+        holes = [h for h, who in c.occupied.items() if who == f"{part.ref}'s {what}"]
+        rows: dict = {}
+        for h in holes:
+            rows.setdefault(h.row, []).append(h.col)
+        spans = [f"`{r}{min(cols)}`-`{r}{max(cols)}`" if len(cols) > 1 else f"`{r}{cols[0]}`"
+                 for r, cols in sorted(rows.items())]
+        if spans:
+            out.append(f"; keep {' and '.join(spans)} clear for its {what}")
+    return "".join(out)
 
 
 def _end(c: Circuit, result: Result, end: End) -> str:

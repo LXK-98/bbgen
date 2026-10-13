@@ -349,6 +349,13 @@ class Circuit:
             x, y = board.xy(hole)
             if x0 < x < x1 and y0 < y < y1 and hole not in own:
                 self._occupy(hole, f"the body of {part.ref}")
+        for what, rect in part.keepouts:  # room it needs beyond its body, like a USB cable's plug
+            box = placed_box(part, rect)
+            self._bodies.append((box, f"{part.ref}'s {what}"))
+            for hole in board.holes():
+                x, y = board.xy(hole)
+                if box[0] < x < box[2] and box[1] < y < box[3] and hole not in own:
+                    self._occupy(hole, f"{part.ref}'s {what}")
 
     def _layout_offboard(self) -> None:
         right = max(b.right for b in self.boards.values()) + 3

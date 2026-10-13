@@ -183,6 +183,12 @@ part can. bbgen warns (`OVER_PART`), and for a wire suggests bends that take it 
 ends in a hole under a two-lead part's body (a resistor standing up to a rail covers the holes
 between its legs), and one that runs along another wire or part, hiding it. Wires may cross.
 
+Some parts need room beyond their body: a Pico needs space for its USB cable's plug past the USB
+end (rows `e`-`f`, the 8 columns from 2 past pin 1; the "USB Cable" zone of KiCad's Pico
+footprint). The holes in it are taken, so nothing can go there (`HOLE_TAKEN`), a wire or part
+across it gets `OVER_PART`, the drawing hatches it, and the checklist says which holes to keep
+clear. Put the USB end at the board's edge and it costs no holes at all.
+
 ### Where parts land
 
 The rows are spaced like the holes, with the trench counting as two more: `a`-`e` are 1 apart,
@@ -204,7 +210,7 @@ and `e` to `f` is 3. So:
 
 | type | placed by | notes |
 |---|---|---|
-| `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it. |
+| `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it, and its USB cable rows e-f past the USB end. |
 | `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
 | `sip` | `at` (pin 1), `rot`, or bbgen | a single row: headers, trimmers |
 | `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. |
