@@ -70,5 +70,27 @@ class DiagonalTest(unittest.TestCase):
         self.assertEqual(codes(r), [])
 
 
+
+class OverPartTest(unittest.TestCase):
+    OPAMP = {"type": "dip", "pins": 6, "at": "e42", "rot": 180, "labels": ["OUT", "V-", "IN+", "IN-", "X", "V+"]}
+
+    def test_wire_over_a_part_gets_a_detour_that_clears_it(self):
+        _, r = build({"U1": self.OPAMP}, [["U1.OUT", "U1.IN-"]])
+        [issue] = [i for i in r.issues if i.code == "OVER_PART"]
+        self.assertIn("W1 runs over U1", issue.message)
+        via = issue.message.split("via: [")[1].rstrip("]").split(", ")
+        c, r = build({"U1": self.OPAMP}, [{"from": "U1.OUT", "to": "U1.IN-", "via": via}])
+        self.assertEqual([i.code for i in r.warnings], [])
+
+    def test_two_lead_part_over_a_part(self):
+        _, r = build({"U1": self.OPAMP, "R1": {"type": "resistor", "pins": ["d41", "g41"]}})
+        self.assertIn("R1 lies over U1", next(i.message for i in r.issues if i.code == "OVER_PART"))
+
+    def test_bends_are_in_the_checklist(self):
+        from bbgen.checklist import checklist
+        c, r = build({"U1": self.OPAMP}, [{"from": "U1.OUT", "to": "U1.IN-", "via": ["d39", "g39"]}])
+        self.assertIn("bent over `d39`, `g39`", checklist(c, r))
+
+
 if __name__ == "__main__":
     unittest.main()

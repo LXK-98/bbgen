@@ -7,7 +7,8 @@ description: Lay out a circuit on a breadboard with bbgen. Write the circuit YAM
 
 `bbgen` (on PATH, source in `~/Documents/Code/bbgen`) turns a circuit YAML into a drawing, a
 build checklist and a wiring check. The full file format is in
-`~/Documents/Code/bbgen/README.md`. Read it before writing a circuit file.
+`~/Documents/Code/bbgen/README.md`. Read it before writing a circuit file, especially "Where
+parts land" and the rail columns under "Holes": placing parts needs both.
 
 ## The loop
 
@@ -19,10 +20,14 @@ build checklist and a wiring check. The full file format is in
    below while placing: that's cheaper than moving parts later.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
    layout with errors, and never silence one by dropping a pin from `nets`.
-4. **Work through the warnings.** Each `DIAGONAL` says how to straighten that wire or part: take
-   the hole it suggests, move the part it names, or make room. If a slant really is the best
-   option, record why with `slant: <reason>` instead of leaving the warning. Rebuild after each
-   round.
+4. **Work through the warnings.** Each says how to fix it:
+   - `DIAGONAL`: take the hole it suggests, or move the part it names. "Every straight route is
+     blocked" usually means parts are crowded on one side: move them to make room before you
+     settle for the slant. If a slant really is the best option, record why with
+     `slant: <reason>` instead of leaving the warning.
+   - `OVER_PART`: add the `via` bends it suggests, or move the part.
+
+   Rebuild after each round.
 5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each
    other, labels you can't read. Trust the check over your eye for which hole a wire is in.
 6. Hand over the `.png`/`.svg` and the `.md` checklist. Say what you assumed, and list any
@@ -46,8 +51,9 @@ Wires and parts run straight along a row or a column, never slanted when it can 
   every pin that goes to a rail, directly or through a two-lead part, sits in a column that has
   rail holes. Check this before the first build.
 - **Leave room for parallel runs.** Each wire running along a row needs a row of its own, and a
-  strip only has the holes its pins don't use (a Pico's strips have two). Spread parts out, or
-  run connections from both sides of the board, rather than stacking wires on one row.
+  strip only has the holes its pins don't use. A Pico's strips have two, so no more than two
+  wires can leave one side of it over the same stretch: put parts on both sides of the Pico
+  (place it mid-board) and at both ends, rather than all to one side.
 - **Two-lead parts** lie along a row, or along a column to a rail. When you write a hole for one
   leg, put it in the row or column of the other leg.
 - **A wire that must change both row and column** (across the trench between two columns) is

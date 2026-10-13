@@ -23,8 +23,8 @@ wires:                        # a list, or groups of lists (each group is a chec
     - [U1.VCC, top+]
     - [U1.GND, bot-, black]   # optional colour; otherwise the net's colour
   i2c:
-    - [Pico.GP4, U1.SDA]
-    - {from: Pico.GP5, to: U1.SCL, via: [j40]}   # via: holes to bend the drawn wire through
+    - [Pico.GP16, U1.SDA]
+    - [Pico.GP17, U1.SCL]
     - [U1.SDA, J1.SDA]
     - [U1.SCL, J1.SCL]
     - [bot-, J1.GND]
@@ -32,7 +32,7 @@ wires:                        # a list, or groups of lists (each group is a chec
 nets:                         # what should be connected; the check holds the board to this
   3V3: {pins: [Pico.3V3, U1.VCC, C1.1], color: red}
   GND: [Pico.GND, U1.GND, C1.2, D1.K, J1.GND]
-  SDA: [Pico.GP4, U1.SDA, J1.SDA]
-  SCL: [Pico.GP5, U1.SCL, J1.SCL]
+  SDA: [Pico.GP16, U1.SDA, J1.SDA]
+  SCL: [Pico.GP17, U1.SCL, J1.SCL]
   LED_DRIVE: [Pico.GP15, R1.1]
   LED: [R1.2, D1.A]

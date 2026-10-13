@@ -35,8 +35,8 @@ Place these first.
 
 ### i2c (5)
 
-- [ ] **W6** blue: `i8` → `c33` · SDA (Pico.6 GP4 ↔ U1.5 SDA)
-- [ ] **W7** green: `i9` → `b32` · SCL (Pico.7 GP5 ↔ U1.6 SCL)
+- [ ] **W6** blue: `b22` → `b33` · SDA (Pico.21 GP16 ↔ U1.5 SDA)
+- [ ] **W7** green: `a21` → `a32` · SCL (Pico.22 GP17 ↔ U1.6 SCL)
 - [ ] **W8** blue: `d33` → `J1.1 SDA` · SDA (U1.5 SDA ↔ J1.1 SDA)
 - [ ] **W9** green: `d32` → `J1.2 SCL` · SCL (U1.6 SCL ↔ J1.2 SCL)
 - [ ] **W10** black: `bot-61` → `J1.3 GND` · GND (bot- rail ↔ J1.3 GND)

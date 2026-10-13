@@ -158,6 +158,7 @@ class Circuit:
         self._place()
         self._load_nets(data.get("nets") or {})
         self._find_slants()
+        self._find_over_parts()
 
     @classmethod
     def load(cls, path) -> Circuit:
@@ -222,7 +223,7 @@ class Circuit:
 
     def _load_nets(self, specs: dict) -> None:
         self.nets: dict[str, Net] = {}
-        palette = cycle(NET_PALETTE)
+        colors: dict[str, str | None] = {}
         for name, spec in specs.items():
             name = str(name)
             if isinstance(spec, list):
@@ -237,10 +238,14 @@ class Circuit:
                     self.issues.append(Issue("error", "BAD_NET", f"nets.{name}: {e}"))
                     continue
                 pins += [p for p in found if p not in pins]
-            color = spec.get("color")
-            if not color:
-                color = "black" if _GROUND.match(name) else "red" if _SUPPLY.match(name) else next(palette)
-            self.nets[name] = Net(name, pins, str(color))
+            colors[name] = (str(spec["color"]) if spec.get("color") else
+                            "black" if _GROUND.match(name) else "red" if _SUPPLY.match(name) else None)
+            self.nets[name] = Net(name, pins, "")
+        # the rest take palette colours that no net has already
+        used = {color_hex(c).lower() for c in colors.values() if c}
+        palette = cycle([c for c in NET_PALETTE if color_hex(c).lower() not in used] or NET_PALETTE)
+        for name, net in self.nets.items():
+            net.color = colors[name] or next(palette)
 
     # ---- placement ----
 
@@ -498,6 +503,51 @@ class Circuit:
         what = f" (by {', '.join(names[:5])})" if names else ""
         self.issues.append(Issue("warning", "DIAGONAL", f"{route}: every straight route is blocked{what}. "
                                  f"Move parts to make room, bend it with via:, {accept}", holes=list(holes)))
+
+    def _find_over_parts(self) -> None:
+        """Warn about wires and two-lead parts lying over a part's body: they hide its pins and have to come
+        out before it can."""
+        for w in self.wires:
+            if not (w.a and w.b and w.a.hole and w.b.hole):
+                continue  # flying leads are in the air
+            pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
+            refs = list(dict.fromkeys(r for p, q in zip(pts, pts[1:]) for r in self._bodies_crossed(p, q)))
+            if not refs:
+                continue
+            route = f"W{w.num} runs over {' and '.join(refs)} ({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
+            detour = None if w.via else self._detour(w.a.hole, w.b.hole)
+            fix = (f"bend it around with via: [{', '.join(detour)}]" if detour else
+                   "move the bends in its via" if w.via else "move a part to make room")
+            self.issues.append(Issue("warning", "OVER_PART", f"{route}: {fix}", holes=[w.a.hole, w.b.hole]))
+        for part in self.parts.values():
+            if part.kind in LEAD_KINDS and all(p.xy for p in part.pins):
+                refs = self._bodies_crossed(part.pins[0].xy, part.pins[1].xy)
+                if refs:
+                    self.issues.append(Issue(
+                        "warning", "OVER_PART", f"{part.ref} lies over {' and '.join(refs)} "
+                        f"({self.hole_name(part.pins[0].hole)} → {self.hole_name(part.pins[1].hole)}): "
+                        "put its legs where it clears the part", holes=[p.hole for p in part.pins]))
+
+    def _detour(self, a: Hole, b: Hole) -> list[str] | None:
+        """Bends (one or two holes) that take a wire from a to b around every part body, passing as few
+        holes in use as possible, then shortest."""
+        if a.board != b.board:
+            return None
+        board = self.boards[a.board]
+        routes = [[(a.row, b.col)], [(b.row, a.col)]]
+        routes += [[(a.row, col), (b.row, col)] for col in range(1, board.columns + 1)]
+        best = None
+        for route in routes:
+            if not all(board.has(row, col) for row, col in route):
+                continue
+            pts = [board.xy(a), *(board.xy(Hole(board.id, row, col)) for row, col in route), board.xy(b)]
+            if any(self._bodies_crossed(p, q) for p, q in zip(pts, pts[1:])):
+                continue
+            over = sum(k in self._used for p, q in zip(pts, pts[1:]) for k in self._between(p, q))
+            cost = (over, round(sum(math.dist(p, q) for p, q in zip(pts, pts[1:])), 6))
+            if best is None or cost < best[0]:
+                best = (cost, [self.hole_name(Hole(board.id, row, col)) for row, col in route])
+        return best[1] if best else None
 
     # ---- resolving holes and pins ----
 

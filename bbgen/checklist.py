@@ -76,6 +76,7 @@ def checklist(c: Circuit, result: Result) -> str:
             a = c.hole_name(w.a.hole) if w.a.hole else str(w.a.pin)
             b = c.hole_name(w.b.hole) if w.b.hole else str(w.b.pin)
             nets = " / ".join(wire_nets(c, result, w)) or "no net"
-            out.append(f"- [ ] **W{w.num}** {wire_color(c, result, w)}: `{a}` → `{b}` · {nets} "
+            bends = f", bent over {', '.join(f'`{v}`' for v in w.via)}" if w.via else ""
+            out.append(f"- [ ] **W{w.num}** {wire_color(c, result, w)}: `{a}` → `{b}`{bends} · {nets} "
                        f"({_end(c, result, w.a)} ↔ {_end(c, result, w.b)})")
     return "\n".join(out) + "\n"

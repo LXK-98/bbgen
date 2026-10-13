@@ -49,5 +49,20 @@ class OutlineTest(unittest.TestCase):
                 self.assertEqual(_outline(color), "#1d1d1d")
 
 
+class LabelTest(unittest.TestCase):
+    def test_unlabelled_offboard_pins_show_their_number_once(self):
+        c, result = build({"J1": {"type": "offboard", "cols": 2, "labels": {3: "GND"}}})
+        svg = render(c, result)
+        self.assertIn(">GND 3<", svg)
+        self.assertIn(">1<", svg)
+        self.assertNotIn(">1 1<", svg)
+
+    def test_auto_net_colours_skip_ones_already_chosen(self):
+        nets = {"A": {"pins": [], "color": "blue"}, "B": [], "C": [], "D": {"pins": [], "color": "green"}}
+        c, _ = build({}, [], nets)
+        self.assertEqual({n: net.color for n, net in c.nets.items()},
+                         {"A": "blue", "B": "yellow", "C": "orange", "D": "green"})
+
+
 if __name__ == "__main__":
     unittest.main()

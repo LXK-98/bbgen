@@ -270,11 +270,16 @@ def _offboard(cv: _Canvas, part: Part) -> None:
         warn = pin.name.endswith("!")
         fill, weight = ("#c62828", "bold") if warn else (INK, "normal")
         # the number goes next to the pin: first when the text starts at the pin
-        text = f"{pin.num} {pin.name}" if dx > 0 or (dx == 0 and dy < 0) else f"{pin.name} {pin.num}"
-        if dx == 0:  # clear of the housing, which reaches 0.6 past the pins
-            cv.text(x, y + dy * 0.85, text, 6, "end" if dy > 0 else "start", fill, weight, vertical=True)
+        if pin.name == str(pin.num):
+            text = pin.name
         else:
-            cv.text(x + dx * 0.85, y, text, 6, "start" if dx > 0 else "end", fill, weight)
+            text = f"{pin.num} {pin.name}" if dx > 0 or (dx == 0 and dy < 0) else f"{pin.name} {pin.num}"
+        # over the flying leads, which often cross these labels on their way in
+        if dx == 0:  # clear of the housing, which reaches 0.6 past the pins
+            cv.text(x, y + dy * 0.85, text, 6, "end" if dy > 0 else "start", fill, weight, vertical=True,
+                    halo="#ffffff", late=True)
+        else:
+            cv.text(x + dx * 0.85, y, text, 6, "start" if dx > 0 else "end", fill, weight, halo="#ffffff", late=True)
 
 
 def _wire_path(c: Circuit, w: Wire):
