@@ -167,8 +167,10 @@ def needs_placing(data) -> bool:
     parts = data.get("parts") if isinstance(data, dict) else None
     if not isinstance(parts, dict) or data.get("_placed") is not None:
         return False  # autoplace's own trial builds
-    return any(isinstance(spec, dict) and ((spec.get("type") in FOOTPRINT_KINDS and not spec.get("at")) or
-                                           (spec.get("type") in LEAD_KINDS and spec.get("pins") is None))
+    def kind(spec):  # as make_part decides it: a part named from KiCad is a footprint part
+        return spec.get("type") or ("kicad" if spec.get("symbol") or spec.get("footprint") else None)
+    return any(isinstance(spec, dict) and ((kind(spec) in FOOTPRINT_KINDS and not spec.get("at")) or
+                                           (kind(spec) in LEAD_KINDS and spec.get("pins") is None))
                for spec in parts.values())
 
 

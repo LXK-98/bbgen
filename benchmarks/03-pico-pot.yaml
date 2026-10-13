@@ -1,0 +1,10 @@
+title: Potentiometer into a Pico ADC
+notes: ["Tier 1. A 10 k pot across 3V3 and AGND, its wiper on ADC0 with a 100 nF filter cap."]
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  RV1: {footprint: Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical, title: 10k pot}
+  C1: {type: capacitor, value: 100nF}
+nets:
+  3V3: [Pico.3V3, RV1.3]
+  ADC: [Pico.GPIO26_ADC0, RV1.2, C1.1]
+  AGND: [Pico.AGND, RV1.1, C1.2]

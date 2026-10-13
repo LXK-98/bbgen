@@ -1,0 +1,17 @@
+title: Pico button and LED
+notes:
+  - "Tier 1. A button with a pull-down on GPIO15, an LED on GPIO16."
+  - "Gap: KiCad's 6 mm tactile switch (SW_PUSH_6mm) is off the 0.1 in grid, so the switch is a 4-pin DIP
+    across the trench. Pressing joins pin 1 to pin 2; bbgen doesn't know its other pins are joined inside."
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  SW1: {type: dip, pins: 4, title: tactile switch}
+  R1: {type: resistor, value: 10k}
+  R2: {type: resistor, value: 330R}
+  D1: {type: led}
+nets:
+  3V3: [Pico.3V3, SW1.2]
+  BTN: [Pico.GPIO15, SW1.1, R1.1]
+  LED_DRIVE: [Pico.GPIO16, R2.1]
+  LED: [R2.2, D1.A]
+  GND: [Pico.GND, R1.2, D1.K]

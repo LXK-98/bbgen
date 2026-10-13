@@ -285,7 +285,7 @@ def _from_kicad(part: Part, spec: dict, library) -> None:
         gx, gy = grid(x, y)
         if abs(gx - round(gx)) > 0.05 or abs(gy - round(gy)) > 0.05:
             raise PartError(f"parts.{part.ref}: {fp_ref}'s pads aren't on the 0.1 in grid of a breadboard "
-                            "(pad {n}); pick a footprint whose pads are, like TO-92_Inline_Wide for a TO-92")
+                            f"(pad {n}); pick a footprint whose pads are, like TO-92_Inline_Wide for a TO-92")
         offsets[n] = (round(gx), round(gy))
     ys = sorted({o[1] for o in offsets.values()})
     middle = (ys[0] + ys[-1]) / 2

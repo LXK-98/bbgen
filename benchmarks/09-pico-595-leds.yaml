@@ -1,0 +1,44 @@
+title: Pico + 74HC595 + 8 LEDs
+notes: ["Tier 3. A shift register drives eight LEDs from three GPIOs (data, shift clock, latch)."]
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  U1: {symbol: 74xx:74HC595, footprint: Package_DIP:DIP-16_W7.62mm}
+  C1: {type: capacitor, value: 100nF, near: U1}
+  R1: {type: resistor, value: 330R}
+  D1: {type: led}
+  R2: {type: resistor, value: 330R}
+  D2: {type: led}
+  R3: {type: resistor, value: 330R}
+  D3: {type: led}
+  R4: {type: resistor, value: 330R}
+  D4: {type: led}
+  R5: {type: resistor, value: 330R}
+  D5: {type: led}
+  R6: {type: resistor, value: 330R}
+  D6: {type: led}
+  R7: {type: resistor, value: 330R}
+  D7: {type: led}
+  R8: {type: resistor, value: 330R}
+  D8: {type: led}
+nets:
+  3V3: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1]
+  GND: [Pico.GND, U1.GND, U1./OE, C1.2, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K]
+  SER: [Pico.GPIO2, U1.SER]
+  SRCLK: [Pico.GPIO3, U1.SRCLK]
+  RCLK: [Pico.GPIO4, U1.RCLK]
+  QA: [U1.QA, R1.1]
+  LED0: [R1.2, D1.A]
+  QB: [U1.QB, R2.1]
+  LED1: [R2.2, D2.A]
+  QC: [U1.QC, R3.1]
+  LED2: [R3.2, D3.A]
+  QD: [U1.QD, R4.1]
+  LED3: [R4.2, D4.A]
+  QE: [U1.QE, R5.1]
+  LED4: [R5.2, D5.A]
+  QF: [U1.QF, R6.1]
+  LED5: [R6.2, D6.A]
+  QG: [U1.QG, R7.1]
+  LED6: [R7.2, D7.A]
+  QH: [U1.QH, R8.1]
+  LED7: [R8.2, D8.A]

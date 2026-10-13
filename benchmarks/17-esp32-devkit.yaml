@@ -1,0 +1,31 @@
+title: ESP32 DevKitC with sensor, LED, button and OLED
+notes:
+  - "Tier 4. An ESP32-DevKitC (38 pins) reads a DS18B20 on IO15 (4.7k pull-up), lights an LED on IO2,
+    reads a button on IO4 (10k pull-up) and drives an SSD1306 OLED on I2C (IO21/IO22)."
+  - "The DevKitC isn't in KiCad's library, so it is a 38-pin DIP with its pin rows 1.0 in apart. It covers
+    a whole breadboard's width; builders use two boards. Pin 1 is 3V3, counting down the left row."
+boards: [full, full]
+parts:
+  ESP32:
+    type: dip
+    pins: 38
+    width: 10
+    title: ESP32-DevKitC
+    labels: [3V3, EN, VP, VN, IO34, IO35, IO32, IO33, IO25, IO26, IO27, IO14, IO12, GND1, IO13, SD2, SD3, CMD, 5V,
+             CLK, SD0, SD1, IO15, IO2, IO0, IO4, IO16, IO17, IO5, IO18, IO19, GND2, IO21, RX, TX, IO22, IO23, GND3]
+  U1: {symbol: Sensor_Temperature:DS18B20, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  OLED: {symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C}
+  R1: {type: resistor, value: 4k7}
+  R2: {type: resistor, value: 330R}
+  D1: {type: led}
+  R3: {type: resistor, value: 10k}
+  SW1: {type: dip, pins: 4, title: button}
+nets:
+  3V3: [ESP32.3V3, U1.VDD, OLED.VCC, R1.1, R3.1]
+  GND: [ESP32.GND1, ESP32.GND2, ESP32.GND3, U1.GND, OLED.GND, D1.K, SW1.2]
+  ONEWIRE: [ESP32.IO15, U1.DQ, R1.2]
+  LED_DRIVE: [ESP32.IO2, R2.1]
+  LED: [R2.2, D1.A]
+  BUTTON: [ESP32.IO4, R3.2, SW1.1]
+  SDA: [ESP32.IO21, OLED.SDA]
+  SCL: [ESP32.IO22, OLED.SCL]

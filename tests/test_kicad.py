@@ -58,6 +58,16 @@ class KicadPartTest(unittest.TestCase):
                     Circuit({"parts": {"U1": spec}})
                 self.assertIn(words, str(e.exception))
 
+    def test_a_file_of_only_kicad_chips_gets_placed(self):
+        c, _ = build({"U1": {"symbol": "Timer:NE555P"}}, nets={"GND": ["U1.GND"]})
+        self.assertTrue(all(p.hole for p in c.parts["U1"].pins))
+
+    def test_a_part_that_cannot_sit_in_a_breadboard(self):
+        # an Omron G5V-1's pin rows are 0.2 in apart: two of its pins always share a strip
+        with self.assertRaises(CircuitError) as e:
+            Circuit({"parts": {"K1": {"symbol": "Relay:G5V-1"}}})
+        self.assertIn("sharing a strip", str(e.exception))
+
     def test_bbgen_places_a_kicad_part(self):
         c, r = build({"U1": {"symbol": "Timer:NE555P"}, "C1": {"type": "capacitor"}},
                      nets={"5V": ["U1.VCC", "C1.1"], "GND": ["U1.GND", "C1.2"]})

@@ -1,0 +1,59 @@
+title: 4-digit 7-segment display, multiplexed
+notes:
+  - "Tier 4. A 74HC595 drives the eight segments through 220R; four PN2222As switch the common cathodes,
+    one digit at a time, from GPIO6-9. TO-92_Inline_Wide for the transistors (see 08)."
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  U1: {symbol: 74xx:74HC595, footprint: Package_DIP:DIP-16_W7.62mm}
+  DISP1: {symbol: Display_Character:CC56-12EWA}
+  C1: {type: capacitor, value: 100nF, near: U1}
+  R1: {type: resistor, value: 220R}
+  R2: {type: resistor, value: 220R}
+  R3: {type: resistor, value: 220R}
+  R4: {type: resistor, value: 220R}
+  R5: {type: resistor, value: 220R}
+  R6: {type: resistor, value: 220R}
+  R7: {type: resistor, value: 220R}
+  R8: {type: resistor, value: 220R}
+  Q1: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  R9: {type: resistor, value: 1k}
+  Q2: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  R10: {type: resistor, value: 1k}
+  Q3: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  R11: {type: resistor, value: 1k}
+  Q4: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  R12: {type: resistor, value: 1k}
+nets:
+  3V3: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1]
+  GND: [Pico.GND, U1.GND, U1./OE, C1.2, Q1.E, Q2.E, Q3.E, Q4.E]
+  SER: [Pico.GPIO2, U1.SER]
+  SRCLK: [Pico.GPIO3, U1.SRCLK]
+  RCLK: [Pico.GPIO4, U1.RCLK]
+  SA: [U1.QA, R1.1]
+  SEG_A: [R1.2, DISP1.a]
+  SB: [U1.QB, R2.1]
+  SEG_B: [R2.2, DISP1.b]
+  SC: [U1.QC, R3.1]
+  SEG_C: [R3.2, DISP1.c]
+  SD: [U1.QD, R4.1]
+  SEG_D: [R4.2, DISP1.d]
+  SE: [U1.QE, R5.1]
+  SEG_E: [R5.2, DISP1.e]
+  SF: [U1.QF, R6.1]
+  SEG_F: [R6.2, DISP1.f]
+  SG: [U1.QG, R7.1]
+  SEG_G: [R7.2, DISP1.g]
+  SH: [U1.QH, R8.1]
+  SEG_DPX: [R8.2, DISP1.DPX]
+  DIGIT1: [DISP1.CC1, Q1.C]
+  BASE1: [R9.2, Q1.B]
+  SEL1: [Pico.GPIO6, R9.1]
+  DIGIT2: [DISP1.CC2, Q2.C]
+  BASE2: [R10.2, Q2.B]
+  SEL2: [Pico.GPIO7, R10.1]
+  DIGIT3: [DISP1.CC3, Q3.C]
+  BASE3: [R11.2, Q3.B]
+  SEL3: [Pico.GPIO8, R11.1]
+  DIGIT4: [DISP1.CC4, Q4.C]
+  BASE4: [R12.2, Q4.B]
+  SEL4: [Pico.GPIO9, R12.1]

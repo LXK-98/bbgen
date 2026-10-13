@@ -344,6 +344,10 @@ class _Model:
         self.offboard = {n for n, pins in self.nets.items() if any(p.part.kind == "offboard" for p in pins)}
         self.auto = [r for r, p in self.parts.items() if p.kind in FOOTPRINT_KINDS and not p.at]
         self.choices = {r: self._choices(self.parts[r]) for r in self.auto}
+        for ref, choices in self.choices.items():
+            if not choices:
+                raise PartError(f"parts.{ref}: there's no place on the board where its pins all land in holes "
+                                "without two of them sharing a strip; give it at:, or use another footprint")
         self.fixed = {}
         for ref, part in self.parts.items():
             if part.kind in FOOTPRINT_KINDS and part.at:

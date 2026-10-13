@@ -1,0 +1,26 @@
+title: Transistor relay driver
+notes:
+  - "Tier 2. GPIO15 drives a PN2222A through 1k; the transistor switches the relay coil from VBUS, a 1N4148
+    across the coil catches the flyback. An LED shows the coil is on."
+  - "KiCad's PN2222A footprint (TO-92_Inline) is 1.27 mm pitch, off the grid: TO-92_Inline_Wide instead."
+  - "Relay: a Standex Meder DIP reed relay (SPST, closing), which sits across the trench like a DIP-14.
+    Coil on pins 2 and 6, contacts on 1 (and 14) and 7 (and 8). (An Omron G5V-1's pin rows are 0.2 in apart:
+    on a breadboard two of its pins always share a strip.)"
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  Q1: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+  K1: {symbol: Relay:DIPxx-1Axx-11x}
+  R1: {type: resistor, value: 1k}
+  D1: {type: diode, value: 1N4148}
+  R2: {type: resistor, value: 1k}
+  D2: {type: led}
+  J1: {type: offboard, title: Load, labels: [A, B]}
+nets:
+  VBUS: [Pico.VBUS, K1.2, D1.K, R2.1]
+  COIL: [K1.6, D1.A, Q1.C, D2.K]
+  LED: [R2.2, D2.A]
+  DRIVE: [Pico.GPIO15, R1.1]
+  BASE: [R1.2, Q1.B]
+  GND: [Pico.GND, Q1.E]
+  LOAD_A: [K1.1, J1.1]
+  LOAD_B: [K1.7, J1.2]

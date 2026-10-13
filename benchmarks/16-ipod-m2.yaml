@@ -1,0 +1,106 @@
+title: "iPod LCD driver, M2: rails, reference and the 18-bit bus"
+notes:
+  - "Tier 4. From ipod-classic-reverse-engineering docs/BREADBOARD.md 3a-3b: two LDOs and a buffered,
+    trimmable reference, on the SMD-to-DIP adapters (SOT-23-5 pad 5 ASSUMED on adapter pin 6).
+    M2 adds 3c-3e: three SN74LVC8T245 level-shift the 18 data lanes, D/C, /WR and /CS from 3V3 to VDDIO,
+    an SN74LVC1T45 shifts TE up to GP27, and P30/P32 get 10k pull-ups to VDDIO."
+  - "ASSUMED: the TSSOP-24 parts sit on 0.6 in wide DIP-24 adapters, pad n on pin n. The circuit is
+    big for one board; bbgen can't spread it over two yet."
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico, footprint: Module:RaspberryPi_Pico_Common_THT}
+  U12: {symbol: Regulator_Linear:ME6211C30M5, adapter: {pins: 6, map: {5: 6}}}
+  U11: {symbol: Regulator_Linear:AP2112K-1.8, adapter: {pins: 6, map: {5: 6}}}
+  U13: {symbol: Amplifier_Operational:TLV9061xDBV, adapter: {pins: 6, map: {5: 6}}}
+  RV1: {footprint: Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical, title: 3296W 10k}
+  R1: {type: resistor, value: 10k}
+  R2: {type: resistor, value: 10k}
+  R5: {type: resistor, value: 10k}
+  R6: {type: resistor, value: 10k}
+  R3: {type: resistor, value: 10k}
+  R4: {type: resistor, value: 10k}
+  C5: {type: electrolytic, value: 10uF, near: U12}
+  C1: {type: capacitor, value: 1uF, near: U12}
+  C2: {type: capacitor, value: 1uF, near: U12}
+  C3: {type: capacitor, value: 1uF, near: U11}
+  C4: {type: capacitor, value: 1uF, near: U11}
+  C6: {type: capacitor, value: 100nF, near: U13}
+  U1: {symbol: Logic_LevelTranslator:SN74LVC8T245, footprint: Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm, adapter: {pins: 24, width: 6}}
+  U2: {symbol: Logic_LevelTranslator:SN74LVC8T245, footprint: Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm, adapter: {pins: 24, width: 6}}
+  U3: {symbol: Logic_LevelTranslator:SN74LVC8T245, footprint: Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm, adapter: {pins: 24, width: 6}}
+  U4: {symbol: Logic_LevelTranslator:SN74LVC1T45DBV, adapter: {pins: 6}}
+  R7: {type: resistor, value: 10k}
+  R8: {type: resistor, value: 10k}
+  C7: {type: capacitor, value: 100nF, near: U1}
+  C8: {type: capacitor, value: 100nF, near: U1}
+  C9: {type: capacitor, value: 100nF, near: U2}
+  C10: {type: capacitor, value: 100nF, near: U2}
+  C11: {type: capacitor, value: 100nF, near: U3}
+  C12: {type: capacitor, value: 100nF, near: U3}
+  C13: {type: capacitor, value: 100nF, near: U4}
+  C14: {type: capacitor, value: 100nF, near: U4}
+  J1:
+    type: offboard
+    title: Interposer J1
+    cols: 2
+    labels: {1: D9, 2: D0, 3: GND, 4: 'BL 12.76V!', 5: BL, 6: GND, 7: TE, 8: GND, 9: D17, 10: D16, 11: D15, 12: D14, 13: D13, 14: D12, 15: D11, 16: D10, 17: GND, 18: D8, 19: D7, 20: D6, 21: D5, 22: D4, 23: D3, 24: D2, 25: D1, 26: VDDIO, 27: '/WR', 28: 'D/C', 29: '/CS', 30: P30, 31: GND, 32: P32, 33: 3V0, 34: REF}
+nets:
+  VSYS: [Pico.VSYS, U12.VIN, U11.VIN, C1.1, C3.1, C5.+]
+  GND: [Pico.GND, U12.VSS, U11.GND, U13.V-, RV1.3, R3.2, R4.2, C1.2, C2.2, C3.2, C4.2, C5.-, C6.2,
+        J1.3, J1.6, J1.8, J1.17, J1.31, U1.GND, U2.GND, U3.GND, U4.GND, U1./OE, U2./OE, U3./OE,
+        U3.A6, U3.A7, U3.A8, C7.2, C8.2, C9.2, C10.2, C11.2, C12.2, C13.2, C14.2]
+  3V0: {pins: [U12.VOUT, C2.1, U13.V+, C6.1, R1.1, R2.1, J1.33], rail: bot+}
+  VDDIO: [U11.VOUT, C4.1, J1.26, U1.VCCB, U2.VCCB, U3.VCCB, U4.VCCA, U4.DIR, R7.1, R8.1, C8.1, C10.1, C12.1, C13.1]
+  EN_3V0: [Pico.GPIO21, U12.CE, R3.1]
+  EN_VDDIO: [Pico.GPIO26_ADC0, U11.EN, R4.1]
+  DIV_TOP: [R1.2, R2.2, RV1.1]
+  WIPER: [RV1.2, R5.1]
+  REF_IN: [R5.2, U13.+, Pico.GPIO22]
+  REF_OUT: [U13.1, U13.-, R6.1]
+  REF: [R6.2, J1.34]
+  3V3: [Pico.3V3, U1.VCCA, U1.DIR, U2.VCCA, U2.DIR, U3.VCCA, U3.DIR, U4.VCCB, C7.1, C9.1, C11.1, C14.1]
+  TE: [J1.7, U4.A]
+  TE_3V3: [U4.B, Pico.GPIO27_ADC1]
+  P30: [J1.30, R7.2]
+  P32: [J1.32, R8.2]
+  GP0: [Pico.GPIO0, U1.A1]
+  D0: [U1.B1, J1.2]
+  GP1: [Pico.GPIO1, U1.A2]
+  D1: [U1.B2, J1.25]
+  GP2: [Pico.GPIO2, U1.A3]
+  D2: [U1.B3, J1.24]
+  GP3: [Pico.GPIO3, U1.A4]
+  D3: [U1.B4, J1.23]
+  GP4: [Pico.GPIO4, U1.A5]
+  D4: [U1.B5, J1.22]
+  GP5: [Pico.GPIO5, U1.A6]
+  D5: [U1.B6, J1.21]
+  GP6: [Pico.GPIO6, U1.A7]
+  D6: [U1.B7, J1.20]
+  GP7: [Pico.GPIO7, U1.A8]
+  D7: [U1.B8, J1.19]
+  GP8: [Pico.GPIO8, U2.A1]
+  D8: [U2.B1, J1.18]
+  GP9: [Pico.GPIO9, U2.A2]
+  D9: [U2.B2, J1.1]
+  GP10: [Pico.GPIO10, U2.A3]
+  D10: [U2.B3, J1.16]
+  GP11: [Pico.GPIO11, U2.A4]
+  D11: [U2.B4, J1.15]
+  GP12: [Pico.GPIO12, U2.A5]
+  D12: [U2.B5, J1.14]
+  GP13: [Pico.GPIO13, U2.A6]
+  D13: [U2.B6, J1.13]
+  GP14: [Pico.GPIO14, U2.A7]
+  D14: [U2.B7, J1.12]
+  GP15: [Pico.GPIO15, U2.A8]
+  D15: [U2.B8, J1.11]
+  GP16: [Pico.GPIO16, U3.A1]
+  D16: [U3.B1, J1.10]
+  GP17: [Pico.GPIO17, U3.A2]
+  D17: [U3.B2, J1.9]
+  GP18: [Pico.GPIO18, U3.A3]
+  DC: [U3.B3, J1.28]
+  GP19: [Pico.GPIO19, U3.A4]
+  NWR: [U3.B4, J1.27]
+  GP20: [Pico.GPIO20, U3.A5]
+  NCS: [U3.B5, J1.29]

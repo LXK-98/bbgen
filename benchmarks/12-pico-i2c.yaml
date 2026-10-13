@@ -1,0 +1,20 @@
+title: Pico I2C bus (EEPROM + OLED + buttons)
+notes:
+  - "Tier 3. A 24LC256 EEPROM and a 0.91 in SSD1306 OLED share I2C0 (GPIO4/5) with 4.7k pull-ups; two
+    buttons to 3V3 on GPIO14/15 (pull-downs in the Pico). Buttons are 4-pin DIPs (see 02)."
+parts:
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}
+  U1: {symbol: Memory_EEPROM:24LC256, footprint: Package_DIP:DIP-8_W7.62mm}
+  OLED: {symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C}
+  R1: {type: resistor, value: 4k7}
+  R2: {type: resistor, value: 4k7}
+  C1: {type: capacitor, value: 100nF, near: U1}
+  SW1: {type: dip, pins: 4, title: button 1}
+  SW2: {type: dip, pins: 4, title: button 2}
+nets:
+  3V3: [Pico.3V3, U1.VCC, OLED.VCC, R1.1, R2.1, C1.1, SW1.2, SW2.2]
+  GND: [Pico.GND, U1.GND, U1.A0, U1.A1, U1.A2, U1.WP, OLED.GND, C1.2]
+  SDA: [Pico.GPIO4, U1.SDA, OLED.SDA, R1.2]
+  SCL: [Pico.GPIO5, U1.SCL, OLED.SCL, R2.2]
+  BTN1: [Pico.GPIO14, SW1.1]
+  BTN2: [Pico.GPIO15, SW2.1]

@@ -1,0 +1,10 @@
+title: LED from a 5 V supply
+notes: ["Tier 1. The smallest useful circuit: a supply header, a resistor and an LED."]
+parts:
+  J1: {type: offboard, title: 5 V supply, labels: [5V, GND]}
+  R1: {type: resistor, value: 330R}
+  D1: {type: led}
+nets:
+  5V: [J1.1, R1.1]
+  LED: [R1.2, D1.A]
+  GND: [J1.2, D1.K]
