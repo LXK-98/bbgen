@@ -27,7 +27,7 @@ import random
 
 from .board import RAILS, ROW_Y, Board, Hole, parse_hole
 from .circuit import _GROUND, _SUPPLY, Circuit, CircuitError, Issue, _aligned, _key, _line, library_for
-from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, make_part, rotate
+from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, body_rect, make_part, rotate
 
 # the estimate, for footprint parts
 GAP_COST = 8.0         # a rail's pin in a column with no rail holes: its drop will slant
@@ -372,20 +372,41 @@ class _Model:
                 other = strips.setdefault((x, y < 8), pin)
                 if other is not pin and (part.bus_of(pin) is None or part.bus_of(pin) is not part.bus_of(other)):
                     return None
+        # what it takes up: its pins and the holes under its body, half by half (sorted: compared, and summed)
         xs = [x for x, _ in xy.values()]
-        halves = sorted({"top" if y < 8 else "bot" for _, y in xy.values()})  # sorted: compared, and summed over
+        halves = {"top" if y < 8 else "bot" for _, y in xy.values()}
+        lo, hi = min(xs), max(xs)
+        if body_rect(part):  # the whole body on the board, not hanging off its edge
+            corners = [rotate((x, y), rot) for x, y in ((body_rect(part)[0], body_rect(part)[1]),
+                                                        (body_rect(part)[2], body_rect(part)[3]))]
+            if min(ax + x for x, _ in corners) < 0.4 or max(ax + x for x, _ in corners) > self.board.columns + 0.6:
+                return None
+        body = self._covered(body_rect(part), rot, ax, ay)
+        if body:
+            lo, hi = min(lo, body[0]), max(hi, body[1])
+            halves |= body[2]
         if part.kind in ("pico", "dip"):
-            halves = ["bot", "top"]  # a DIP or Pico straddles the trench
+            halves = {"bot", "top"}  # a DIP or Pico straddles the trench
         keep = []
-        for _, rect in part.keepouts:  # the columns and halves of holes inside it, on the board
-            corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
-            x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
-            y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
-            lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
-            rows = [y for y in ROW_Y.values() if y0 < y < y1]
-            if lo <= hi and rows:
-                keep += [(h, lo, hi) for h in sorted({"top" if y < 8 else "bot" for y in rows})]
-        return f"{row}{col}", rot, xy, [(h, min(xs), max(xs)) for h in halves], keep
+        for _, rect in part.keepouts:
+            room = self._covered(rect, rot, ax, ay)
+            if room:
+                keep += [(h, room[0], room[1]) for h in sorted(room[2])]
+        return f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep
+
+    def _covered(self, rect, rot: int, ax: int, ay: int):
+        """(first column, last column, {halves}) of the holes inside a rect placed with pin 1 at (ax, ay), or
+        None if no hole on the board is."""
+        if rect is None:
+            return None
+        corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
+        x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
+        y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
+        lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
+        rows = [y for y in ROW_Y.values() if y0 < y < y1]
+        if lo > hi or not rows:
+            return None
+        return lo, hi, {"top" if y < 8 else "bot" for y in rows}
 
     def _choices(self, part) -> list:
         cols = range(1, self.board.columns + 1)
@@ -464,12 +485,20 @@ class _Model:
     def anneal(self, seed: int) -> list[tuple[float, dict]]:
         rng = random.Random(seed)
         state = {}
+
         for ref in self.auto:  # a valid start, part by part
             choices = self.choices[ref][:]
             rng.shuffle(choices)
             state[ref] = next((ch for ch in choices if self.cost({**state, ref: ch}) < math.inf), choices[0])
+        if self.cost(state) == math.inf:  # no room left for some part: pack them from one end, widest first
+            state = {}
+            for ref in sorted(self.auto, key=lambda r: max(hi - lo for _, lo, hi in self.choices[r][0][3]),
+                              reverse=True):
+                choices = sorted(self.choices[ref], key=lambda ch: min(lo for _, lo, _ in ch[3]) * (-1) ** seed)
+                state[ref] = next((ch for ch in choices if self.cost({**state, ref: ch}) < math.inf), choices[0])
+        state = {ref: state[ref] for ref in self.auto}
         cost = self.cost(state)
-        seen: dict = {}
+        seen: dict = {_frozen(state): (cost, state)} if cost < math.inf else {}
         for step in range(STEPS):
             temp = 30.0 * (1 - step / STEPS) + 0.05
             ref = rng.choice(self.auto)
@@ -546,6 +575,9 @@ def autoplace(data: dict, source: str) -> dict:
         score, c = _evaluate(trial, source)
         if best is None or score < best[0]:
             best = (score, trial, c)
+    if best is None:
+        raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
+                           "biggest yourself (at:), or use more boards")
     return _repair(model, leads, best, source)
 
 
