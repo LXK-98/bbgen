@@ -7,11 +7,12 @@ import re
 import shutil
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 import yaml
 
-from . import __version__
+from . import __version__, trace
 from .check import check
 from .checklist import checklist
 from .circuit import Circuit, CircuitError
@@ -62,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("-o", "--out", type=Path, help="output directory (default: the YAML's directory)")
     build.add_argument("--no-png", action="store_true", help="skip the PNG")
     build.add_argument("--steps", action="store_true", help="also draw one image per wire group, highlighting it")
+    build.add_argument("--video", type=Path, metavar="FILE",
+                       help="also write a video (.mp4 or .gif) of bbgen placing and wiring, a frame per step")
+    build.add_argument("--video-all", action="store_true",
+                       help="put the moves bbgen tried and threw away in the video too")
     chk = sub.add_parser("check", help="check the wiring only")
     chk.add_argument("circuit", type=Path)
     find = sub.add_parser("find", help="search KiCad's library for a part's symbol: bbgen find ne555")
@@ -72,13 +77,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "find":
         return _find(args.words, args.kicad)
 
-    try:
-        c = Circuit.load(args.circuit)
-    except (CircuitError, yaml.YAMLError, OSError) as e:
-        print(f"bbgen: {e}", file=sys.stderr)
-        return 2
-    result = check(c)
+    video = getattr(args, "video", None)
+    with trace.recording(getattr(args, "video_all", False)) if video else nullcontext() as recorder:
+        try:
+            c = Circuit.load(args.circuit)
+        except (CircuitError, yaml.YAMLError, OSError) as e:
+            print(f"bbgen: {e}", file=sys.stderr)
+            return 2
+        result = check(c)
+        if recorder is not None:
+            status = f"{len(result.errors)} errors, {len(result.warnings)} warnings"
+            trace.step(c, f"done: {status}", seconds=trace.LAST_SECONDS)
     _report(result)
+    if video:
+        try:
+            trace.write_video(recorder.frames, video)
+        except (RuntimeError, subprocess.CalledProcessError) as e:
+            print(f"bbgen: no video written: {e}", file=sys.stderr)
+        else:
+            print(f"wrote {video} ({len(recorder.frames)} frames)")
 
     if args.cmd == "build":
         out = args.out or args.circuit.parent

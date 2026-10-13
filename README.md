@@ -27,8 +27,15 @@ or install it: `pip install -e .`
 ```bash
 bbgen build circuit.yaml           # circuit.svg/.png/.md next to the YAML, and the check
 bbgen build circuit.yaml --steps   # also one image per wire group, that group highlighted
+bbgen build circuit.yaml --video build.mp4   # also a video of bbgen placing and wiring it
 bbgen check circuit.yaml           # the check only
 ```
+
+The video (`.mp4`, or `.gif`) has a frame per step: each starting layout that beat the one before,
+each chip turned round, each move that improved the layout, then each wire as it goes in. A caption
+says what the step did and how the score changed (lower is better), and what it changed is ringed in
+orange; while wiring, pins not yet connected are circled in red. `--video-all` adds the moves bbgen
+tried and threw away, which shows where its time goes. It needs ImageMagick and ffmpeg.
 
 The exit status is 0 when the check passes, 1 when it finds errors (the files are still written so
 you can see them), and 2 when the file itself can't be read.

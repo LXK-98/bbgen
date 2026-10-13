@@ -319,6 +319,43 @@ def _wire_path(c: Circuit, w: Wire):
     return (ax, ay, qx, qy, bx, by), pts, mid
 
 
+def _wire_d(cv: _Canvas, c: Circuit, w: Wire):
+    """The wire's SVG path, its points and the middle of its run (for its label)."""
+    path, pts, mid = _wire_path(c, w)
+    if isinstance(path, tuple):
+        ax, ay, qx, qy, bx, by = path
+        return (f"M {cv.X(ax):.1f} {cv.Y(ay):.1f} Q {cv.X(qx):.1f} {cv.Y(qy):.1f} "
+                f"{cv.X(bx):.1f} {cv.Y(by):.1f}"), pts, mid
+    return "M " + " L ".join(f"{cv.X(x):.1f} {cv.Y(y):.1f}" for x, y in pts), pts, mid
+
+
+FOCUS = "#ff8c00"
+
+
+def _focus(cv: _Canvas, c: Circuit, focus) -> None:
+    """Ring what a step changed: parts by ref, wires by W<num>."""
+    boxes = {ref: box for box, ref in c._bodies}
+    for name in focus:
+        part = c.parts.get(name)
+        if part is not None:
+            if name in boxes:
+                x0, y0, x1, y1 = boxes[name]
+            elif part.kind in LEAD_KINDS and all(p.xy for p in part.pins):
+                xs, ys = [p.xy[0] for p in part.pins], [p.xy[1] for p in part.pins]
+                x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+            elif part.extent:
+                x0, y0, x1, y1 = part.extent
+            else:
+                continue
+            cv.rect(x0 - 0.6, y0 - 0.6, x1 + 0.6, y1 + 0.6, "none", FOCUS, 3, rx=0.4)
+            continue
+        for w in c.wires:
+            if f"W{w.num}" == name and w.a and w.b:
+                d, _, _ = _wire_d(cv, c, w)
+                cv.add(f'<path d="{d}" fill="none" stroke="{FOCUS}" stroke-opacity="0.45" '
+                       f'stroke-width="{0.8 * P:.1f}" stroke-linecap="round" stroke-linejoin="round"/>')
+
+
 def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> None:
     drawn = []
     # flexible jumpers over the wires lying on the board, as they're plugged in last
@@ -326,13 +363,7 @@ def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> No
                                                                         w.flex)):
         dim = highlight is not None and w.group != highlight
         color = color_hex(wire_color(c, result, w))
-        path, pts, mid = _wire_path(c, w)
-        if isinstance(path, tuple):
-            ax, ay, qx, qy, bx, by = path
-            d = (f"M {cv.X(ax):.1f} {cv.Y(ay):.1f} Q {cv.X(qx):.1f} {cv.Y(qy):.1f} "
-                 f"{cv.X(bx):.1f} {cv.Y(by):.1f}")
-        else:
-            d = "M " + " L ".join(f"{cv.X(x):.1f} {cv.Y(y):.1f}" for x, y in pts)
+        d, pts, mid = _wire_d(cv, c, w)
         cv.add(f'<g opacity="{0.14 if dim else 1}">')
         for stroke, width in ((_outline(color), 0.34), (color, 0.24)):
             cv.add(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{width * P:.1f}" '
@@ -360,7 +391,10 @@ def _marks(cv: _Canvas, c: Circuit, result: Result) -> None:
             cv.circle(x, y, 0.5, "none", color, 2.2)
 
 
-def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
+def render(c: Circuit, result: Result, highlight: str | None = None, caption: str | None = None,
+           focus=()) -> str:
+    """The drawing; highlight dims every wire group but that one. caption and focus are for the frames of
+    a video of bbgen at work: a line saying what the step did, and the parts and wires it changed."""
     xs = [x for b in c.boards.values() for x in (b.left, b.right)]
     ys = list(OUTLINE_Y)
     for part in c.parts.values():
@@ -391,6 +425,8 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
         sub += f" · step: {highlight}"
     cv.text(minx + 0.8, miny + 1.1, c.title, 15, "start", weight="bold")
     cv.text(minx + 0.8, miny + 2.3, sub, 8, "start", "#c62828" if errors else "#555")
+    if caption:
+        cv.text(maxx - 0.8, miny + 1.1, caption, 11, "end", "#b35c00", weight="bold")
 
     for board in c.boards.values():
         _board(cv, c, result, board)
@@ -405,6 +441,7 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
         if part.kind in LEAD_KINDS:
             _lead(cv, part)
     _wires(cv, c, result, highlight)
+    _focus(cv, c, focus)
     cv.out += cv.late
     _marks(cv, c, result)
 

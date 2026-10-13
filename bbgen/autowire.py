@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 
 from .board import RAILS, Hole, parse_hole
+from . import trace
 from .check import _DSU
 from .circuit import _GROUND, _SUPPLY, Circuit, Issue, Net, Wire, _aligned, _key, _Option
 
@@ -52,6 +53,7 @@ def autowire(c: Circuit) -> None:
 
     rails = _rails(c, dsu)
     first = len(c.wires)
+    trace.step(c, "parts placed: wiring next", wiring=True, seconds=1.5)
     for flying in (False, True):
         for net in sorted(c.nets.values(), key=lambda n: bool(rails.get(n.name))):
             _wire_net(c, dsu, net, rails.get(net.name, []), node_pins, flying)
@@ -183,6 +185,7 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
         if w.flex:
             c.wires.append(w)  # it arches over the board: nothing lies under it
             dsu.union(na, nb)
+            trace.step(c, f"wiring {net.name}: a flexible jumper", focus=[f"W{w.num}"], wiring=True)
             continue
         if w.a.hole and w.b.hole and c._bodies_crossed(c.end_xy(w.a), c.end_xy(w.b)):
             w.via = c._detour(w.a.hole, w.b.hole, f"W{w.num}") or []  # around the part it would cross
@@ -192,6 +195,8 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
             c._add_segment(p, q, f"W{w.num}")
         c.wires.append(w)
         dsu.union(na, nb)
+        what = "a flying lead" if flying else "bent around a part" if w.via else "a wire"
+        trace.step(c, f"wiring {net.name}: {what}", focus=[f"W{w.num}"], wiring=True)
 
 
 def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Option, tuple]]:

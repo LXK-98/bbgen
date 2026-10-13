@@ -192,8 +192,10 @@ class Circuit:
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
         self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
         if needs_placing(data):
+            from . import trace
             from .autoplace import autoplace  # it builds trial circuits of its own
-            data = autoplace(data, source)
+            with trace.placing():
+                data = autoplace(data, source)
         self._leg_rank: dict = data.get("_leg_rank") or {}  # autoplace's search: take a leg pair other than the best
         self._load_boards(data.get("boards") or [{"type": "full"}])
         self.library = library_for(data)

@@ -26,6 +26,7 @@ import itertools
 import math
 import random
 
+from . import trace
 from .board import RAILS, ROW_Y, Board, Hole, parse_hole
 from .circuit import _GROUND, _SUPPLY, Circuit, CircuitError, Issue, _aligned, _key, _line, library_for
 from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, body_rect, make_part, rotate
@@ -575,10 +576,14 @@ def autoplace(data: dict, source: str) -> dict:
     else:
         candidates[()] = (0.0, {})
     best = None
-    for _, state in sorted(candidates.values(), key=lambda t: t[0])[:KEEP * 2]:
+    starts = sorted(candidates.values(), key=lambda t: t[0])[:KEEP * 2]
+    for i, (_, state) in enumerate(starts, 1):
         trial = _with(base, {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()})
         score, c = _evaluate(trial, source)
-        if best is None or score < best[0]:
+        kept = best is None or score < best[0]
+        trace.step(c, f"starting layout {i} of {len(starts)}: score {score:.0f}" + (" ✓ best so far" if kept else ""),
+                   kept=kept)
+        if kept:
             best = (score, trial, c)
     if best is None:
         raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
@@ -609,7 +614,10 @@ def _turned(model, best, source: str):
     for combo in combos:
         trial = _with(data, {ref: {"at": flips[ref][0], "rot": flips[ref][1]} for ref in combo})
         s2, c2 = _evaluate(trial, source)
-        if s2 < score - 1e-9:
+        kept = s2 < score - 1e-9
+        trace.step(c2, f"turn {' and '.join(combo)}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
+                   kept=kept, focus=combo)
+        if kept:
             score, data, c = s2, trial, c2
     return score, data, c
 
@@ -699,6 +707,20 @@ def _moves(model: _Model, leads: list[str], c, result, data: dict):
             yield {**unpinned, ref: {"at": ch[0], "rot": ch[1]}}, {}
 
 
+def _describe(model, data: dict, changes: dict, ranks: dict) -> tuple[str, list[str]]:
+    """What a repair move does, in words, and the parts it moves."""
+    if ranks:
+        [(ref, k)] = ranks.items()
+        return f"{ref} into its {('best', '2nd best', '3rd best', '4th best')[k]} legs", [ref]
+    for ref, ch in changes.items():
+        if "at" in ch:
+            flip = _flip(model, data, ref)
+            if flip is not None and (flip[0], flip[1]) == (ch["at"], ch["rot"]):
+                return f"turn {ref}", [ref]
+            return f"move {ref} from {data['parts'][ref]['at']} to {ch['at']}", [ref]
+    return "re-place the two-lead parts", []
+
+
 def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
     from .check import check
     score, data, c = best
@@ -712,6 +734,11 @@ def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
             s2, c2 = _evaluate(trial, source)
             builds += 1
             since += 1
+            if trace.active():
+                what, refs = _describe(model, data, changes, ranks)
+                kept = s2 < score - 1e-9
+                trace.step(c2, f"repair {builds}: {what}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
+                           kept=kept, focus=refs)
             if s2 < score - 1e-9:
                 since = 0
                 # keep it, with every leg written down so the next move starts from exactly this
