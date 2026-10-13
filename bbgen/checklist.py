@@ -1,7 +1,8 @@
-"""The build checklist: parts first, then the wires group by group."""
+"""The build checklist: parts first, then the wires group by group, then any flexible jumpers."""
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from .check import Result, wire_color, wire_nets
@@ -85,11 +86,13 @@ def checklist(c: Circuit, result: Result) -> str:
         out.append(f"- [ ] **{part.ref}** {name}: {_where(c, part)}")
 
     out += ["", "## Wires"]
-    for group in c.groups:
-        wires = [w for w in c.wires if w.group == group]
+    flex = [w for w in c.wires if w.flex]
+    sections = [(f"### {g}", [w for w in c.wires if w.group == g and not w.flex]) for g in c.groups]
+    sections.append(("## Flexible jumpers\n\nPlug these in last: they arch over the rest.", flex))
+    for head, wires in sections:
         if not wires:
             continue
-        out += ["", f"### {group} ({len(wires)})", ""]
+        out += ["", f"{head} ({len(wires)})" if head.startswith("###") else head, ""]
         for w in wires:
             if not (w.a and w.b):
                 out.append(f"- [ ] **W{w.num}** `{w.spec[0]}` → `{w.spec[1]}`: could not be placed (see Check)")
@@ -98,6 +101,14 @@ def checklist(c: Circuit, result: Result) -> str:
             b = c.hole_name(w.b.hole) if w.b.hole else str(w.b.pin)
             nets = " / ".join(wire_nets(c, result, w)) or "no net"
             bends = f", bent over {', '.join(f'`{v}`' for v in w.via)}" if w.via else ""
+            if w.flex:
+                bends = f", {_jumper_length(c, w)} flexible jumper"
             out.append(f"- [ ] **W{w.num}** {wire_color(c, result, w)}: `{a}` → `{b}`{bends} · {nets} "
                        f"({_end(c, result, w.a)} ↔ {_end(c, result, w.b)})")
     return "\n".join(out) + "\n"
+
+
+def _jumper_length(c: Circuit, w) -> str:
+    """The stock length of flexible jumper that reaches: it arches, so it needs more than the span."""
+    span_cm = math.dist(c.end_xy(w.a), c.end_xy(w.b)) * 0.254
+    return next(f"{n} cm" for n in (10, 20, 30) if span_cm <= 0.6 * n or n == 30)

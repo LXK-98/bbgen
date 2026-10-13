@@ -33,6 +33,9 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    - `OVER_PART`: add the `via` bends it suggests, or move the part.
    - On a wire or part bbgen placed, the fix is placement: give the part it names an `at` (or
      `pins`) of your own and build again; bbgen fits the rest around it.
+   - Flexible jumpers (`flex`, drawn as arches with square plugs) aren't warnings: bbgen uses
+     them where no wire could lie straight on the board. A few are normal on a busy board; many
+     between the same parts mean those parts should sit closer, so place them yourself.
 
    Rebuild after each round.
 5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each

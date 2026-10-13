@@ -7,7 +7,11 @@ supply net (VSYS, VBUS, 5V, ...) a `+` rail no other net uses.
 
 The pieces on the board are joined one wire at a time, cheapest first: length, plus a penalty for
 slanting, lying along another wire or crossing a part (SHAPE_COST, CROSS_COST), then nearest the
-pins. A wire that can't help crossing a part is bent around it. Off-board pins come last, each
+pins. A wire that can't help crossing a part is bent around it. Where every wire lying on the board
+would cost more than FLEX_COST in trouble, a flexible jumper arches over instead: it may slant and
+cross, but needs a hole at each end like any wire (`flex: false` at the top of the file turns them
+off). A slant that no choice of holes could avoid (between two columns, across the trench) costs
+little: a short rigid wire is fine there. Off-board pins come last, each
 with a flying lead to the nearest free hole of its net, so a connector pin is never the junction
 between two parts of the board.
 
@@ -22,7 +26,7 @@ import math
 
 from .board import RAILS, Hole, parse_hole
 from .check import _DSU
-from .circuit import _GROUND, _SUPPLY, Circuit, Issue, Net, Wire, _key, _Option
+from .circuit import _GROUND, _SUPPLY, Circuit, Issue, Net, Wire, _aligned, _key, _Option
 
 
 def _node(c: Circuit, hole: Hole):
@@ -51,8 +55,9 @@ def autowire(c: Circuit) -> None:
     for flying in (False, True):
         for net in sorted(c.nets.values(), key=lambda n: bool(rails.get(n.name))):
             _wire_net(c, dsu, net, rails.get(net.name, []), node_pins, flying)
-    # number them as they'll be built: the rails' nets first, then the rest, each in file order
-    built = sorted(c.wires[first:], key=lambda w: (not rails.get(w.group), list(c.nets).index(w.group), w.num))
+    # number them as they'll be built: the rails' nets first, then the rest, each in file order, and the
+    # flexible jumpers last
+    built = sorted(c.wires[first:], key=lambda w: (w.flex, not rails.get(w.group), list(c.nets).index(w.group), w.num))
     _renumber(c, built, first)
     groups = list(dict.fromkeys(w.group for w in built))
     c.groups += [g for g in groups if g not in c.groups]
@@ -164,9 +169,21 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
                 best = (key, p, q)
         if best is None:
             return  # no free hole to join them: the check reports the net as open
+        flex = None
+        if c.flex:  # the best flexible jumper: its length and ends are all that count
+            flex = min((((round(bound + FLEX_COST, 6), round(p[1].near + q[1].near, 6), p[1].xy, q[1].xy), p, q)
+                        for bound, p, q in pairs if p[1].hole is not None and q[1].hole is not None), key=lambda t: t[0], default=None)
+        if flex and flex[0] < best[0]:
+            best = flex
+        else:
+            flex = None
         _, (spec_a, pa, na), (spec_b, pb, nb) = best
-        w = Wire(len(c.wires) + 1, net.name, (spec_a, spec_b), None, [], auto=True)
+        w = Wire(len(c.wires) + 1, net.name, (spec_a, spec_b), None, [], auto=True, flex=bool(flex))
         w.a, w.b = c._take(pa, f"W{w.num}", spec_a), c._take(pb, f"W{w.num}", spec_b)
+        if w.flex:
+            c.wires.append(w)  # it arches over the board: nothing lies under it
+            dsu.union(na, nb)
+            continue
         if w.a.hole and w.b.hole and c._bodies_crossed(c.end_xy(w.a), c.end_xy(w.b)):
             w.via = c._detour(w.a.hole, w.b.hole, f"W{w.num}") or []  # around the part it would cross
             w.via_xy = [c._via(v) for v in w.via]
@@ -197,12 +214,13 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
 
 
 # What a wire's shape is worth in holes of length (see Circuit._shape for the levels): a slant is
-# worth a detour of about eight holes, lying along another wire much more.
-SHAPE_COST = {0: 0.0, 1: 2.0, 2: 8.0, 3: 20.0}
+# worth a detour of about twelve holes, lying along another wire much more.
+SHAPE_COST = {0: 0.0, 1: 2.0, 2: 12.0, 3: 20.0}
 CROSS_COST = 12.0     # per part body crossed, before it's bent around
 BEND_COST = 4.0       # a wire bent around a part, on top of its length
 COVERED_COST = 20.0   # an end in a hole under a two-lead part's body
 OFF_RAIL_COST = 4.0   # a flying lead from a part's strip rather than a rail
+FLEX_COST = 10.0      # a flexible jumper rather than one lying on the board: more than a short bend, less than a slant
 
 
 def _bound(c: Circuit, p: _Option, q: _Option) -> float:
@@ -221,9 +239,26 @@ def _cost(c: Circuit, p: _Option, q: _Option):
             (trouble, length), _ = detour
             length += BEND_COST + 2.0 * trouble
         else:
-            length += SHAPE_COST[c._shape(p.xy, q.xy)[0]] + CROSS_COST * len(c._bodies_crossed(p.xy, q.xy))
+            level = c._shape(p.xy, q.xy)[0]
+            if level == 2 and not _could_be_straight(c, p.hole, q.hole):
+                level = 1  # no pair of holes in these two strips lines up: a slant is the only way
+            length += SHAPE_COST[level] + CROSS_COST * len(c._bodies_crossed(p.xy, q.xy))
     else:
         board_end = q if p.pin is not None else p
         length += 0.0 if board_end.hole.is_rail else OFF_RAIL_COST
     length += COVERED_COST * (p.covered + q.covered)
     return round(length, 6), round(p.near + q.near, 6), p.xy, q.xy
+
+
+def _could_be_straight(c: Circuit, a: Hole, b: Hole) -> bool:
+    """Some hole of a's strip lines up with some hole of b's, so a wire between them needn't slant."""
+    if a.board != b.board:
+        return False
+    board = c.boards[a.board]
+    sa, sb = board.strip(a), board.strip(b)
+    cache = c.__dict__.setdefault("_straight_strips", {})
+    if (sa, sb) not in cache:
+        pa = [board.xy(h) for h in board.strip_holes(sa)]
+        pb = [board.xy(h) for h in board.strip_holes(sb)]
+        cache[sa, sb] = any(_aligned(p, q) for p in pa for q in pb if p != q)
+    return cache[sa, sb]

@@ -107,6 +107,12 @@ A wire end or a two-lead part's leg is one of:
 A wire can bend on its way: `{from: U1.OUT, to: U1.IN-, via: [d43, g43]}` runs through those
 holes in order. Bends are drawn and listed in the checklist; they don't take up the holes.
 
+A flexible jumper (`{from: U2.EN, to: U1.EN, flex: true}`) arches over the board instead of lying
+on it, like a Dupont jumper wire: it may slant and cross parts and wires, since it's above them,
+and the holes it passes over stay free. It still needs a hole at each end. It's drawn as an arch
+with square plugs, and the checklist lists it last, with a stock length (10, 20 or 30 cm), since it
+goes in after everything it arches over.
+
 Pins that share a name without being joined on the part (five header pins all labelled `GND`) are
 named by number instead: `J1.3`, `J1.6`.
 
@@ -124,6 +130,12 @@ is joined with the fewest, shortest wires it can find, preferring straight runs 
 from the row next to the rail. A wire that would cross a part is bent around it, and each
 off-board pin gets its own flying lead. The checklist lists them by net, rails' nets first.
 
+Where every wire lying on the board would slant, lie along another wire or cross a part (and a
+short bend around it won't do), bbgen uses a flexible jumper instead: a crowded board gets a few
+jumpers arching over it rather than a tangle of warnings. A wire that can't help slanting (across
+the trench between two columns) stays a short rigid one. `flex: false` at the top of the file turns
+flexible jumpers off, for an all-rigid build; then bbgen warns about what it couldn't lay straight.
+
 Which rail a net runs on comes from, in order:
 
 - the rails its parts already plug into (a decoupling cap with a leg in `top+28`)
@@ -132,6 +144,7 @@ Which rail a net runs on comes from, in order:
   supply (`VSYS`, `VBUS`, `VCC`, `VDD`, `5V`, `3V3`, `3.3V`, ...) a free `+` rail
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
+Many flexible jumpers say the same: parts that talk to each other are far apart or crowded.
 
 ### Automatic placement
 
@@ -171,7 +184,7 @@ when one could have been straight, and says how:
 - every straight route blocked by other wires or parts (it names them)
 
 A wire crossing the trench between two different columns can't be straight, and flying leads to
-off-board pins don't count. When a slant is the right call, say why, and the warning goes:
+off-board pins and flexible jumpers don't count. When a slant is the right call, say why, and the warning goes:
 `slant: <reason>` on the part, or `{from: ..., to: ..., slant: <reason>}` for a wire. A wire with
 `via` is routed by you and isn't checked.
 

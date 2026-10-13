@@ -26,7 +26,7 @@ BASELINE = HERE / "baseline.json"
 # what the table shows: (key, heading, lower is better)
 COLUMNS = [
     ("errors", "err", True), ("warnings", "warn", True), ("slanted", "slant", True), ("over", "over", True),
-    ("board_wire", "wire", True), ("flying", "lead", True), ("columns", "cols", True), ("seconds", "s", True),
+    ("board_wire", "wire", True), ("flex", "flex", True), ("flying", "lead", True), ("columns", "cols", True), ("seconds", "s", True),
 ]
 
 
@@ -49,11 +49,13 @@ def measure(path: Path, png: bool) -> dict:
         return {"status": f"{type(e).__name__}: {e}", "seconds": round(time.perf_counter() - start, 2)}
     seconds = time.perf_counter() - start
 
-    board, flying, slanted, over = 0.0, 0.0, 0, 0
+    board, flying, slanted, over, flex = 0.0, 0.0, 0, 0, 0
     for w in c.wires:
         if not (w.a and w.b):
             continue
-        if w.a.hole and w.b.hole:
+        if w.flex:
+            flex += 1
+        elif w.a.hole and w.b.hole:
             pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
             segs = list(zip(pts, pts[1:]))
             board += sum(math.dist(p, q) for p, q in segs)
@@ -78,7 +80,7 @@ def measure(path: Path, png: bool) -> dict:
     return {
         "status": "ok", "seconds": round(seconds, 2), "parts": len(c.parts), "wires": len(c.wires),
         "errors": len(r.errors), "warnings": len(r.warnings), "codes": codes,
-        "slanted": slanted, "over": over, "board_wire": round(board, 1), "flying": round(flying, 1),
+        "slanted": slanted, "over": over, "board_wire": round(board, 1), "flex": flex, "flying": round(flying, 1),
         "columns": (max(cols) - min(cols) + 1) if cols else 0,
         "keepout_holes": sum(1 for who in c.occupied.values() if who.endswith(("cable", "Cable", "Keep Out"))),
         "score": round(_score(c, r), 1),
@@ -130,6 +132,7 @@ def table(results: dict, baseline: dict) -> str:
     lines.append("")
     lines.append(f"{len(ok)}/{len(results)} built; {sum(r['errors'] for r in ok)} errors, "
                  f"{sum(r['warnings'] for r in ok)} warnings, {sum(r['slanted'] for r in ok)} slanted, "
+                 f"{sum(r.get('flex', 0) for r in ok)} flexible jumpers, "
                  f"{sum(r['seconds'] for r in ok):.1f} s in all")
     return "\n".join(lines)
 

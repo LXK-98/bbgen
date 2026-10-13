@@ -68,6 +68,7 @@ class Wire:
     via: list[str]
     slant: str | None = None  # why it may lie slanted
     auto: bool = False        # added by autowire, not written in the file
+    flex: bool = False        # a flexible jumper, arching over the board instead of lying on it
     a: End | None = None
     b: End | None = None
     via_xy: list = field(default_factory=list)
@@ -181,6 +182,7 @@ class Circuit:
         self.source = source
         self.title = str(data.get("title") or Path(source).stem)
         self.notes = [str(n) for n in data.get("notes") or []]
+        self.flex = data.get("flex", True) is not False  # may autowire use flexible jumpers?
         self.issues: list[Issue] = []
         self.occupied: dict[Hole, str] = {}
         self._used: dict[tuple, str] = {}          # the same, by drawing position
@@ -252,7 +254,7 @@ class Circuit:
             self.groups.append(str(group))
             for i, item in enumerate(items or []):
                 where = f"wires.{group}[{i}]"
-                slant = None
+                slant, flex = None, False
                 if isinstance(item, list) and len(item) in (2, 3):
                     a, b, color, via = item[0], item[1], item[2] if len(item) == 3 else None, []
                 elif isinstance(item, dict) and "from" in item and "to" in item:
@@ -261,13 +263,18 @@ class Circuit:
                         slant = slant_reason(item, where)
                     except PartError as e:
                         raise CircuitError(str(e)) from None
+                    flex = item.get("flex", False)
+                    if not isinstance(flex, bool):
+                        raise CircuitError(f"{where}: flex is true or false")
+                    if flex and via:
+                        raise CircuitError(f"{where}: a flexible jumper arches straight over; give it no via")
                 else:
                     raise CircuitError(f"{where}: expected [from, to], [from, to, color] or "
-                                       "{from, to, color, via, slant}")
+                                       "{from, to, color, via, slant, flex}")
                 if color is not None and str(color).lower() not in COLORS and not str(color).startswith("#"):
                     raise CircuitError(f"{where}: unknown color {color!r} (use {', '.join(COLORS)} or #rrggbb)")
                 self.wires.append(Wire(len(self.wires) + 1, str(group), (str(a), str(b)),
-                                       str(color) if color else None, [str(v) for v in via], slant))
+                                       str(color) if color else None, [str(v) for v in via], slant, flex=flex))
 
     def _load_nets(self, specs: dict) -> None:
         self.nets: dict[str, Net] = {}
@@ -445,22 +452,25 @@ class Circuit:
                 pb = self._best([o for o in b if o.hole is None or o.hole != pa.hole],
                                 [_Option(None, w.via_xy[-1])])[0]
             else:
-                pa, pb = self._best(a, b)
+                pa, pb = self._best(a, b, w.flex)
             w.a, w.b = self._take(pa, who, sa), self._take(pb, who, sb)
         except _Unresolved as e:
             self.issues.append(Issue("error", "BAD_WIRE", f"W{w.num} ({sa} -> {sb}): {e}"))
             w.a = w.b = None
             return
+        if w.flex:
+            return  # it arches over the board: nothing lies under it
         pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
         for p, q in zip(pts, pts[1:]):
             self._add_segment(p, q, who)
 
-    def _best(self, a: list[_Option], b: list[_Option]) -> tuple[_Option, _Option]:
+    def _best(self, a: list[_Option], b: list[_Option], flex: bool = False) -> tuple[_Option, _Option]:
         """The best pair of places for two ends: straight and clear, then over as few part bodies as
-        possible, then nearest their pins, then shortest. Flying leads only care about the last two."""
+        possible, then nearest their pins, then shortest. Flying leads and flexible jumpers only care
+        about the last two."""
         def key(pair):
             p, q = pair
-            flying = p.pin is not None or q.pin is not None
+            flying = flex or p.pin is not None or q.pin is not None
             return (0 if flying else self._shape(p.xy, q.xy)[0],
                     0 if flying else len(self._bodies_crossed(p.xy, q.xy)),
                     round(p.near + q.near, 6), round(math.dist(p.xy, q.xy), 6), p.xy, q.xy)
@@ -526,7 +536,7 @@ class Circuit:
     def _find_slants(self) -> None:
         """Warn about wires and two-lead parts that lie slanted where they could run straight."""
         for w in self.wires:
-            if w.a and w.b and w.a.hole and w.b.hole and not w.via and not w.slant:
+            if w.a and w.b and w.a.hole and w.b.hole and not w.via and not w.slant and not w.flex:
                 self._slant(f"W{w.num}", w.spec, (w.a.hole, w.b.hole), w.auto)
         for part in self.parts.values():
             if part.kind in LEAD_KINDS and not part.slant and all(p.hole for p in part.pins):
@@ -611,8 +621,8 @@ class Circuit:
                     ref = self._covered[_key(self.end_xy(end))]
                     self.issues.append(Issue("warning", "OVER_PART", f"{name} ends in {self.hole_name(end.hole)}, "
                                              f"under {ref}: move one of them", holes=[end.hole]))
-            if not (w.a and w.b and w.a.hole and w.b.hole):
-                continue  # flying leads are in the air
+            if not (w.a and w.b and w.a.hole and w.b.hole) or w.flex:
+                continue  # flying leads and flexible jumpers are in the air
             pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
             ends = f"({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
             along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for who in self._along_who(p, q, name)))

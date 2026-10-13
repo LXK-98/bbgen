@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import bisect
 import copy
+import itertools
 import math
 import random
 
@@ -45,6 +46,7 @@ CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
 
 # a built layout's score
 FLYING_WEIGHT = 0.3    # per hole of flying lead
+FLEX_WEIGHT = 12.0     # per flexible jumper: better than a warned-about wire (15 and up), worse than a tidy one
 LABEL_COST = 8.0       # per pair of two-lead parts close enough for their labels to collide
 
 # legs: (shortest, longest) natural span in holes
@@ -529,7 +531,9 @@ def _score(c, result) -> float:
     """How good a built layout is: problems first, then anything slanted or overlong, then wire length."""
     score = 1000.0 * len(result.errors) + 15.0 * len(result.warnings) + 2.0 * len(c.wires)
     for w in c.wires:
-        if w.a and w.b and w.a.hole and w.b.hole:
+        if w.a and w.b and w.flex:  # tidier than a slant, but it hides what it arches over
+            score += FLEX_WEIGHT + math.dist(c.end_xy(w.a), c.end_xy(w.b))
+        elif w.a and w.b and w.a.hole and w.b.hole:
             pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
             score += sum(math.dist(p, q) for p, q in zip(pts, pts[1:]))
             score += 10.0 * sum(not _aligned(p, q) for p, q in zip(pts, pts[1:]))
@@ -546,6 +550,7 @@ def _score(c, result) -> float:
     return score
 
 
+TURN_ALL = 4          # up to this many footprint parts, every combination of them turned round is built
 REPAIR_BUILDS = 120   # full builds the repair search may spend
 PATIENCE = 40         # builds in a row without an improvement before it stops
 
@@ -578,7 +583,35 @@ def autoplace(data: dict, source: str) -> dict:
     if best is None:
         raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
                            "biggest yourself (at:), or use more boards")
+    best = _turned(model, best, source)
     return _repair(model, leads, best, source)
+
+
+def _flip(model, data: dict, ref: str):
+    """The layout with a footprint part turned round where it is (the same holes), or None."""
+    spec = data["parts"][ref]
+    now = next(ch for ch in model.choices[ref] if (ch[0], ch[1]) == (spec["at"], spec["rot"]))
+    return next((ch for ch in model.choices[ref] if ch is not now and ch[1] != now[1] and ch[3] == now[3]), None)
+
+
+def _turned(model, best, source: str):
+    """The best layout with its footprint parts turned round where they are, in every combination (single
+    turns and pairs past TURN_ALL parts). The estimate can't tell which way round a chip reads best, and
+    turning one of two chips that talk to each other often helps only with the other turned too; built
+    fresh, the layouts compete fairly before the repair search refines the winner."""
+    score, data, c = best
+    flips = {ref: ch for ref in model.auto if (ch := _flip(model, data, ref))}
+    refs = sorted(flips)
+    if len(refs) <= TURN_ALL:
+        combos = [combo for n in range(1, len(refs) + 1) for combo in itertools.combinations(refs, n)]
+    else:
+        combos = [combo for n in (1, 2) for combo in itertools.combinations(refs, n)]
+    for combo in combos:
+        trial = _with(data, {ref: {"at": flips[ref][0], "rot": flips[ref][1]} for ref in combo})
+        s2, c2 = _evaluate(trial, source)
+        if s2 < score - 1e-9:
+            score, data, c = s2, trial, c2
+    return score, data, c
 
 
 def _with(data: dict, changes: dict) -> dict:
@@ -604,7 +637,8 @@ def _pinned(c, leads: list[str]) -> dict:
 
 
 def _trouble(c, result) -> list[str]:
-    """Parts named in the warnings, or owning a net a warned wire carries, most mentioned first."""
+    """Parts named in the warnings, or owning a net a warned wire or a flexible jumper carries, most mentioned
+    first."""
     import re
     from collections import Counter
     count: Counter = Counter()
@@ -619,35 +653,47 @@ def _trouble(c, result) -> list[str]:
                     for part in c.parts.values():
                         if any(nets.get(p) == w.group for p in part.pins):
                             count[part.ref] += 1
+    for w in c.wires:
+        if w.flex:
+            for part in c.parts.values():
+                if any(nets.get(p) == w.group for p in part.pins):
+                    count[part.ref] += 1
     return [ref for ref, _ in count.most_common()]
 
 
 def _moves(model: _Model, leads: list[str], c, result, data: dict):
-    """Changes to try, the parts in trouble first: another leg pair for a two-lead part (the others staying
-    where they are), or a footprint part shifted, flipped or moved (the two-lead parts placed afresh)."""
+    """Changes to try, the parts in trouble first: each footprint part turned round where it is (cheap to
+    try, and the estimate can't tell which way round reads best), then another leg pair for a two-lead part
+    (the others staying where they are), then a footprint part shifted or moved (the two-lead parts placed
+    afresh)."""
     order = _trouble(c, result)
     rank = {ref: i for i, ref in enumerate(order)}
     pinned = _pinned(c, leads)
-    for ref in sorted(leads, key=lambda r: rank.get(r, len(rank))):
-        for k in range(4):
-            yield {**{r: ch for r, ch in pinned.items() if r != ref}, ref: {"pins": None}}, {ref: k}
     unpinned = {ref: {"pins": None} for ref in leads}
     state = {ref: next(ch for ch in model.choices[ref]
                        if (ch[0], ch[1]) == (data["parts"][ref]["at"], data["parts"][ref]["rot"]))
              for ref in model.auto}
-    for ref in sorted(model.auto, key=lambda r: rank.get(r, len(rank))):
+    chips = sorted(model.auto, key=lambda r: rank.get(r, len(rank)))
+    flipped = {}
+    for ref in chips:
+        flips = [ch for ch in model.choices[ref]
+                 if ch is not state[ref] and ch[1] != state[ref][1] and ch[3] == state[ref][3]]
+        if flips:
+            flipped[ref] = flips[0]
+            yield {**unpinned, ref: {"at": flips[0][0], "rot": flips[0][1]}}, {}
+    for ref in sorted(leads, key=lambda r: rank.get(r, len(rank))):
+        for k in range(4):
+            yield {**{r: ch for r, ch in pinned.items() if r != ref}, ref: {"pins": None}}, {ref: k}
+    for ref in chips:
         spec = data["parts"][ref]
         row, col = spec["at"][0], int(spec["at"][1:])
-        layouts = [ch for ch in model.choices[ref] if ch is not state[ref]]
+        layouts = [ch for ch in model.choices[ref] if ch is not state[ref] and ch is not flipped.get(ref)]
 
         def near(ch):
             return abs(int(ch[0][1:]) - col) + (ch[0][0] != row) * 2 + (ch[1] != spec["rot"]) * 3
-        # turned round where it is, a few nudges, then the places the estimate likes best with everything
-        # else where it is
-        span = state[ref][3]
-        flips = [ch for ch in layouts if ch[1] != spec["rot"] and ch[3] == span]
+        # a few nudges, then the places the estimate likes best with everything else where it is
         scored = sorted(layouts, key=lambda ch: model.cost({**state, ref: ch}))
-        tries = flips[:1] + sorted(layouts, key=near)[:4]
+        tries = sorted(layouts, key=near)[:4]
         tries += [ch for ch in scored[:6] if model.cost({**state, ref: ch}) < math.inf]
         for ch in {id(ch): ch for ch in tries}.values():
             yield {**unpinned, ref: {"at": ch[0], "rot": ch[1]}}, {}

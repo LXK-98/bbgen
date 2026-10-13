@@ -308,9 +308,11 @@ def _wire_path(c: Circuit, w: Wire):
         return d, pts, mid
     (ax, ay), (bx, by) = pts
     length = math.hypot(bx - ax, by - ay)
-    # jumpers on the board lie straight; only flying leads to off-board pins curve
+    # jumpers on the board lie straight; flying leads to off-board pins curve, and flexible jumpers
+    # arch more, so even a short one reads as off the board
     off_board = w.a.pin is not None or w.b.pin is not None
-    bend = (0.12 if w.num % 2 else -0.12) * length if off_board and length > 2 else 0.0
+    bend = 0.12 * length if off_board and length > 2 else min(max(0.18 * length, 0.8), 2.0) if w.flex else 0.0
+    bend *= 1 if w.num % 2 else -1
     nx, ny = (-(by - ay) / length, (bx - ax) / length) if length else (0, 0)
     qx, qy = (ax + bx) / 2 + nx * bend, (ay + by) / 2 + ny * bend
     mid = (0.25 * ax + 0.5 * qx + 0.25 * bx, 0.25 * ay + 0.5 * qy + 0.25 * by)
@@ -319,7 +321,9 @@ def _wire_path(c: Circuit, w: Wire):
 
 def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> None:
     drawn = []
-    for w in sorted((w for w in c.wires if w.a and w.b), key=lambda w: highlight is not None and w.group == highlight):
+    # flexible jumpers over the wires lying on the board, as they're plugged in last
+    for w in sorted((w for w in c.wires if w.a and w.b), key=lambda w: (highlight is not None and w.group == highlight,
+                                                                        w.flex)):
         dim = highlight is not None and w.group != highlight
         color = color_hex(wire_color(c, result, w))
         path, pts, mid = _wire_path(c, w)
@@ -334,7 +338,10 @@ def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> No
             cv.add(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{width * P:.1f}" '
                    f'stroke-linecap="round" stroke-linejoin="round"/>')
         for x, y in (pts[0], pts[-1]):
-            cv.circle(x, y, 0.15, color, _outline(color), 1)
+            if w.flex:  # its plug's housing
+                cv.rect(x - 0.2, y - 0.2, x + 0.2, y + 0.2, "#2b2b2b", color, 1.6, rx=0.05)
+            else:
+                cv.circle(x, y, 0.15, color, _outline(color), 1)
         cv.add("</g>")
         if not dim:
             drawn.append((w, mid, color))
@@ -363,7 +370,18 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
     minx, maxx, miny, maxy = min(xs) - 1, max(xs) + 1, min(ys) - HEADER, max(ys) + 1
     cv = _Canvas(minx, miny)
     legend_y = maxy + 0.6
-    width, height = (maxx - minx) * P, (legend_y + 1.6 - miny) * P
+    # the legend, wrapped to the drawing's width: (x, line, kind, text) for each entry
+    entries = [("net", net.name) for net in c.nets.values()]
+    if any(w.flex for w in c.wires):
+        entries.append(("flex", "flexible jumper (plug in last)"))
+    legend, x, line = [], minx + 0.8, 0
+    for kind, text in entries:
+        size = 1.4 + len(text) * 0.24 + 1.2
+        if x + size > maxx and x > minx + 0.8:
+            x, line = minx + 0.8, line + 1
+        legend.append((x, line, kind, text))
+        x += size
+    width, height = (maxx - minx) * P, (legend_y + 1.6 + 0.8 * line - miny) * P
 
     errors, warnings = len(result.errors), len(result.warnings)
     status = ("wiring check passed" if not errors else f"{errors} error{'s' * (errors != 1)}") + (
@@ -390,12 +408,18 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
     cv.out += cv.late
     _marks(cv, c, result)
 
-    x = minx + 0.8
-    for net in c.nets.values():
-        swatch = color_hex(net.color)
-        cv.rect(x, legend_y - 0.25, x + 0.9, legend_y + 0.25, swatch, _outline(swatch), 1, rx=0.1)
-        cv.text(x + 1.15, legend_y, net.name, 6.5, "start")
-        x += 1.15 + len(net.name) * 0.24 + 1.2
+    colors = {net.name: color_hex(net.color) for net in c.nets.values()}
+    for x, line, kind, text in legend:
+        y = legend_y + 0.8 * line
+        if kind == "net":
+            swatch = colors[text]
+            cv.rect(x, y - 0.25, x + 0.9, y + 0.25, swatch, _outline(swatch), 1, rx=0.1)
+        else:  # an arch between two plugs: what the square ends mean
+            cv.add(f'<path d="M {cv.X(x + 0.2):.1f} {cv.Y(y):.1f} Q {cv.X(x + 0.6):.1f} {cv.Y(y - 0.7):.1f} '
+                   f'{cv.X(x + 1.0):.1f} {cv.Y(y):.1f}" fill="none" stroke="#777777" stroke-width="{0.2 * P:.1f}"/>')
+            for gx in (x + 0.2, x + 1.0):
+                cv.rect(gx - 0.2, y - 0.2, gx + 0.2, y + 0.2, "#2b2b2b", "#777777", 1.6, rx=0.05)
+        cv.text(x + 1.4, y, text, 6.5, "start")
 
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
             f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="{FONT}">\n'
