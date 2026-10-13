@@ -15,9 +15,12 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 1. **Get the nets right first.** Take them from the project's own design (schematic, netlist,
    design doc), not from memory. Every pin that should connect to something goes in `nets`.
 2. **Write the YAML** next to the project's other hardware files (e.g. `hardware/breadboard/`):
-   the parts and the nets. Leave out `at` and two-lead parts' `pins`, and leave out `wires`:
-   bbgen places and wires everything itself (README, "Automatic placement"). Give a net `rail:`
-   when it should run on a rail its name doesn't imply, and a decoupling cap `near:` its chip.
+   the parts and the nets. Take parts from KiCad's library wherever it has them
+   (`symbol: Timer:NE555P`; find names with `bbgen find <words>`): their pin names then come
+   from KiCad, not from you. Two-lead parts and connectors stay bbgen's own types.
+   Leave out `at`, two-lead parts' `pins` and `wires`: bbgen places and wires everything itself
+   (README, "Automatic placement"). Give a net `rail:` when it should run on a rail its name
+   doesn't imply, and a decoupling cap `near:` its chip.
    Only place a part yourself (`at`, `pins`) where you have a reason to, such as the user's
    preference or a physical constraint bbgen can't know.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
@@ -42,7 +45,8 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 - The generated `.svg`, `.png` and `.md` are outputs: edit the YAML and rebuild.
 - Physical facts you can't know (adapter row spacing, how an adapter maps chip pins to its
   header pins, which way the user's rails are printed) are assumptions. Put them in `notes` and
-  tell the user to check them.
+  tell the user to check them. An SMD part on an adapter says its mapping in `adapter: {map:}`;
+  the checklist prints it as an assumption.
 - Use part pins (`U1.VCC`) for wire ends and let bbgen pick the holes. Give explicit holes only
   where you need a specific position, such as junction strips or both ends on rails.
 - Mark dangerous off-board pins with a trailing `!` in their label (drawn in red).

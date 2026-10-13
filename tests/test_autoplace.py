@@ -65,16 +65,21 @@ class AutoplaceTest(unittest.TestCase):
                             for e in (w.a, w.b)))
 
     def test_the_layout_does_not_depend_on_hash_order(self):
+        # Python orders sets by hash, which changes from run to run; seed 6 once moved the KiCad 555
         import os
         import subprocess
         import sys
-        script = ("import json, sys; sys.path.insert(0, '.'); from bbgen.circuit import Circuit; "
-                  "from tests.test_autoplace import SMALL; c = Circuit(SMALL, 't'); "
-                  "print(json.dumps([[c.hole_name(p.hole) for p in part.pins] for part in c.parts.values()]))")
-        outs = {subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=True,
-                               env={**os.environ, "PYTHONHASHSEED": seed}).stdout for seed in ("1", "2")}
-        self.assertEqual(len(outs), 1, outs)
-
+        from bbgen.kicad import library_roots
+        examples = ["examples/555-blinker.yaml"] + (["examples/555-kicad.yaml"] if library_roots() else [])
+        script = ("import sys; sys.path.insert(0, '.'); from bbgen.circuit import Circuit; "
+                  "c = Circuit.load(sys.argv[1]); "
+                  "print([[c.hole_name(p.hole) if p.hole else None for p in part.pins] for part in c.parts.values()])")
+        for example in examples:
+            with self.subTest(example):
+                outs = {subprocess.run([sys.executable, "-c", script, example], capture_output=True, text=True,
+                                       check=True, env={**os.environ, "PYTHONHASHSEED": seed}).stdout
+                        for seed in ("0", "6")}
+                self.assertEqual(len(outs), 1, outs)
 
 if __name__ == "__main__":
     unittest.main()

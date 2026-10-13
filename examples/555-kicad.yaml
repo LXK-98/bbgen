@@ -1,0 +1,20 @@
+title: 555 LED blinker, parts from KiCad
+notes: ["Needs KiCad's library: the 555's pin names and footprint come from Timer:NE555P."]
+parts:
+  U1: {symbol: Timer:NE555P}
+  RA: {type: resistor, value: 1k}
+  RB: {type: resistor, value: 10k}
+  C1: {type: electrolytic, value: 10uF}
+  C2: {type: capacitor, value: 10nF}
+  C3: {type: capacitor, value: 100nF, near: U1}
+  R3: {type: resistor, value: 330R}
+  D1: {type: led}
+  J1: {type: offboard, title: Bench supply, labels: [5V, GND]}
+nets:
+  5V: [J1.1, U1.VCC, U1./RST, RA.1, C3.1]
+  GND: [J1.2, U1.GND, C1.-, C2.2, C3.2, D1.K]
+  DIS: [U1.DISCH, RA.2, RB.1]
+  TIMING: [U1.THRES, U1.TRIG, RB.2, C1.+]
+  CTRL: [U1.CONT, C2.1]
+  OUT: [U1.OUT, R3.1]
+  LED: [R3.2, D1.A]

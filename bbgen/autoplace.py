@@ -26,7 +26,7 @@ import math
 import random
 
 from .board import RAILS, ROW_Y, Board, Hole, parse_hole
-from .circuit import _GROUND, _SUPPLY, Circuit, CircuitError, Issue, _aligned, _key, _line
+from .circuit import _GROUND, _SUPPLY, Circuit, CircuitError, Issue, _aligned, _key, _line, library_for
 from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, make_part, rotate
 
 # the estimate, for footprint parts
@@ -314,7 +314,8 @@ class _Model:
         board_spec = {"type": board_spec} if isinstance(board_spec, str) else board_spec
         self.board = Board(1, board_spec.get("type", "full"), board_spec.get("rails"))
         self.gaps = {c for c in range(1, self.board.columns + 1) if c not in self.board.rail_cols}
-        self.parts = {str(ref): make_part(str(ref), spec) for ref, spec in (data.get("parts") or {}).items()}
+        library = library_for(data)
+        self.parts = {str(ref): make_part(str(ref), spec, library) for ref, spec in (data.get("parts") or {}).items()}
         self.nets: dict[str, list] = {}
         explicit: dict[str, list[str]] = {}
         for name, spec in (data.get("nets") or {}).items():
@@ -361,10 +362,16 @@ class _Model:
             if not (1 <= x <= self.board.columns) or y not in ROW_Y.values():
                 return None
             xy[pin] = (x, y)
+        if part.kind in ("sip", "kicad"):  # no two of its pins in one strip, unless joined inside it anyway
+            strips: dict = {}
+            for pin, (x, y) in xy.items():
+                other = strips.setdefault((x, y < 8), pin)
+                if other is not pin and (part.bus_of(pin) is None or part.bus_of(pin) is not part.bus_of(other)):
+                    return None
         xs = [x for x, _ in xy.values()]
-        halves = {"top" if y < 8 else "bot" for _, y in xy.values()}
-        if part.kind != "sip":
-            halves = {"top", "bot"}  # a DIP or Pico straddles the trench
+        halves = sorted({"top" if y < 8 else "bot" for _, y in xy.values()})  # sorted: compared, and summed over
+        if part.kind in ("pico", "dip"):
+            halves = ["bot", "top"]  # a DIP or Pico straddles the trench
         keep = []
         for _, rect in part.keepouts:  # the columns and halves of holes inside it, on the board
             corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
@@ -373,7 +380,7 @@ class _Model:
             lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
             rows = [y for y in ROW_Y.values() if y0 < y < y1]
             if lo <= hi and rows:
-                keep += [(h, lo, hi) for h in {"top" if y < 8 else "bot" for y in rows}]
+                keep += [(h, lo, hi) for h in sorted({"top" if y < 8 else "bot" for y in rows})]
         return f"{row}{col}", rot, xy, [(h, min(xs), max(xs)) for h in halves], keep
 
     def _choices(self, part) -> list:
@@ -384,10 +391,21 @@ class _Model:
             if part.width != 3:
                 raise PartError(f"parts.{part.ref}: bbgen only places 0.3 in DIPs; give it at:")
             spots = [("f", c, 0) for c in cols] + [("e", c, 180) for c in cols]
+        elif part.kind == "kicad":
+            spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 90, 180, 270)]
         else:  # sip
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 180)]
-        out = [self._layout(part, *s) for s in spots]
-        return [o for o in out if o]
+        out = [o for o in (self._layout(part, *s) for s in spots) if o]
+        if part.kind == "kicad":  # straddling the trench: as many free holes as can be left in every pin's strip
+            def room(lay):
+                return min((y - 3) if y < 8 else (14 - y) for _, y in lay[2].values())
+            best = {}
+            for o in out:
+                straddles = len({y < 8 for _, y in o[2].values()}) > 1
+                best[o[1], straddles] = max(best.get((o[1], straddles), -1), room(o) if straddles else 0)
+            out = [o for o in out if len({y < 8 for _, y in o[2].values()}) == 1
+                   or room(o) == best[o[1], True]]
+        return out
 
     def cost(self, state: dict) -> float:
         layouts = {**self.fixed, **state}

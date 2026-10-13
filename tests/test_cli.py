@@ -28,7 +28,10 @@ class CliTest(unittest.TestCase):
             self.assertTrue(svg.startswith("<svg") and "wiring check passed" in svg)
 
     def test_examples_pass(self):
+        from bbgen.kicad import library_roots
         for example in sorted(EXAMPLES.glob("*.yaml")):
+            if "symbol:" in example.read_text() and not library_roots():
+                continue  # needs KiCad's library
             with self.subTest(example.name):
                 code, out = run("check", example)
                 self.assertEqual(code, 0, out)

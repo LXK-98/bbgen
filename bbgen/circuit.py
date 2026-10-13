@@ -152,6 +152,16 @@ def _dist(p: tuple[float, float], hint) -> float:
     return math.hypot(dx, dy)
 
 
+def library_for(data) -> tuple | None:
+    """KiCad's library, if a part in the file comes from it (`symbol:` or `footprint:`); `kicad:` names it."""
+    parts = data.get("parts") if isinstance(data, dict) else None
+    if isinstance(parts, dict) and any(isinstance(s, dict) and (s.get("symbol") or s.get("footprint"))
+                                       for s in parts.values()):
+        from .kicad import library_roots
+        return tuple(library_roots(data.get("kicad")))
+    return None
+
+
 def needs_placing(data) -> bool:
     """Whether a part in the file has no `at` (or two-lead, no `pins`), so bbgen has to place it."""
     parts = data.get("parts") if isinstance(data, dict) else None
@@ -182,6 +192,7 @@ class Circuit:
             data = autoplace(data, source)
         self._leg_rank: dict = data.get("_leg_rank") or {}  # autoplace's search: take a leg pair other than the best
         self._load_boards(data.get("boards") or [{"type": "full"}])
+        self.library = library_for(data)
         self._load_parts(data.get("parts") or {})
         for ref in data.get("_placed") or []:  # parts autoplace placed, not the file
             if ref in self.parts:
@@ -227,7 +238,7 @@ class Circuit:
             if not re.fullmatch(r"[A-Za-z_][\w-]*", ref):
                 raise CircuitError(f"parts.{ref}: refs are letters, digits, _ and - (and start with a letter)")
             try:
-                self.parts[ref] = make_part(ref, spec)
+                self.parts[ref] = make_part(ref, spec, self.library)
             except PartError as e:
                 raise CircuitError(str(e)) from None
 

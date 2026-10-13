@@ -20,7 +20,11 @@ def _where(c: Circuit, part: Part) -> str:
         return f"pin 1 in {at}, USB pointing {POINTS[part.rot]}{_keep_clear(c, part)}"
     if part.kind == "dip":
         return (f"pin 1 in {at}, notch (pin-1 end) pointing {POINTS[part.rot]}; "
-                f"{len(part.pins)} pins, rows {part.width / 10:g} in apart")
+                f"{len(part.pins)} pins, rows {part.width / 10:g} in apart"
+                + (f". ASSUMED: {part.adapter}" if part.adapter else ""))
+    if part.kind == "kicad":
+        end = "notch (pin-1 end)" if "Package_DIP:" in part.source else "pin-1 end"
+        return f"pin 1 in {at}, {end} pointing {POINTS[part.rot]}{_keep_clear(c, part)} ({part.source})"
     if part.kind == "sip":
         return f"pin 1 in {at}, pins running {RUNS[part.rot]}"
     if part.kind in LEAD_KINDS:

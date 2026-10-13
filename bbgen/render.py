@@ -9,14 +9,14 @@ from xml.sax.saxutils import escape
 from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, TRENCH_Y, Board
 from .check import Result, end_node, wire_color
 from .circuit import Circuit, Wire, color_hex
-from .parts import LEAD_KINDS, Part, body_rect, placed_box, rotate
+from .parts import FOOTPRINT_KINDS, LEAD_KINDS, Part, body_rect, placed_box, rotate
 
 P = 20.0     # pixels per grid unit (0.1 in)
 FONT = "DejaVu Sans, Helvetica, Arial, sans-serif"
 HEADER = 3.4  # grid units above the drawing for the title
 INK, MUTED, BOARD = "#262626", "#9a917f", "#f6f3ec"
 
-BODY_FILL = {"pico": "#2f6e3d", "dip": "#24467a", "sip": "#3d3d3d"}
+BODY_FILL = {"pico": "#2f6e3d", "dip": "#24467a", "sip": "#3d3d3d", "kicad": "#24467a", "module": "#2f6e3d"}
 # fill, outline, thickness and longest body length, in grid units
 LEAD_STYLE = {
     "resistor": ("#e6d2a4", "#8b7448", 0.5, 1.9),
@@ -165,13 +165,15 @@ def _footprint(cv: _Canvas, part: Part) -> None:
     if part.pins[0].xy is None:
         return
     x0, y0, x1, y1 = placed_box(part, body_rect(part))
-    cv.rect(x0, y0, x1, y1, part.color or BODY_FILL[part.kind], "#111", 1, rx=0.15)
+    big = part.kind == "pico" or (part.kind == "kicad" and min(x1 - x0, y1 - y0) >= 6)  # a module, like a Pico
+    fill = BODY_FILL["module" if big and part.kind == "kicad" else part.kind]
+    cv.rect(x0, y0, x1, y1, part.color or fill, "#111", 1, rx=0.15)
     if part.kind == "pico":
         cv.rect(*placed_box(part, (-1.05, -4.5, 0.75, -2.5)), "#c9c9c9", "#6f6f6f", 1, rx=0.08)
-    if part.kind in ("pico", "dip"):
+    inside = part.kind in ("pico", "dip") or (part.kind == "kicad" and len({p.offset[1] for p in part.pins}) > 1)
+    if inside:  # the pin-1 dot
         dot = rotate((-0.36, 0.36), part.rot)
         cv.circle(part.pins[0].xy[0] + dot[0], part.pins[0].xy[1] + dot[1], 0.09, "#ffffff")
-    inside = part.kind in ("pico", "dip")
     for pin in part.pins:
         x, y = pin.xy
         if pin.num == 1:
@@ -187,7 +189,7 @@ def _footprint(cv: _Canvas, part: Part) -> None:
             cv.text(x + dx * 0.38, y, pin.name, 5.4, "start" if dx > 0 else "end", fill,
                     halo=None if inside else "#ffffff")
     label = f"{part.ref} {part.title}".strip()
-    if part.kind == "pico":
+    if big:
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         cv.text(cx, cy - 0.4, part.ref, 9, fill="#ffffff", weight="bold")
         cv.text(cx, cy + 0.45, part.title, 6.5, fill="#dfe9df")
@@ -377,7 +379,7 @@ def render(c: Circuit, result: Result, highlight: str | None = None) -> str:
     for part in c.parts.values():
         _keepouts(cv, c, part)
     for part in c.parts.values():
-        if part.kind in ("pico", "dip", "sip"):
+        if part.kind in FOOTPRINT_KINDS:
             _footprint(cv, part)
         elif part.kind == "offboard":
             _offboard(cv, part)

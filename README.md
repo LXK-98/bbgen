@@ -206,6 +206,35 @@ and `e` to `f` is 3. So:
   Only two wires can run along the rows from one side of the Pico over the same stretch, so
   spread its connections over both sides and both ends.
 
+### Parts from KiCad's library
+
+Name a KiCad symbol and bbgen takes the part from KiCad's library: its pin names from the symbol,
+and from its footprint where the pins sit, the body's outline and any keep-out zones (like the
+Pico's USB cable).
+
+```yaml
+parts:
+  U1: {symbol: Timer:NE555P}                                    # pins named from the symbol
+  Pico: {symbol: MCU_Module:RaspberryPi_Pico}                   # a module: GND pins joined, USB keep-out
+  U2: {symbol: Memory_EEPROM:24LC256, footprint: Package_DIP:DIP-8_W7.62mm}  # the symbol names none
+  RV1: {footprint: Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical}    # no symbol: pins by number
+  U3: {symbol: Regulator_Linear:AP2112K-1.8, adapter: {pins: 6, map: {5: 6}}} # SMD, on an adapter
+```
+
+- `bbgen find ap2112` searches the library and shows each symbol's name, footprint and
+  description.
+- Pins go by the symbol's names, without KiCad's markup (`~{RST}` is `/RST`, `V_{IN}` is
+  `VIN`), or by number. Pins sharing a power name (several `GND`) are joined inside the part.
+- A footprint's pads must sit on the 0.1 in grid: through-hole parts mostly do. A surface-mount
+  part needs `adapter:`, the SMD-to-DIP board it sits on: its pin count, and `map` for pads that
+  don't land on the adapter pin with their own number. Check that against your adapter; the
+  checklist says what was assumed.
+- `rot: 0` lays a part out like bbgen's own DIP: pin 1 bottom-left, its row running right. Some
+  footprints come out as a column (a trimmer's three legs) and need `rot: 90` to lie along a
+  row; leave `at` out and bbgen chooses.
+- bbgen finds the library where KiCad installs it (system packages, Flatpak, macOS, Windows, or
+  `KICAD*_SYMBOL_DIR`). Point it elsewhere with `kicad: /path` in the file or `$BBGEN_KICAD`.
+
 ### Part types
 
 | type | placed by | notes |
@@ -214,6 +243,7 @@ and `e` to `f` is 3. So:
 | `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
 | `sip` | `at` (pin 1), `rot`, or bbgen | a single row: headers, trimmers |
 | `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. |
+| any, from KiCad | `at` (pin 1), `rot`, or bbgen | `symbol: Library:Name`, `footprint: Library:Name`, `adapter` (see above) |
 | `offboard` | drawn beside the board | `labels`, `cols`, `numbering: row` (1, 2 across the first row) or `column`, `place: right` or `below`. A label ending in `!` is drawn red. |
 
 `rot` is 0, 90, 180 or 270, clockwise. `labels` is a list (one per pin) or a `{pin: name}` map.

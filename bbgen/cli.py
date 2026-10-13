@@ -1,4 +1,4 @@
-"""bbgen command line: build (drawing + checklist + check) and check."""
+"""bbgen command line: build (drawing + checklist + check), check, and find parts in KiCad's library."""
 
 from __future__ import annotations
 
@@ -38,6 +38,20 @@ def _png(svg: Path) -> Path | None:
     return png
 
 
+def _find(words: list[str], where: str | None) -> int:
+    from .kicad import library_roots, search
+    roots = library_roots(where)
+    if not roots:
+        print("bbgen: no KiCad library found; install KiCad or point BBGEN_KICAD at it", file=sys.stderr)
+        return 2
+    hits = search(words, roots)
+    for ref, fp, about in hits:
+        print(f"{ref:<44} {fp or '(no footprint: give one)':<44} {about[:70]}")
+    if not hits:
+        print("nothing found; try fewer or shorter words")
+    return 0 if hits else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="bbgen", description="Breadboard layouts from YAML: a drawing, "
                                                           "a build checklist and a wiring check.")
@@ -50,7 +64,13 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--steps", action="store_true", help="also draw one image per wire group, highlighting it")
     chk = sub.add_parser("check", help="check the wiring only")
     chk.add_argument("circuit", type=Path)
+    find = sub.add_parser("find", help="search KiCad's library for a part's symbol: bbgen find ne555")
+    find.add_argument("words", nargs="+")
+    find.add_argument("--kicad", help="the library's folder (default: wherever KiCad is installed)")
     args = ap.parse_args(argv)
+
+    if args.cmd == "find":
+        return _find(args.words, args.kicad)
 
     try:
         c = Circuit.load(args.circuit)

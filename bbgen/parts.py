@@ -12,6 +12,7 @@ left with pins 1-20 along the bottom.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 PICO_PINS = {
@@ -35,7 +36,7 @@ LEAD_KINDS = {
     "diode": ("A", "K"),
     "led": ("A", "K"),
 }
-FOOTPRINT_KINDS = ("pico", "dip", "sip")
+FOOTPRINT_KINDS = ("pico", "dip", "sip", "kicad")
 KINDS = (*FOOTPRINT_KINDS, *LEAD_KINDS, "offboard")
 
 
@@ -83,6 +84,9 @@ class Part:
     near: str | None = None   # a part to keep it close to, when bbgen places it
     auto: bool = False        # placed by bbgen, not the file
     keepouts: list = field(default_factory=list)  # (what, rect relative to pin 1): room it needs that isn't body
+    body: tuple | None = None  # kicad: its outline relative to pin 1, unrotated
+    source: str = ""          # where it came from: "Timer:NE555P on Package_DIP:DIP-8_W7.62mm"
+    adapter: str = ""         # an SMD part on an adapter: how its pads map to the adapter's pins
     cols: int = 1            # off-board layout
     numbering: str = "row"
     place: str = "right"
@@ -109,7 +113,7 @@ def body_rect(part: Part) -> tuple[float, float, float, float] | None:
         return (-0.5, -part.width - 0.5, n // 2 - 0.5, 0.5)
     if part.kind == "sip":
         return (-0.45, -0.45, n - 0.55, 0.45)
-    return None
+    return part.body
 
 
 def placed_box(part: Part, rect) -> tuple[float, float, float, float]:
@@ -155,12 +159,16 @@ def slant_reason(spec: dict, where: str) -> str | None:
     return reason.strip()
 
 
-def make_part(ref: str, spec: dict) -> Part:
+def make_part(ref: str, spec: dict, library: tuple | None = None) -> Part:
+    """A part from its spec; `symbol:` or `footprint:` take it from KiCad's library (searched in library,
+    or wherever KiCad is installed)."""
     if not isinstance(spec, dict):
         raise PartError(f"parts.{ref}: expected a mapping")
-    kind = spec.get("type")
+    from_kicad = spec.get("symbol") or spec.get("footprint")
+    kind = spec.get("type") or ("dip" if from_kicad and spec.get("adapter") else "kicad" if from_kicad else None)
     if kind not in KINDS:
-        raise PartError(f"parts.{ref}: unknown type {kind!r} (expected one of {', '.join(KINDS)})")
+        raise PartError(f"parts.{ref}: unknown type {kind!r} (expected one of {', '.join(KINDS)}, "
+                        "or a KiCad symbol: Library:Name)")
     part = Part(ref, kind, str(spec.get("title") or ""), str(spec.get("value") or ""), spec.get("color"))
 
     part.near = str(spec["near"]) if spec.get("near") else None
@@ -178,12 +186,18 @@ def make_part(ref: str, spec: dict) -> Part:
                                  (0, -1) if bottom else (0, 1)))
         part.buses.append(tuple(part.pins[n - 1] for n in PICO_GND))
         part.keepouts.append(("USB cable", PICO_USB_KEEPOUT))
+    elif kind == "kicad":
+        _from_kicad(part, spec, library)
     elif kind == "dip":
-        n = _count(spec, ref)
+        if from_kicad:  # an SMD part on an adapter: a DIP named from its symbol
+            n, names = _adapter(part, spec, library)
+        else:
+            n = _count(spec, ref)
+            names = _labels(spec, n, ref)
         if n % 2:
             raise PartError(f"parts.{ref}: a dip needs an even pin count")
-        part.width = int(spec.get("width", 3))
-        names = _labels(spec, n, ref)
+        part.width = int(spec.get("width", (spec.get("adapter") or {}).get("width", 3)
+                                  if isinstance(spec.get("adapter"), dict) else 3))
         for k in range(1, n + 1):
             if k <= n // 2:
                 part.pins.append(Pin(part, k, names[k - 1], (k - 1, 0), (0, -1)))
@@ -213,3 +227,113 @@ def make_part(ref: str, spec: dict) -> Part:
             raise PartError(f"parts.{ref}: numbering is row|column and place is right|below")
         part.pins = [Pin(part, k, names[k - 1]) for k in range(1, n + 1)]
     return part
+
+
+# ---- parts from KiCad's library ----
+
+_POWERISH = re.compile(r"^(A|D|P)?(GND|VSS|0V)|^(VCC|VDD|VBUS|VSYS)$", re.I)
+
+
+def _library(library):
+    from . import kicad
+    return tuple(library) if library else tuple(kicad.library_roots())
+
+
+def _kicad_parts(ref: str, spec: dict, library):
+    """(symbol or None, footprint ref, footprint or None) for a part that names KiCad things."""
+    from . import kicad
+    roots = _library(library)
+    try:
+        sym = kicad.symbol(str(spec["symbol"]), roots) if spec.get("symbol") else None
+        fp_ref = str(spec.get("footprint") or (sym.footprint if sym else ""))
+        if not fp_ref:
+            raise PartError(f"parts.{ref}: KiCad's {spec['symbol']} names no footprint (it comes in several "
+                            "packages); give one, like footprint: Package_DIP:DIP-8_W7.62mm")
+        fp = None if spec.get("adapter") else kicad.footprint(fp_ref, roots)
+    except kicad.KicadError as e:
+        raise PartError(f"parts.{ref}: {e}") from None
+    return sym, fp_ref, fp
+
+
+def _symbol_names(sym) -> dict[int, str]:
+    from . import kicad
+    return {int(p.number): kicad.clean_name(p.name) or p.number for p in sym.pins if p.number.isdigit()} if sym else {}
+
+
+def _from_kicad(part: Part, spec: dict, library) -> None:
+    """A through-hole footprint's pads as pins, named from the symbol; its outline and keep-outs."""
+    from .kicad import MM
+    sym, fp_ref, fp = _kicad_parts(part.ref, spec, library)
+    if fp.smd:
+        raise PartError(f"parts.{part.ref}: {fp_ref} is surface-mount; put it on an SMD-to-DIP adapter, "
+                        "like adapter: {pins: 6}")
+    pads = {int(n): xy for n, xy in fp.pads.items() if n.isdigit()}
+    if not pads:
+        raise PartError(f"parts.{part.ref}: {fp_ref} has no numbered through-hole pads")
+    x1, y1 = pads.get(1) or pads[min(pads)]
+
+    def grid(x: float, y: float) -> tuple[float, float]:  # KiCad's frame turned to bbgen's: pin 1 row along x
+        return (y - y1) / MM, -(x - x1) / MM
+
+    def grid_box(box):
+        corners = [grid(x, y) for x in (box[0], box[2]) for y in (box[1], box[3])]
+        return (min(c[0] for c in corners), min(c[1] for c in corners),
+                max(c[0] for c in corners), max(c[1] for c in corners))
+    names = _symbol_names(sym)
+    offsets = {}
+    for n, (x, y) in sorted(pads.items()):
+        gx, gy = grid(x, y)
+        if abs(gx - round(gx)) > 0.05 or abs(gy - round(gy)) > 0.05:
+            raise PartError(f"parts.{part.ref}: {fp_ref}'s pads aren't on the 0.1 in grid of a breadboard "
+                            "(pad {n}); pick a footprint whose pads are, like TO-92_Inline_Wide for a TO-92")
+        offsets[n] = (round(gx), round(gy))
+    ys = sorted({o[1] for o in offsets.values()})
+    middle = (ys[0] + ys[-1]) / 2
+    for n, off in offsets.items():
+        down = len(ys) == 1 or off[1] > middle
+        part.pins.append(Pin(part, n, names.get(n, str(n)), off, (0, -1) if down else (0, 1)))
+    # the body: the fabrication outline, and the pins with it
+    xs, ys2 = [o[0] for o in offsets.values()], [o[1] for o in offsets.values()]
+    body = [min(xs) - 0.5, min(ys2) - 0.5, max(xs) + 0.5, max(ys2) + 0.5]
+    if fp.outline:
+        ob = grid_box(fp.outline)
+        body = [min(body[0], ob[0]), min(body[1], ob[1]), max(body[2], ob[2]), max(body[3], ob[3])]
+    part.body = tuple(body)
+    part.keepouts = [(what, grid_box(box)) for what, box in fp.keepouts]
+    by_name: dict[str, list[Pin]] = {}
+    for pin in part.pins:
+        by_name.setdefault(pin.name, []).append(pin)
+    kinds = {int(p.number): p.kind for p in sym.pins if p.number.isdigit()} if sym else {}
+    for name, pins in by_name.items():  # pins sharing a power name are joined inside the part
+        if len(pins) > 1 and (_POWERISH.match(name) or any(kinds.get(p.num, "").startswith("power") for p in pins)):
+            part.buses.append(tuple(pins))
+    part.title = part.title or (sym.name if sym else fp.name)
+    part.source = f"{spec['symbol']} on {fp_ref}" if sym else fp_ref
+
+
+def _adapter(part: Part, spec: dict, library) -> tuple[int, list[str]]:
+    """Pin count and names of the DIP an SMD part sits on: chip pad n on adapter pin n, unless `map` says."""
+    adapter = spec["adapter"]
+    adapter = {"pins": adapter} if isinstance(adapter, int) else adapter
+    if not isinstance(adapter, dict) or not isinstance(adapter.get("pins"), int):
+        raise PartError(f"parts.{part.ref}: adapter is the adapter's pin count, or {{pins: 6, map: {{5: 6}}}}")
+    sym, fp_ref, _ = _kicad_parts(part.ref, spec, library)
+    n = adapter["pins"]
+    moves = {int(k): int(v) for k, v in (adapter.get("map") or {}).items()}
+    names = [str(k) for k in range(1, n + 1)]
+    taken: dict[int, int] = {}
+    for pad, name in sorted(_symbol_names(sym).items()):
+        pin = moves.get(pad, pad)
+        if not 1 <= pin <= n:
+            raise PartError(f"parts.{part.ref}: chip pad {pad} has no adapter pin {pin} (the adapter has {n}); "
+                            "map it, like map: {{{pad}: {n}}}")
+        if pin in taken:
+            raise PartError(f"parts.{part.ref}: chip pads {taken[pin]} and {pad} both on adapter pin {pin}")
+        taken[pin] = pad
+        names[pin - 1] = name
+    part.title = part.title or (sym.name if sym else fp_ref.split(":")[-1])
+    shown = ", ".join(f"pad {k} on pin {v}" for k, v in sorted(moves.items()))
+    part.adapter = (f"{fp_ref.split(':')[-1]} on a {n}-pin adapter: chip pad n on adapter pin n"
+                    + (f", except {shown}" if shown else "") + ". Check this against your adapter")
+    part.source = f"{spec['symbol']} on {fp_ref}" if sym else fp_ref
+    return n, names
