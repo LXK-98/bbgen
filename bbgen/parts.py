@@ -76,6 +76,7 @@ class Part:
     rot: int = 0
     width: int = 0           # dip: row spacing
     legs: list[str] = field(default_factory=list)  # two-lead parts: where each leg goes
+    slant: str | None = None  # two-lead parts: why it may lie slanted
     cols: int = 1            # off-board layout
     numbering: str = "row"
     place: str = "right"
@@ -138,6 +139,16 @@ def _labels(spec: dict, n: int, ref: str) -> list[str]:
     return [str(names[k]) if names.get(k) not in (None, "") else str(k) for k in range(1, n + 1)]
 
 
+def slant_reason(spec: dict, where: str) -> str | None:
+    """The reason given for a slanted wire or part (`slant: <reason>`), which silences DIAGONAL."""
+    reason = spec.get("slant")
+    if reason is None:
+        return None
+    if not isinstance(reason, str) or not reason.strip():
+        raise PartError(f"{where}: slant takes the reason it can't be straight, like slant: crosses the trench")
+    return reason.strip()
+
+
 def make_part(ref: str, spec: dict) -> Part:
     if not isinstance(spec, dict):
         raise PartError(f"parts.{ref}: expected a mapping")
@@ -181,6 +192,7 @@ def make_part(ref: str, spec: dict) -> Part:
         if not (isinstance(legs, list) and len(legs) == 2):
             raise PartError(f"parts.{ref}: needs pins: [<leg 1>, <leg 2>] (holes, rails or part pins)")
         part.legs = [str(x) for x in legs]
+        part.slant = slant_reason(spec, f"parts.{ref}")
         names = spec.get("labels") or LEAD_KINDS[kind]
         part.pins = [Pin(part, k + 1, str(names[k])) for k in range(2)]
     else:  # offboard

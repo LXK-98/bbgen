@@ -6,7 +6,7 @@ PICO = {"type": "pico", "at": "h3"}
 
 
 def blink(**changes):
-    parts = {"Pico": PICO, "R1": {"type": "resistor", "pins": ["Pico.GP15", "j26"]},
+    parts = {"Pico": PICO, "R1": {"type": "resistor", "pins": ["Pico.GP15", "j27"]},
              "D1": {"type": "led", "pins": ["R1.2", "bot-"]}}
     wires = [["Pico.3", "bot-"]]
     nets = {"GND": ["Pico.GND", "D1.K"], "DRIVE": ["Pico.GP15", "R1.1"], "LED": ["R1.2", "D1.A"]}

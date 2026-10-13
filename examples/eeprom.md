@@ -18,8 +18,8 @@ Place these first.
 
 - [ ] **Pico** Raspberry Pi Pico: pin 1 in `h3`, USB pointing left
 - [ ] **U1** 24LC256: pin 1 in `f30`, notch (pin-1 end) pointing left; 8 pins, rows 0.3 in apart
-- [ ] **R1** 330R: legs in `i22` and `j26`
-- [ ] **D1** led: legs in `i26` and `bot-25` (anode first)
+- [ ] **R1** 330R: legs in `j22` and `j27`
+- [ ] **D1** led: legs in `i27` and `bot-27` (anode first)
 - [ ] **C1** 100nF: legs in `top+33` and `top-33`
 - [ ] **J1** Logic analyzer: off the breadboard: reached with flying leads
 
@@ -35,8 +35,8 @@ Place these first.
 
 ### i2c (5)
 
-- [ ] **W6** blue: `i8` → `d33` · SDA (Pico.6 GP4 ↔ U1.5 SDA)
-- [ ] **W7** green: `i9` → `d32` · SCL (Pico.7 GP5 ↔ U1.6 SCL)
-- [ ] **W8** blue: `c33` → `J1.1 SDA` · SDA (U1.5 SDA ↔ J1.1 SDA)
-- [ ] **W9** green: `c32` → `J1.2 SCL` · SCL (U1.6 SCL ↔ J1.2 SCL)
+- [ ] **W6** blue: `i8` → `c33` · SDA (Pico.6 GP4 ↔ U1.5 SDA)
+- [ ] **W7** green: `i9` → `b32` · SCL (Pico.7 GP5 ↔ U1.6 SCL)
+- [ ] **W8** blue: `d33` → `J1.1 SDA` · SDA (U1.5 SDA ↔ J1.1 SDA)
+- [ ] **W9** green: `d32` → `J1.2 SCL` · SCL (U1.6 SCL ↔ J1.2 SCL)
 - [ ] **W10** black: `bot-61` → `J1.3 GND` · GND (bot- rail ↔ J1.3 GND)

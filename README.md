@@ -50,7 +50,7 @@ parts:
   Pico: {type: pico, at: h3}  # pin 1 in h3, USB to the left
   U1: {type: dip, pins: 8, width: 3, at: f30, title: 24LC256,
        labels: [A0, A1, A2, GND, SDA, SCL, WP, VCC]}
-  R1: {type: resistor, value: 330R, pins: [Pico.GP15, j26]}
+  R1: {type: resistor, value: 330R, pins: [Pico.GP15, j27]}
   D1: {type: led, pins: [R1.2, bot-]}
   C1: {type: capacitor, value: 100nF, pins: [top+33, top-33]}
   J1: {type: offboard, title: Logic analyzer, cols: 2, labels: {1: SDA, 2: SCL, 3: GND, 4: "5V!"}}
@@ -93,13 +93,29 @@ A wire end or a two-lead part's leg is one of:
 
 - a hole: `a12`, `top+30`
 - a bare rail: `top+`, which takes the free rail hole nearest the other end
-- a part pin: `U1.3`, `U1.VCC`, `Pico.GP15`. This takes the free hole in that pin's strip that is
-  nearest the pin, then nearest the other end. A name shared by several pins is ambiguous unless
-  they're joined on the part (`Pico.GND` is fine), or
+- a part pin: `U1.3`, `U1.VCC`, `Pico.GP15`. This takes a free hole in that pin's strip. A name
+  shared by several pins is ambiguous unless they're joined on the part (`Pico.GND` is fine), or
 - an off-board pin (`J1.SDA`). Wires only; legs go in holes.
 
-Give rail columns yourself when both ends are rails (`[top+28, top-28]` for a decoupling cap),
-since there's no other end to steer by.
+bbgen picks the holes for both ends together. It prefers a pair that makes the wire (or the part)
+run straight along a row or a column without lying along another wire or part, then the one over
+the fewest part bodies, then the holes nearest the pins, then the shortest. Give rail columns
+yourself when both ends are rails (`[top+28, top-28]` for a decoupling cap), since there's no other
+end to steer by.
+
+### Straight, not slanted
+
+Wires and parts that slant are hard to trace and get in the way. bbgen warns (`DIAGONAL`) only
+when one could have been straight, and says how:
+
+- a hole written out where another hole in the same strip would line up (`bot+48 instead of bot+47`)
+- a strip in a column the rails have no hole in, so it can't reach the rail straight (move the part)
+- every straight route blocked by other wires or parts (it names them)
+
+A wire crossing the trench between two different columns can't be straight, and flying leads to
+off-board pins don't count. When a slant is the right call, say why, and the warning goes:
+`slant: <reason>` on the part, or `{from: ..., to: ..., slant: <reason>}` for a wire. A wire with
+`via` is routed by you and isn't checked.
 
 ### Part types
 
@@ -112,7 +128,9 @@ since there's no other end to steer by.
 | `offboard` | drawn beside the board | `labels`, `cols`, `numbering: row` (1, 2 across the first row) or `column`, `place: right` or `below`. A label ending in `!` is drawn red. |
 
 `rot` is 0, 90, 180 or 270, clockwise. `labels` is a list (one per pin) or a `{pin: name}` map.
-Pins without a label are named by number. Every part takes `title`, `value` and `color`.
+Pins without a label are named by number. Every part takes `title`, `value` and `color`; a
+resistor's `value` (`10k`, `4k7`, `330R`) is drawn as its colour bands. Two-lead parts also take
+`slant` (see above).
 
 ### What the check reports
 
@@ -127,6 +145,7 @@ Pins without a label are named by number. Every part takes `title`, `value` and 
 | `NOT_PLACED`, `TWO_NETS`, `BAD_*` | a pin in a net isn't on the board; a pin in two nets; a reference that doesn't resolve |
 | `DANGLING` (warning) | a wire ends in a strip with nothing else in it |
 | `NO_EFFECT` (warning) | both ends of a wire are in the same strip |
+| `DIAGONAL` (warning) | a wire or two-lead part slants where it could run straight; the message says how |
 
 ## With Claude Code
 
