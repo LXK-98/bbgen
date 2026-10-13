@@ -14,11 +14,12 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 
 1. **Get the nets right first.** Take them from the project's own design (schematic, netlist,
    design doc), not from memory. Every pin that should connect to something goes in `nets`.
-2. **Write the YAML** next to the project's other hardware files (e.g. `hardware/breadboard/`).
-   Place the big parts first (`at`, `rot`), then the two-lead parts. Follow the layout rules
-   below while placing: that's cheaper than moving parts later. Then set `autowire: true` and
-   let bbgen add the wires; give a net `rail:` when it should run on a rail its parts don't
-   already reach. Write a wire yourself only where you need a particular one.
+2. **Write the YAML** next to the project's other hardware files (e.g. `hardware/breadboard/`):
+   the parts and the nets. Leave out `at` and two-lead parts' `pins`, and leave out `wires`:
+   bbgen places and wires everything itself (README, "Automatic placement"). Give a net `rail:`
+   when it should run on a rail its name doesn't imply, and a decoupling cap `near:` its chip.
+   Only place a part yourself (`at`, `pins`) where you have a reason to, such as the user's
+   preference or a physical constraint bbgen can't know.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
    layout with errors, and never silence one by dropping a pin from `nets`.
 4. **Work through the warnings.** Each says how to fix it:
@@ -27,7 +28,8 @@ parts land" and the rail columns under "Holes": placing parts needs both.
      settle for the slant. If a slant really is the best option, record why with
      `slant: <reason>` instead of leaving the warning.
    - `OVER_PART`: add the `via` bends it suggests, or move the part.
-   - On a wire bbgen added, the fix is always placement: move the part it names.
+   - On a wire or part bbgen placed, the fix is placement: give the part it names an `at` (or
+     `pins`) of your own and build again; bbgen fits the rest around it.
 
    Rebuild after each round.
 5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each
@@ -47,6 +49,7 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 
 ## Layout rules
 
+These are what bbgen's own placement aims for; follow them when you place a part yourself.
 Wires and parts run straight along a row or a column, never slanted when it can be avoided.
 
 - **Rails skip every sixth column** (8, 14, 20, 26, ... on a full board). Place each part so

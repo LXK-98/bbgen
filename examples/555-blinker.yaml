@@ -1,0 +1,20 @@
+title: 555 LED blinker, placed by bbgen
+notes: ["Only parts and nets: bbgen chose every place and every wire."]
+parts:
+  U1: {type: dip, pins: 8, title: NE555, labels: [GND, TRIG, OUT, RESET, CTRL, THR, DIS, VCC]}
+  RA: {type: resistor, value: 1k}
+  RB: {type: resistor, value: 10k}
+  C1: {type: electrolytic, value: 10uF}
+  C2: {type: capacitor, value: 10nF}
+  C3: {type: capacitor, value: 100nF, near: U1}
+  R3: {type: resistor, value: 330R}
+  D1: {type: led}
+  J1: {type: offboard, title: Bench supply, labels: [5V, GND]}
+nets:
+  5V: {pins: [J1.1, U1.VCC, U1.RESET, RA.1, C3.1], rail: top+}
+  GND: [J1.2, U1.GND, C1.-, C2.2, C3.2, D1.K]
+  DIS: [U1.DIS, RA.2, RB.1]
+  TIMING: [U1.THR, U1.TRIG, RB.2, C1.+]
+  CTRL: [U1.CTRL, C2.1]
+  OUT: [U1.OUT, R3.1]
+  LED: [R3.2, D1.A]

@@ -129,9 +129,37 @@ Which rail a net runs on comes from, in order:
 - the rails its parts already plug into (a decoupling cap with a leg in `top+28`)
 - `rail:` on the net: `VSYS: {pins: [...], rail: top+}`, or a list, `rail: [top-, bot-]`
 - a net named like ground (`GND`, ...) takes the `-` rails no other net uses, and one named like a
-  supply (`VSYS`, `VBUS`, `5V`, ...) a free `+` rail
+  supply (`VSYS`, `VBUS`, `VCC`, `VDD`, `5V`, `3V3`, `3.3V`, ...) a free `+` rail
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
+
+### Automatic placement
+
+Leave out a part's place and bbgen places it: `at` (and `rot`) on a Pico, DIP or SIP, `pins` on a
+resistor, capacitor, diode or LED. A file can then be just parts and nets; bbgen places, wires
+(`autowire` comes on by itself) and checks it in a few seconds. Anything you do give is kept, so
+pin a part with `at:` where you want it and let bbgen fit the rest around it.
+
+```yaml
+parts:
+  Pico: {type: pico}
+  U1: {type: dip, pins: 8, title: 24LC256, labels: [A0, A1, A2, GND, SDA, SCL, WP, VCC]}
+  C1: {type: capacitor, value: 100nF, near: U1}   # near: keep it by that part
+  R1: {type: resistor, value: 330R}
+  D1: {type: led}
+nets: ...
+```
+
+- Every leg of a part bbgen places must be in a net: that's how it knows where the part goes.
+- A DIP is placed straddling the trench, so it has to be 0.3 in wide (`width: 3`).
+- A decoupling cap (both nets on rails) goes next to a pin of its supply that has none yet;
+  `near:` overrides that.
+- The same file always gives the same layout. The checklist says where everything went.
+
+It places by trying layouts and building the best ones for real, then repairing the best build a
+move at a time: it prefers straight wires and parts, short wires, parts with room around them,
+and no warnings. It's a good start, not an oracle: if something reads badly, give that part a
+place and build again.
 
 ### Straight, not slanted
 
@@ -176,10 +204,10 @@ and `e` to `f` is 3. So:
 
 | type | placed by | notes |
 |---|---|---|
-| `pico` | `at` (pin 1), `rot` | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it. |
-| `dip` | `at` (pin 1), `rot` | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
-| `sip` | `at` (pin 1), `rot` | a single row: headers, trimmers |
-| `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]` | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. |
+| `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it. |
+| `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
+| `sip` | `at` (pin 1), `rot`, or bbgen | a single row: headers, trimmers |
+| `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. |
 | `offboard` | drawn beside the board | `labels`, `cols`, `numbering: row` (1, 2 across the first row) or `column`, `place: right` or `below`. A label ending in `!` is drawn red. |
 
 `rot` is 0, 90, 180 or 270, clockwise. `labels` is a list (one per pin) or a `{pin: name}` map.

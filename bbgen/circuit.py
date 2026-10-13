@@ -27,7 +27,7 @@ COLORS = {
 }
 NET_PALETTE = ("blue", "green", "yellow", "orange", "purple", "white", "brown", "cyan", "pink", "gray")
 _GROUND = re.compile(r"^(A|D|P)?(GND|VSS|0V)", re.I)
-_SUPPLY = re.compile(r"^(VSYS|VBUS|VIN|5V|12V)$", re.I)
+_SUPPLY = re.compile(r"^(VSYS|VBUS|VIN|VCC|VDD|VBAT|\+?\d+V\d*|\+?\d+\.\d+V)$", re.I)  # 5V, 3V3, 3.3V
 CHAR_W = 0.2  # rough label glyph width in grid units, for laying out off-board labels
 
 
@@ -89,9 +89,11 @@ class _Option:
     near: float = 0.0             # distance from the pin it serves
     pin: Pin | None = None        # an off-board pin
     fixed: bool = False           # a hole written out, claimed already
+    covered: bool = False         # under a two-lead part's body (set by autowire)
 
 
 EPS = 1e-6
+DETOUR_REACH = 12  # how many columns past its ends a wire may go to get around a part
 # every height a hole sits at, rails included
 _LEVELS = sorted({*ROW_Y.values(), *(y for pair in RAIL_PAIR_Y.values() for y in pair)})
 
@@ -102,6 +104,15 @@ def _key(xy) -> tuple[float, float]:
 
 def _aligned(a, b) -> bool:
     return abs(a[0] - b[0]) < EPS or abs(a[1] - b[1]) < EPS
+
+
+def _line(a, b):
+    """(line, lo, hi) for a straight run: the row or column it lies on and the span along it; None if slanted."""
+    if abs(a[1] - b[1]) < EPS:
+        return ("h", round(a[1], 3)), min(a[0], b[0]), max(a[0], b[0])
+    if abs(a[0] - b[0]) < EPS:
+        return ("v", round(a[0], 3)), min(a[1], b[1]), max(a[1], b[1])
+    return None
 
 
 def _along(s, t) -> bool:
@@ -141,6 +152,16 @@ def _dist(p: tuple[float, float], hint) -> float:
     return math.hypot(dx, dy)
 
 
+def needs_placing(data) -> bool:
+    """Whether a part in the file has no `at` (or two-lead, no `pins`), so bbgen has to place it."""
+    parts = data.get("parts") if isinstance(data, dict) else None
+    if not isinstance(parts, dict) or data.get("_placed") is not None:
+        return False  # autoplace's own trial builds
+    return any(isinstance(spec, dict) and ((spec.get("type") in FOOTPRINT_KINDS and not spec.get("at")) or
+                                           (spec.get("type") in LEAD_KINDS and spec.get("pins") is None))
+               for spec in parts.values())
+
+
 class Circuit:
     def __init__(self, data: dict, source: str = "circuit.yaml"):
         if not isinstance(data, dict):
@@ -152,14 +173,22 @@ class Circuit:
         self.occupied: dict[Hole, str] = {}
         self._used: dict[tuple, str] = {}          # the same, by drawing position
         self._segments: list[tuple] = []           # (a, b, who) for each wire run and two-lead part
+        self._lines: dict[tuple, list] = {}        # the straight ones by the line they lie on: (lo, hi, who)
         self._bodies: list[tuple] = []             # (box, ref) for each footprint part
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
         self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
+        if needs_placing(data):
+            from .autoplace import autoplace  # it builds trial circuits of its own
+            data = autoplace(data, source)
+        self._leg_rank: dict = data.get("_leg_rank") or {}  # autoplace's search: take a leg pair other than the best
         self._load_boards(data.get("boards") or [{"type": "full"}])
         self._load_parts(data.get("parts") or {})
+        for ref in data.get("_placed") or []:  # parts autoplace placed, not the file
+            if ref in self.parts:
+                self.parts[ref].auto = True
         self._load_wires(data.get("wires") or [])
-        self._place()
         self._load_nets(data.get("nets") or {})
+        self._place()
         if data.get("autowire"):
             from .autowire import autowire  # it builds on the check, which imports this module
             autowire(self)
@@ -271,9 +300,16 @@ class Circuit:
         for w in self.wires:
             for spec in w.spec:
                 self._reserve(spec, f"W{w.num}")
-        pending = [p for p in self.parts.values() if p.kind in LEAD_KINDS]
-        while pending:
+        # two-lead parts with their legs written first, so the ones bbgen places see them
+        auto = [p for p in self.parts.values() if p.kind in LEAD_KINDS and not p.legs]
+        pending = [p for p in self.parts.values() if p.kind in LEAD_KINDS and p not in auto]
+        while pending or auto:
             ready = [p for p in pending if not any(self._waits_on_leads(leg) for leg in p.legs)]
+            if not ready and auto:
+                from .autoplace import place_legs
+                place_legs(self, auto)
+                auto = []
+                continue
             if not ready:
                 for part in pending:
                     self.issues.append(Issue("error", "BAD_LEG", f"{part.ref}: its legs refer to two-lead parts "
@@ -286,6 +322,9 @@ class Circuit:
             self._route(w)
 
     def _place_footprint(self, part: Part) -> None:
+        if not part.at:
+            self.issues.append(Issue("error", "BAD_PLACE", f"{part.ref}: bbgen couldn't place it; give it at:"))
+            return
         try:
             anchor = self._hole(str(part.at))
         except _Unresolved as e:
@@ -371,7 +410,7 @@ class Circuit:
                 pin.xy = option.xy
         if all(p.xy for p in part.pins):
             a, b = part.pins[0].xy, part.pins[1].xy
-            self._segments.append((a, b, part.ref))
+            self._add_segment(a, b, part.ref)
             if _aligned(a, b):  # it lies over the holes between its legs
                 self._covered.update((k, part.ref) for k in self._between(a, b))
 
@@ -393,7 +432,8 @@ class Circuit:
             w.a = w.b = None
             return
         pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
-        self._segments += [(p, q, who) for p, q in zip(pts, pts[1:])]
+        for p, q in zip(pts, pts[1:]):
+            self._add_segment(p, q, who)
 
     def _best(self, a: list[_Option], b: list[_Option]) -> tuple[_Option, _Option]:
         """The best pair of places for two ends: straight and clear, then over as few part bodies as
@@ -415,11 +455,31 @@ class Circuit:
         over holes in use, 2 slanted, 3 straight along another wire or part."""
         if not _aligned(a, b):
             return 2, []
-        along = [who for p, q, who in self._segments if _along((a, b), (p, q))]
+        along = self._along_who(a, b)
         if along:
             return 3, along
         over = [self._used[k] for k in self._between(a, b) if k in self._used]
         return (1, over) if over else (0, [])
+
+    def _add_segment(self, a, b, who: str) -> None:
+        self._segments.append((a, b, who))
+        line = _line(a, b)
+        if line:
+            self._lines.setdefault(line[0], []).append((line[1], line[2], who))
+
+    def _reindex(self) -> None:
+        """Rebuild the line index after the segments' names change."""
+        segments, self._segments, self._lines = self._segments, [], {}
+        for a, b, who in segments:
+            self._add_segment(a, b, who)
+
+    def _along_who(self, a, b, exclude: str = "") -> list[str]:
+        """What lies along the straight run a-b, sharing some of its length."""
+        line = _line(a, b)
+        if not line:
+            return []
+        key, lo, hi = line
+        return [who for l2, h2, who in self._lines.get(key, ()) if who != exclude and min(hi, h2) - max(lo, l2) > EPS]
 
     def _between(self, a, b) -> list[tuple]:
         """Hole positions strictly between a and b on a straight run."""
@@ -430,7 +490,9 @@ class Circuit:
         return [_key((a[0], y)) for y in _LEVELS if lo + EPS < y < hi - EPS]
 
     def _bodies_crossed(self, a, b) -> list[str]:
-        return [ref for box, ref in self._bodies if _crosses(a, b, box)]
+        x0, x1, y0, y1 = min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1])
+        return [ref for box, ref in self._bodies
+                if x1 > box[0] and x0 < box[2] and y1 > box[1] and y0 < box[3] and _crosses(a, b, box)]
 
     def _take(self, option: _Option, who: str, spec: str = "") -> End:
         if option.pin is not None:
@@ -448,7 +510,7 @@ class Circuit:
                 self._slant(f"W{w.num}", w.spec, (w.a.hole, w.b.hole), w.auto)
         for part in self.parts.values():
             if part.kind in LEAD_KINDS and not part.slant and all(p.hole for p in part.pins):
-                self._slant(part.ref, part.legs, tuple(p.hole for p in part.pins))
+                self._slant(part.ref, part.legs, tuple(p.hole for p in part.pins), part.auto)
 
     def _slant(self, name: str, specs, holes: tuple[Hole, Hole], auto: bool = False) -> None:
         if holes[0].board != holes[1].board:
@@ -533,8 +595,7 @@ class Circuit:
                 continue  # flying leads are in the air
             pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
             ends = f"({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
-            along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for a, b, who in self._segments
-                                       if who != name and _along((p, q), (a, b))))
+            along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for who in self._along_who(p, q, name)))
             if along:
                 self.issues.append(Issue("warning", "OVER_PART", f"{name} runs along {' and '.join(along)} {ends}, "
                                          "hiding it: move one of them", holes=[w.a.hole, w.b.hole]))
@@ -567,7 +628,8 @@ class Circuit:
             return None
         board = self.boards[a.board]
         routes = [[(a.row, b.col)], [(b.row, a.col)]]
-        routes += [[(a.row, col), (b.row, col)] for col in range(1, board.columns + 1)]
+        span = range(max(1, min(a.col, b.col) - DETOUR_REACH), min(board.columns, max(a.col, b.col) + DETOUR_REACH) + 1)
+        routes += [[(a.row, col), (b.row, col)] for col in span]
         best = None
         for route in routes:
             if not all(board.has(row, col) for row, col in route):
@@ -576,7 +638,7 @@ class Circuit:
             segs = list(zip(pts, pts[1:]))
             if any(self._bodies_crossed(p, q) for p, q in segs):
                 continue
-            along = sum(_along((p, q), (s, t)) for p, q in segs for s, t, other in self._segments if other != who)
+            along = sum(len(self._along_who(p, q, who)) for p, q in segs)
             over = 10 * along + sum(k in self._used or k in self._covered for p, q in segs for k in self._between(p, q))
             cost = (over, round(sum(math.dist(p, q) for p, q in segs), 6))
             if best is None or cost < best[0]:

@@ -70,7 +70,11 @@ class Board:
         return RAIL_PAIR_Y[side][self.rail_order[side].index(pol)]
 
     def y(self, row: str) -> int:
-        return ROW_Y[row] if row in ROW_Y else self.rail_y(row)
+        try:
+            return self._y[row]
+        except (AttributeError, KeyError):
+            self._y = {**ROW_Y, **{r: self.rail_y(r) for r in RAILS}}
+            return self._y[row]
 
     def has(self, row: str, col: int) -> bool:
         if row in ROW_Y:

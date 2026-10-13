@@ -77,6 +77,8 @@ class Part:
     width: int = 0           # dip: row spacing
     legs: list[str] = field(default_factory=list)  # two-lead parts: where each leg goes
     slant: str | None = None  # two-lead parts: why it may lie slanted
+    near: str | None = None   # a part to keep it close to, when bbgen places it
+    auto: bool = False        # placed by bbgen, not the file
     cols: int = 1            # off-board layout
     numbering: str = "row"
     place: str = "right"
@@ -157,10 +159,9 @@ def make_part(ref: str, spec: dict) -> Part:
         raise PartError(f"parts.{ref}: unknown type {kind!r} (expected one of {', '.join(KINDS)})")
     part = Part(ref, kind, str(spec.get("title") or ""), str(spec.get("value") or ""), spec.get("color"))
 
+    part.near = str(spec["near"]) if spec.get("near") else None
     if kind in FOOTPRINT_KINDS:
-        part.at = spec.get("at")
-        if not part.at:
-            raise PartError(f"parts.{ref}: needs at: <hole for pin 1>")
+        part.at = spec.get("at")  # None: bbgen places it
         part.rot = int(spec.get("rot", 0))
         if part.rot not in (0, 90, 180, 270):
             raise PartError(f"parts.{ref}: rot must be 0, 90, 180 or 270")
@@ -189,9 +190,10 @@ def make_part(ref: str, spec: dict) -> Part:
         part.pins = [Pin(part, k, names[k - 1], (k - 1, 0), (0, -1)) for k in range(1, n + 1)]
     elif kind in LEAD_KINDS:
         legs = spec.get("pins")
-        if not (isinstance(legs, list) and len(legs) == 2):
-            raise PartError(f"parts.{ref}: needs pins: [<leg 1>, <leg 2>] (holes, rails or part pins)")
-        part.legs = [str(x) for x in legs]
+        if legs is not None and not (isinstance(legs, list) and len(legs) == 2):
+            raise PartError(f"parts.{ref}: pins is [<leg 1>, <leg 2>] (holes, rails or part pins), or leave it out "
+                            "and bbgen places the legs from the nets")
+        part.legs = [str(x) for x in legs or []]  # none: bbgen places them
         part.slant = slant_reason(spec, f"parts.{ref}")
         names = spec.get("labels") or LEAD_KINDS[kind]
         part.pins = [Pin(part, k + 1, str(names[k])) for k in range(2)]

@@ -67,6 +67,7 @@ def _renumber(c: Circuit, wires: list[Wire], first: int) -> None:
         for k, who in table.items():
             table[k] = names.get(who, who)
     c._segments = [(p, q, names.get(who, who)) for p, q, who in c._segments]
+    c._reindex()
 
 
 def _pin_node(c: Circuit, pin):
@@ -170,7 +171,8 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
             w.via = c._detour(w.a.hole, w.b.hole, f"W{w.num}") or []  # around the part it would cross
             w.via_xy = [c._via(v) for v in w.via]
         pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
-        c._segments += [(p, q, f"W{w.num}") for p, q in zip(pts, pts[1:])]
+        for p, q in zip(pts, pts[1:]):
+            c._add_segment(p, q, f"W{w.num}")
         c.wires.append(w)
         dsu.union(na, nb)
 
@@ -190,7 +192,7 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
             continue
         xy = board.xy(hole)
         near = min((math.dist(xy, p.xy) for p in mine if p.xy), default=0.0)
-        out.append((spec, _Option(hole, xy, near), node))
+        out.append((spec, _Option(hole, xy, near, covered=_key(xy) in c._covered), node))
     return out
 
 
@@ -208,7 +210,7 @@ def _bound(c: Circuit, p: _Option, q: _Option) -> float:
     length = math.dist(p.xy, q.xy)
     if p.pin is not None or q.pin is not None:
         length += 0.0 if (q if p.pin is not None else p).hole.is_rail else OFF_RAIL_COST
-    return length + COVERED_COST * sum(o.hole is not None and _key(o.xy) in c._covered for o in (p, q))
+    return length + COVERED_COST * (p.covered + q.covered)
 
 
 def _cost(c: Circuit, p: _Option, q: _Option):
@@ -223,5 +225,5 @@ def _cost(c: Circuit, p: _Option, q: _Option):
     else:
         board_end = q if p.pin is not None else p
         length += 0.0 if board_end.hole.is_rail else OFF_RAIL_COST
-    length += COVERED_COST * sum(o.hole is not None and _key(o.xy) in c._covered for o in (p, q))
+    length += COVERED_COST * (p.covered + q.covered)
     return round(length, 6), round(p.near + q.near, 6), p.xy, q.xy
