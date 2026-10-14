@@ -36,4 +36,5 @@ and after in `out/diff/`.
 
 Known gaps the circuits work around (noted in each file): a 6 mm tactile switch and an HC-49
 crystal are off KiCad's 0.1 in grid, so they're a 4-pin DIP and a two-lead part; TO-92 parts use
-`TO-92_Inline_Wide`. 16 and 17 need 0.6 and 1.0 in wide parts, which bbgen doesn't place yet.
+`TO-92_Inline_Wide`. 16 needs more columns than one board has, and bbgen places on one board
+only; 17's ESP32 is 1.0 in wide, which covers one side's strips whole on one board.

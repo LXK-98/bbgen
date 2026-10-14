@@ -193,7 +193,10 @@ nets: ...
 ```
 
 - Every leg of a part bbgen places must be in a net: that's how it knows where the part goes.
-- A DIP is placed straddling the trench, so it has to be 0.3 in wide (`width: 3`).
+- A DIP is placed straddling the trench. A 0.3 in one (`width: 3`) sits with a row each side of it;
+  a 0.6 in one (an SMD adapter, `width: 6`) can sit four ways (rows `b` and `f` up to `e` and `i`),
+  and bbgen picks the one that leaves room where its wires go. A 1.0 in part (an ESP32 DevKit)
+  would cover one side's strips whole, so give it `at:` (or use two boards, as builders do).
 - A decoupling cap (both nets on rails) goes next to a pin of its supply that has none yet;
   `near:` overrides that.
 - The same file always gives the same layout. The checklist says where everything went.

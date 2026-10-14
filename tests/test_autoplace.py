@@ -32,6 +32,23 @@ class AutoplaceTest(unittest.TestCase):
         self.assertTrue(all(p.pins[0].hole for p in c.parts.values()))
         self.assertTrue(c.wires and all(w.auto for w in c.wires))
 
+    def test_a_wide_dip_straddles_the_trench(self):
+        # a 0.6 in adapter: its two rows either side of the trench, a hole free by every pin
+        adapter = {"type": "dip", "pins": 8, "width": 6, "labels": ["A", "B", "GND", "D", "E", "F", "G", "VCC"]}
+        data = {"parts": {"U1": adapter, "U2": {"type": "dip", "pins": 6, "labels": ["X", "Y", "GND", "P", "Q", "VCC"]}},
+                "nets": {"GND": ["U1.GND", "U2.GND"], "VCC": ["U1.VCC", "U2.VCC"], "S1": ["U1.A", "U2.X"],
+                         "S2": ["U1.F", "U2.Q"]}}
+        c, r = build(data)
+        self.assertEqual(codes(r), [])
+        rows = {p.hole.row for p in c.parts["U1"].pins}
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(rows & set("abcde") and rows & set("fghij"))
+
+    def test_a_dip_too_wide_for_the_board_says_so(self):
+        data = {"parts": {"U1": {"type": "dip", "pins": 8, "width": 10}}, "nets": {"A": ["U1.1", "U1.8"]}}
+        with self.assertRaisesRegex(Exception, "1 in DIP"):
+            build(data)
+
     def test_the_same_file_gets_the_same_layout(self):
         first, second = build(SMALL)[0], build(SMALL)[0]
         def holes(c):

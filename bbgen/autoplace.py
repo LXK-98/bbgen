@@ -560,15 +560,23 @@ class _Model:
         if part.kind == "pico":
             # centred on the trench, or a row off it either way: more room on one side, if that's where it's needed
             spots = [(r, c, 0) for r in "ghi" for c in cols] + [(r, c, 180) for r in "bcd" for c in cols]
-        elif part.kind == "dip":
-            if part.width != 3:
-                raise PartError(f"parts.{part.ref}: bbgen only places 0.3 in DIPs; give it at:")
+        elif part.kind == "dip" and part.width == 3:
             spots = [("f", c, 0) for c in cols] + [("e", c, 180) for c in cols]
+        elif part.kind == "dip":  # wider: wherever its rows straddle the trench (a 0.6 in DIP: b and f, ... e and i)
+            spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 180)]
         elif part.kind == "kicad":
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 90, 180, 270)]
         else:  # sip
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 180)]
         out = [o for o in (self._layout(part, *s) for s in spots) if o]
+        if part.kind == "dip" and part.width != 3:
+            # straddling the trench (one row each side, or opposite pins would share a strip), and with a hole
+            # free in every pin's strip for its wire: a 1.0 in part covers one side's strips whole on one board
+            out = [o for o in out if len({y < 8 for _, y in o[2].values()}) == 2
+                   and all(o[6].get(("top" if y < 8 else "bot", x), 0) < 5 for x, y in o[2].values())]
+            if not out:
+                raise PartError(f"parts.{part.ref}: a {part.width / 10:g} in DIP can't straddle the trench with a "
+                                "free hole by each pin; give it at:")
         if part.kind == "kicad":  # straddling the trench: centred, or at most a row off (wide parts only)
             def room(lay):
                 return min((y - 3) if y < 8 else (14 - y) for _, y in lay[2].values())
