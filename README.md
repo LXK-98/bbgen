@@ -204,6 +204,8 @@ nets: ...
 - With several boards (`boards: [full, full]`), bbgen places parts on any of them, each part on
   one board; a net's rails run on every board, linked across at their ends.
 - The same file always gives the same layout. The checklist says where everything went.
+- It builds the layouts it tries several at a time, one per CPU core; `BBGEN_JOBS=1` (or any other
+  number) in the environment changes that. The layout it ends with is the same either way.
 
 A part wider than the trench (a Pico) may sit a row off centre, when its busy side needs the
 room. It places by trying layouts and building the best ones for real, then repairing the best build a

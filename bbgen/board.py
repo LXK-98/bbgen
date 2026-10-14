@@ -100,10 +100,20 @@ class Board:
         return (self.id, hole.row, int(self.split_rails and hole.col > self._split_after))
 
     def strip_holes(self, strip: tuple) -> list[Hole]:
+        """The holes of a strip, in order (a fresh list: the board's own is cached, as its holes never change)."""
+        try:
+            return list(self._strip_holes[strip])
+        except AttributeError:
+            self._strip_holes = {}
+        except KeyError:
+            pass
         _, kind, n = strip
         if kind in ("a-e", "f-j"):
-            return [Hole(self.id, r, n) for r in ("abcde" if kind == "a-e" else "fghij")]
-        return [h for h in (Hole(self.id, kind, c) for c in self.rail_cols) if self.strip(h) == strip]
+            holes = [Hole(self.id, r, n) for r in ("abcde" if kind == "a-e" else "fghij")]
+        else:
+            holes = [h for h in (Hole(self.id, kind, c) for c in self.rail_cols) if self.strip(h) == strip]
+        self._strip_holes[strip] = tuple(holes)
+        return holes
 
     def holes(self):
         for row in ROW_Y:

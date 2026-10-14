@@ -158,6 +158,7 @@ def _put_back(c: Circuit, w: Wire) -> None:
     """Put a wire taken out back exactly as it was, under a number of its own."""
     w.num = max((x.num for x in c.wires), default=0) + 1
     who = f"W{w.num}"
+    c._wired = c.__dict__.get("_wired", 0) + 1
     for end in (w.a, w.b):
         if end and end.hole is not None:
             c._occupy(end.hole, who)
@@ -386,6 +387,7 @@ def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = Fals
     num = max((x.num for x in c.wires), default=0) + 1  # wires taken out leave gaps: never reuse a number
     w = Wire(num, net.name, (spec_a, spec_b), None, [], auto=True, flex=flex)
     w.a, w.b = c._take(pa, f"W{w.num}", spec_a), c._take(pb, f"W{w.num}", spec_b)
+    c._wired = c.__dict__.get("_wired", 0) + 1
     c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e.hole is not None)
     if w.flex:
         c.wires.append(w)  # it arches over the board: nothing lies under it
@@ -509,6 +511,7 @@ def _reach(c: Circuit, hole: Hole, cache: dict) -> list[tuple[Hole, float]]:
              [Hole(board.id, r, hole.col) for y, r in reversed(cache["levels"]) if y < a[1]],
              [Hole(board.id, r, hole.col) for y, r in cache["levels"] if y > a[1]]]
     spare = cache["spare"]
+    blocked = c.__dict__.setdefault("_step_blocked", {})
     out = []
     for line in lines:
         prev, over, covered = a, False, {}
@@ -516,7 +519,10 @@ def _reach(c: Circuit, hole: Hole, cache: dict) -> list[tuple[Hole, float]]:
             if not board.has(t.row, t.col):
                 continue  # a rail's gap: no hole to end in, nor to lie over
             b = board.xy(t)
-            if c._bodies_crossed(prev, b) or c._along_who(prev, b):
+            step = (prev, b)
+            if step not in blocked:  # bodies don't move while wiring: whether one is in the way is worked out once
+                blocked[step] = bool(c._bodies_crossed(prev, b))
+            if blocked[step] or c._along_who(prev, b):
                 break
             if prev is not a:  # the hole stepped past is under the wire now
                 k = _key(prev)
@@ -539,7 +545,11 @@ def _reach(c: Circuit, hole: Hole, cache: dict) -> list[tuple[Hole, float]]:
 
 
 def _empty_strips(c: Circuit) -> set:
-    """Strips of the terminal area with nothing in them and nothing lying over any of their holes."""
+    """Strips of the terminal area with nothing in them and nothing lying over any of their holes (worked out
+    again only once a wire has gone in or come out)."""
+    cached = c.__dict__.get("_empty")
+    if cached and cached[0] == c.__dict__.get("_wired", 0):
+        return cached[1]
     out = set()
     for board in c.boards.values():
         for col in range(1, board.columns + 1):
@@ -549,6 +559,7 @@ def _empty_strips(c: Circuit) -> set:
                 if all(h not in c.occupied and _key(board.xy(h)) not in c._lain and _key(board.xy(h)) not in c._covered
                        for h in holes):
                     out.add(strip)
+    c._empty = (c.__dict__.get("_wired", 0), out)
     return out
 
 
@@ -617,6 +628,7 @@ def _prune(c: Circuit, rails: list[tuple], node_pins: dict) -> None:
 
 def _unwire(c: Circuit, w: Wire) -> None:
     c.wires.remove(w)
+    c._wired = c.__dict__.get("_wired", 0) + 1
     who = f"W{w.num}"
     for end in (w.a, w.b):
         if end and end.hole is not None and c.occupied.get(end.hole) == who:

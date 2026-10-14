@@ -25,6 +25,8 @@ import bisect
 import copy
 import itertools
 import math
+import multiprocessing
+import os
 import random
 
 from . import trace
@@ -652,8 +654,11 @@ class _Model:
 
     def x_of(self, at: str) -> int:
         """Where along the boards a layout's pin 1 is ("2:f10" is column 10 of board 2)."""
-        board, _, col = parse_hole(at)
-        return self.offset.get(str(board) if board else self.board.id, 0) + col
+        cache = self.__dict__.setdefault("_x_of", {})
+        if at not in cache:
+            board, _, col = parse_hole(at)
+            cache[at] = self.offset.get(str(board) if board else self.board.id, 0) + col
+        return cache[at]
 
     def cost(self, state: dict) -> float:
         layouts = {**self.fixed, **state}
@@ -833,9 +838,9 @@ def autoplace(data: dict, source: str) -> dict:
             candidates[(k, ())] = (0.0, {}, k)
     best = None
     starts = sorted(candidates.values(), key=lambda t: t[0])[:KEEP * 2]
-    for i, (_, state, k) in enumerate(starts, 1):
-        trial = _with(bases[k], {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()})
-        score, c = _evaluate(trial, source)
+    trials = [((i, k), _with(bases[k], {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()}))
+              for i, (_, state, k) in enumerate(starts, 1)]
+    for (i, k), trial, score, c in _scored(trials, source):
         kept = best is None or score < best[0]
         trace.step(c, f"starting layout {i} of {len(starts)}: score {score:.0f}" + (" ✓ best so far" if kept else ""),
                    kept=kept)
@@ -844,6 +849,7 @@ def autoplace(data: dict, source: str) -> dict:
     if best is None:
         raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
                            "biggest yourself (at:), or use more boards")
+    best = (best[0], best[1], _built(best[1], best[2], source))
     best = _turned(model, best, source)
     return _repair(model, leads, best, source)
 
@@ -867,14 +873,20 @@ def _turned(model, best, source: str):
         combos = [combo for n in range(1, len(refs) + 1) for combo in itertools.combinations(refs, n)]
     else:
         combos = [combo for n in (1, 2) for combo in itertools.combinations(refs, n)]
-    for combo in combos:
-        trial = _with(data, {ref: {"at": flips[ref][0], "rot": flips[ref][1]} for ref in combo})
-        s2, c2 = _evaluate(trial, source)
-        kept = s2 < score - 1e-9
-        trace.step(c2, f"turn {' and '.join(combo)}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
-                   kept=kept, focus=combo)
-        if kept:
-            score, data, c = s2, trial, c2
+    start = 0
+    while start < len(combos):  # each turn tried on the layout as it stands, the turns kept so far in it
+        here = data
+        trials = ((j, _with(here, {ref: {"at": flips[ref][0], "rot": flips[ref][1]} for ref in combos[j]}))
+                  for j in range(start, len(combos)))
+        start = len(combos)
+        for j, trial, s2, c2 in _scored(trials, source):
+            kept = s2 < score - 1e-9
+            trace.step(c2, f"turn {' and '.join(combos[j])}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
+                       kept=kept, focus=combos[j])
+            if kept:
+                score, data, c = s2, trial, _built(trial, c2, source)
+                start = j + 1
+                break
     return score, data, c
 
 
@@ -892,6 +904,69 @@ def _evaluate(data: dict, source: str):
     from .check import check
     c = Circuit(data, source)
     return _score(c, check(c)), c
+
+
+# ---- building trial layouts side by side ----
+#
+# The search builds a trial layout for every move it weighs, and keeps the first that scores better, in a fixed
+# order. Trials don't depend on one another, so a few worker processes build the next several at once; the
+# search still takes them in order and stops at the same one, so the layout it ends with is the same as when
+# built one at a time. Only the score comes back from a worker; the search builds a trial again itself when it
+# needs the circuit (one it keeps, or one it polishes). BBGEN_JOBS=1 builds one at a time; so does a recording
+# (its frames come from the circuits), and a worker never starts workers of its own.
+
+JOBS = max(1, int(os.environ.get("BBGEN_JOBS") or os.cpu_count() or 1))
+_pool_ = None
+_in_worker = False
+
+
+def _worker_start() -> None:
+    global _in_worker, _pool_
+    _in_worker, _pool_ = True, None
+
+
+def _worker_score(data: dict, source: str) -> float:
+    return _evaluate(data, source)[0]
+
+
+def _parallel() -> bool:
+    return (JOBS > 1 and not _in_worker and not trace.active()
+            and "fork" in multiprocessing.get_all_start_methods())
+
+
+def _pool():
+    global _pool_
+    if _pool_ is None:
+        from concurrent.futures import ProcessPoolExecutor
+        _pool_ = ProcessPoolExecutor(JOBS, mp_context=multiprocessing.get_context("fork"), initializer=_worker_start)
+    return _pool_
+
+
+def _scored(trials, source: str):
+    """(item, trial, score, circuit or None) for each (item, trial) in order, the next few built side by side."""
+    it = iter(trials)
+    if not _parallel():
+        for item, trial in it:
+            score, c = _evaluate(trial, source)
+            yield item, trial, score, c
+        return
+    pool = _pool()
+    while True:
+        batch = list(itertools.islice(it, JOBS))
+        if not batch:
+            return
+        futures = [pool.submit(_worker_score, trial, source) for _, trial in batch]
+        try:
+            for (item, trial), future in zip(batch, futures):
+                yield item, trial, future.result(), None
+        finally:
+            for future in futures:
+                future.cancel()  # the search stopped short: the rest aren't wanted
+
+
+def _built(trial: dict, c, source: str):
+    """The trial's circuit: the one built in this process, or built again here (a worker's wasn't sent back)."""
+    return c if c is not None else _evaluate(trial, source)[1]
 
 
 def _pinned(c, leads: list[str]) -> dict:
@@ -1012,21 +1087,22 @@ def _polish(leads: list[str], data: dict, score: float, c, source: str, budget: 
         improved = False
         from .check import check
         rank = {ref: i for i, ref in enumerate(_trouble(c, check(c)))}
-        for ref in sorted(leads, key=lambda r: rank.get(r, len(rank)))[:4]:
-            for k in (1, 2):
-                trial = _with(data, {ref: {"pins": None}})
-                trial["_leg_rank"] = {ref: k}
-                s2, c2 = _evaluate(trial, source)
-                spent += 1
-                if s2 < score - 1e-9:
-                    score, c = s2, c2
-                    data = _with(trial, _pinned(c2, leads))
-                    data.pop("_leg_rank", None)
-                    improved = True
-                    break
-                if spent >= budget:
-                    break
-            if improved or spent >= budget:
+        here = data
+
+        def trials():
+            for ref in sorted(leads, key=lambda r: rank.get(r, len(rank)))[:4]:
+                for k in (1, 2):
+                    yield ref, {**_with(here, {ref: {"pins": None}}), "_leg_rank": {ref: k}}
+        if spent >= budget:
+            break
+        for _, trial, s2, c2 in _scored(itertools.islice(trials(), budget - spent), source):
+            spent += 1
+            if s2 < score - 1e-9:
+                c2 = _built(trial, c2, source)
+                score, c = s2, c2
+                data = _with(trial, _pinned(c2, leads))
+                data.pop("_leg_rank", None)
+                improved = True
                 break
     return score, data, c, spent
 
@@ -1038,15 +1114,16 @@ def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
     improved = True
     while improved and builds < REPAIR_BUILDS and since < PATIENCE:
         improved = False
-        for changes, ranks in _moves(model, leads, c, check(c), data):
-            trial = _with(data, changes)
-            trial["_leg_rank"] = ranks
-            s2, c2 = _evaluate(trial, source)
+        here = data
+        trials = (((changes, ranks), {**_with(here, changes), "_leg_rank": ranks})
+                  for changes, ranks in _moves(model, leads, c, check(c), data))
+        for (changes, ranks), trial, s2, c2 in _scored(trials, source):
             builds += 1
             since += 1
             if not ranks and score <= s2 < score + LOOKAHEAD and polishes < LOOKAHEAD_TIMES:
                 # a chip moved, its two-lead parts placed afresh: they deserve a polish before it's judged (on a
                 # budget of its own, so the search itself keeps its builds)
+                c2 = _built(trial, c2, source)
                 s3, d3, c3, _ = _polish(leads, trial, s2, c2, source, LOOKAHEAD_BUILDS)
                 polishes += 1
                 if s3 < s2:
@@ -1058,6 +1135,7 @@ def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
             if s2 < score - 1e-9:
                 since = 0
                 # keep it, with every leg written down so the next move starts from exactly this
+                c2 = _built(trial, c2, source)
                 score, c = s2, c2
                 data = _with(trial, _pinned(c2, leads))
                 data.pop("_leg_rank", None)
