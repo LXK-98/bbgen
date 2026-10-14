@@ -39,22 +39,7 @@ def _node(c: Circuit, hole: Hole):
 
 
 def autowire(c: Circuit) -> None:
-    dsu = _DSU()
-    node_pins: dict[tuple, list] = {}
-    for part in c.parts.values():
-        for pin in part.pins:
-            node = _pin_node(c, pin)
-            if node:
-                dsu.find(node)
-                node_pins.setdefault(node, []).append(pin)
-        for bus in part.buses:
-            nodes = [n for n in (_pin_node(c, p) for p in bus) if n]
-            for node in nodes[1:]:
-                dsu.union(nodes[0], node)
-    for w in c.wires:
-        if w.a and w.b:
-            dsu.union(_end_node(c, w.a), _end_node(c, w.b))
-
+    dsu, node_pins = _joined(c)
     c._ends = {_key(c.end_xy(e)) for w in c.wires for e in (w.a, w.b) if e and e.hole is not None}
     c._lain = set().union(*(c._lies_over(w) for w in c.wires))
     in_nets = {p for net in c.nets.values() for p in net.pins}  # pins nothing connects need no hole kept free
@@ -84,6 +69,27 @@ def _span(c: Circuit, net: Net) -> float:
         return 0.0
     xs, ys = [x for x, _ in pts], [y for _, y in pts]
     return (max(xs) - min(xs)) + (max(ys) - min(ys))
+
+
+def _joined(c: Circuit) -> tuple[_DSU, dict]:
+    """What's connected so far (the strips, the parts' own buses and the wires in), and the pins in each
+    node."""
+    dsu = _DSU()
+    node_pins: dict[tuple, list] = {}
+    for part in c.parts.values():
+        for pin in part.pins:
+            node = _pin_node(c, pin)
+            if node:
+                dsu.find(node)
+                node_pins.setdefault(node, []).append(pin)
+        for bus in part.buses:
+            nodes = [n for n in (_pin_node(c, p) for p in bus) if n]
+            for node in nodes[1:]:
+                dsu.union(nodes[0], node)
+    for w in c.wires:
+        if w.a and w.b:
+            dsu.union(_end_node(c, w.a), _end_node(c, w.b))
+    return dsu, node_pins
 
 
 def _renumber(c: Circuit, wires: list[Wire], first: int) -> None:
@@ -286,7 +292,8 @@ def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = Fals
          quiet: bool = False) -> Wire:
     """Put in one wire between two (spec, option, node) ends (joining their nodes, unless dsu is None)."""
     (spec_a, pa, na), (spec_b, pb, nb) = end_a, end_b
-    w = Wire(len(c.wires) + 1, net.name, (spec_a, spec_b), None, [], auto=True, flex=flex)
+    num = max((x.num for x in c.wires), default=0) + 1  # wires taken out leave gaps: never reuse a number
+    w = Wire(num, net.name, (spec_a, spec_b), None, [], auto=True, flex=flex)
     w.a, w.b = c._take(pa, f"W{w.num}", spec_a), c._take(pb, f"W{w.num}", spec_b)
     c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e.hole is not None)
     if w.flex:
