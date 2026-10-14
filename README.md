@@ -306,8 +306,8 @@ parts:
 
 | type | placed by | notes |
 |---|---|---|
-| `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it, and its USB cable rows e-f past the USB end. |
-| `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
+| `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it (unless `raised: true`: on its headers, with flat wires under it), and its USB cable rows e-f past the USB end. |
+| `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters (`width: 6`) and modules like an ESP32 DevKit (`width: 10`) too; `raised: true` for one standing on its headers, with flat wires under it. |
 | `sip` | `at` (pin 1), `rot`, or bbgen | a single row: headers, trimmers |
 | `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. An LED is drawn from above, the flat on its rim at the cathode; its `color` is `red` (the default), `green`, `yellow`, `blue`, `white`, `orange` or `#rrggbb`. |
 | any, from KiCad | `at` (pin 1), `rot`, or bbgen | `symbol: Library:Name`, `footprint: Library:Name`, `adapter` (see above) |
@@ -336,7 +336,7 @@ they run out.
 | `SHORT` | two nets are connected together |
 | `STRAY` | a pin that's in no net is connected to something |
 | `SHORTED_PART` | both legs of a two-lead part are in the same connection |
-| `HOLE_TAKEN` | two things in one hole, or a hole under a part's body |
+| `HOLE_TAKEN` | two things in one hole, a hole under a part's body, or a leg or a plug (a flexible jumper's, a flying lead's) under a raised module, where only flat wires fit |
 | `OFF_HOLES` | a pin lands in the trench or off the board |
 | `NOT_PLACED`, `TWO_NETS`, `BAD_*` | a pin in a net isn't on the board; a pin in two nets; a reference that doesn't resolve |
 | `BAD_RAIL` | a net's `rail:` isn't a rail, names one another net already uses, puts a supply on a `-` rail (or a ground on a `+` one), or no rail is left for it |
@@ -344,7 +344,7 @@ they run out.
 | `DANGLING` (warning) | a wire ends in a strip with nothing else in it |
 | `NO_EFFECT` (warning) | both ends of a wire are in the same strip |
 | `DIAGONAL` (warning) | a wire or two-lead part slants where it could run straight; the message says how |
-| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body (for a wire, the message gives bends around it), a wire ends under a two-lead part or runs along a part, or a flexible jumper arches over a keep-out |
+| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body (for a wire, the message gives bends around it), a wire ends under a two-lead part or runs along a part, a two-lead part lies across a raised module, or a flexible jumper arches over a keep-out |
 | `NESTED` (warning) | a wire lies over one put in before it, end to end: buildable, but it hides the inner one |
 
 ## With Claude Code
@@ -361,3 +361,9 @@ ln -s ~/Documents/Code/bbgen/skill ~/.claude/skills/breadboard
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
+
+Changing how bbgen places or wires? Run the benchmarks before and after: 21 real circuits that
+bbgen places and wires from scratch, measured for errors, warnings, slants, crossings, jumpers and
+time, with `--check` failing on any regression ([benchmarks/README.md](benchmarks/README.md)). The
+costs placement and wiring trade off are all in [bbgen/costs.py](bbgen/costs.py), in holes of wire
+length so they compare directly.

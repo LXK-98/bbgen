@@ -24,6 +24,10 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    looks like one. Give a decoupling cap `near:` its chip.
    Only place a part yourself (`at`, `pins`) where you have a reason to, such as the user's
    preference or a physical constraint bbgen can't know.
+   If the parts won't fit one board (bbgen says so, or the build is a mass of jumpers), add one:
+   `boards: [full, full]` puts them side by side, `{type: full, below: 1}` snaps the second under
+   the first. bbgen places parts on any of them; a wire between two boards is always a flexible
+   jumper. See "Wide modules" below for a module too wide for one board.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
    layout with errors, and never silence one by dropping a pin from `nets`.
 4. **Work through the warnings.** Each says how to fix it:
@@ -35,8 +39,9 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    - On a wire or part bbgen placed, the fix is placement: give the part it names an `at` (or
      `pins`) of your own and build again; bbgen fits the rest around it.
    - Flexible jumpers (`flex`, drawn as arches with square plugs) aren't warnings: bbgen uses
-     them where no wire could lie straight on the board. A few are normal on a busy board; many
-     between the same parts mean those parts should sit closer, so place them yourself.
+     them where no wire could lie straight on the board (first trying two or three straight wires
+     through an empty strip), and always between two boards. A few are normal on a busy board;
+     many between the same parts mean those parts should sit closer, so place them yourself.
 
    Rebuild after each round.
 5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each
@@ -54,6 +59,27 @@ parts land" and the rail columns under "Holes": placing parts needs both.
 - Use part pins (`U1.VCC`) for wire ends and let bbgen pick the holes. Give explicit holes only
   where you need a specific position, such as junction strips or both ends on rails.
 - Mark dangerous off-board pins with a trailing `!` in their label (drawn in red).
+- `raised: true` assumes the module stands high enough on its headers for flat jumper wires to
+  pass under it (true of an ESP32 DevKit or a Pico on standard headers). Say so in `notes`.
+
+## Wide modules
+
+A module's rows of pins straddle the trench. A 0.3 in DIP or a 0.6 in SMD adapter (`width: 6`)
+fits one board, and bbgen places it. A 1.0 in module, such as a 38-pin ESP32 DevKitC (`type: dip`,
+`width: 10`), covers every free hole beside one of its rows on one board. There are three ways to
+build it; ask the user which they want, since it's their hardware:
+
+- **On one board, wired under it:** `raised: true` on the module. Flat wires run under it and
+  out past its ends; they go in first and the checklist puts the module in after them. This is
+  the tidiest build if the user is happy to lay wires before seating the module.
+- **Across two boards:** `boards: [full, {type: full, below: 1}]`, the boards snapped together
+  long side to long side; the module sits with a row of pins on each. Wires between the boards
+  are flexible jumpers.
+- **Off the board:** `type: offboard` with its `labels`, `cols: 2` and `numbering: column` (pins 1 to
+  19 down one column, as a DevKit counts them), reached by Dupont leads.
+
+`benchmarks/17-esp32-devkit.yaml`, `20-esp32-offboard.yaml` and `21-esp32-under.yaml` are the
+same circuit built each way: start from the one that matches.
 
 ## Layout rules
 
@@ -71,3 +97,5 @@ Wires and parts run straight along a row or a column, never slanted when it can 
   leg, put it in the row or column of the other leg.
 - **A wire that must change both row and column** (across the trench between two columns) is
   fine as is; bend it with `via` only if it would cross a part.
+- **Supply and ground leads** from an off-board connector land on their net's rail, at the end
+  nearest the connector; keep parts out of those last rail holes.
