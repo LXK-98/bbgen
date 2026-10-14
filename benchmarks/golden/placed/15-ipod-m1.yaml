@@ -1,0 +1,225 @@
+title: 'iPod LCD driver, M1: rails and reference'
+notes:
+- 'Tier 4. From ipod-classic-reverse-engineering docs/BREADBOARD.md 3a-3b: two LDOs
+  and a buffered, trimmable reference, on the SMD-to-DIP adapters (SOT-23-5 pad 5
+  ASSUMED on adapter pin 6).'
+parts:
+  Pico:
+    symbol: MCU_Module:RaspberryPi_Pico
+    footprint: Module:RaspberryPi_Pico_Common_THT
+    at: b60
+    rot: 180
+  U12:
+    symbol: Regulator_Linear:ME6211C30M5
+    adapter:
+      pins: 6
+      map:
+        '5': 6
+    at: f28
+    rot: 0
+  U11:
+    symbol: Regulator_Linear:AP2112K-1.8
+    adapter:
+      pins: 6
+      map:
+        '5': 6
+    at: f35
+    rot: 0
+  U13:
+    symbol: Amplifier_Operational:TLV9061xDBV
+    adapter:
+      pins: 6
+      map:
+        '5': 6
+    at: f22
+    rot: 0
+  RV1:
+    footprint: Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical
+    title: 3296W 10k
+    at: d18
+    rot: 90
+  R1:
+    type: resistor
+    value: 10k
+    pins:
+    - b22
+    - b18
+  R2:
+    type: resistor
+    value: 10k
+    pins:
+    - top+18
+    - a18
+  R5:
+    type: resistor
+    value: 10k
+    pins:
+    - h19
+    - h24
+  R6:
+    type: resistor
+    value: 10k
+    pins:
+    - a24
+    - a27
+  R3:
+    type: resistor
+    value: 10k
+    pins:
+    - h30
+    - h29
+  R4:
+    type: resistor
+    value: 10k
+    pins:
+    - i51
+    - i48
+  C5:
+    type: electrolytic
+    value: 10uF
+    near: U12
+    pins:
+    - bot+29
+    - j29
+  C1:
+    type: capacitor
+    value: 1uF
+    near: U12
+    pins:
+    - i28
+    - i29
+  C2:
+    type: capacitor
+    value: 1uF
+    near: U12
+    pins:
+    - top+29
+    - top-29
+  C3:
+    type: capacitor
+    value: 1uF
+    near: U11
+    pins:
+    - h35
+    - h36
+  C4:
+    type: capacitor
+    value: 1uF
+    near: U11
+    pins:
+    - a35
+    - top-35
+  C6:
+    type: capacitor
+    value: 100nF
+    near: U13
+    pins:
+    - top+23
+    - top-23
+  J1:
+    type: offboard
+    title: Interposer J1
+    cols: 2
+    labels:
+      '3': GND
+      '4': BL 12.76V!
+      '6': GND
+      '8': GND
+      '17': GND
+      '26': VDDIO
+      '31': GND
+      '33': 3V0
+      '34': REF
+nets:
+  VSYS:
+    pins:
+    - Pico.VSYS
+    - U12.VIN
+    - U11.VIN
+    - C1.1
+    - C3.1
+    - C5.+
+    rail: +
+  GND:
+    pins:
+    - Pico.GND
+    - U12.VSS
+    - U11.GND
+    - U13.V-
+    - RV1.3
+    - R3.2
+    - R4.2
+    - C1.2
+    - C2.2
+    - C3.2
+    - C4.2
+    - C5.-
+    - C6.2
+    - J1.3
+    - J1.6
+    - J1.8
+    - J1.17
+    - J1.31
+    rail: '-'
+  3V0:
+    pins:
+    - U12.VOUT
+    - C2.1
+    - U13.V+
+    - C6.1
+    - R1.1
+    - R2.1
+    - J1.33
+    rail: +
+  VDDIO:
+  - U11.VOUT
+  - C4.1
+  - J1.26
+  EN_3V0:
+  - Pico.GPIO21
+  - U12.CE
+  - R3.1
+  EN_VDDIO:
+  - Pico.GPIO26_ADC0
+  - U11.EN
+  - R4.1
+  DIV_TOP:
+  - R1.2
+  - R2.2
+  - RV1.1
+  WIPER:
+  - RV1.2
+  - R5.1
+  REF_IN:
+  - R5.2
+  - U13.+
+  - Pico.GPIO22
+  REF_OUT:
+  - U13.1
+  - U13.-
+  - R6.1
+  REF:
+  - R6.2
+  - J1.34
+autowire: true
+_placed:
+- Pico
+- U12
+- U11
+- U13
+- RV1
+- R1
+- R2
+- R5
+- R6
+- R3
+- R4
+- C5
+- C1
+- C2
+- C3
+- C4
+- C6
+_rail_order:
+- 3V0
+- VSYS

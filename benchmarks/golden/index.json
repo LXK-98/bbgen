@@ -1,0 +1,152 @@
+{
+ "01-led": {
+  "hash": "ad0bd17eb3",
+  "score": 13.016143169218642,
+  "events": 32,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "02-pico-button": {
+  "hash": "c3ada2d524",
+  "score": 57.0,
+  "events": 127,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "03-pico-pot": {
+  "hash": "562e1ee2d9",
+  "score": 37.0,
+  "events": 66,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "04-555-blinker": {
+  "hash": "f19f7bd532",
+  "score": 45.718304780321,
+  "events": 165,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "05-555-4017-chaser": {
+  "hash": "b016f14062",
+  "score": 209.8263928451253,
+  "events": 216,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "06-lm386-amp": {
+  "hash": "5f9d6b82a9",
+  "score": 80.97505048868048,
+  "events": 248,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "07-lm358-amp": {
+  "hash": "8be43d8845",
+  "score": 98.55691852443594,
+  "events": 220,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "08-relay-driver": {
+  "hash": "32d7701fc7",
+  "score": 59.11803544230423,
+  "events": 206,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "09-pico-595-leds": {
+  "hash": "c0c7e9b716",
+  "score": 229.40312423743285,
+  "events": 201,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "10-atmega328-breadboard": {
+  "hash": "4ee55676c7",
+  "score": 64.82410066895127,
+  "events": 212,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "11-l293d-motors": {
+  "hash": "5ccedc0fd3",
+  "score": 206.24833654210238,
+  "events": 199,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "12-pico-i2c": {
+  "hash": "85fb99b1e6",
+  "score": 179.0,
+  "events": 214,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "13-ben-eater-register": {
+  "hash": "e4060bb6ac",
+  "score": 841.8414357435131,
+  "events": 330,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "14-7seg-multiplexed": {
+  "hash": "4ea45b6447",
+  "score": 1040.74290366672,
+  "events": 322,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "15-ipod-m1": {
+  "hash": "1bd5a04b85",
+  "score": 254.7437158959231,
+  "events": 269,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "16-ipod-m2": {
+  "hash": "4fa311a975",
+  "score": 2698.4886125583816,
+  "events": 611,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "17-esp32-devkit": {
+  "hash": "400881a370",
+  "score": 174.605551275464,
+  "events": 249,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "18-traffic-light": {
+  "hash": "a789d8040f",
+  "score": 66.0,
+  "events": 158,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "19-two-supplies": {
+  "hash": "3500d23c32",
+  "score": 46.5763930401593,
+  "events": 181,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "20-esp32-offboard": {
+  "hash": "82c92d5160",
+  "score": 100.02074997432017,
+  "events": 320,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "21-esp32-under": {
+  "hash": "23f6488a6f",
+  "score": 110.0,
+  "events": 180,
+  "placed_hash": true,
+  "placed_events": true
+ },
+ "_kicad": [
+  "/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/5a7d69b241b1417e15f791cb32499119ec931accda6a18544b2f9969d60da867/files"
+ ]
+}

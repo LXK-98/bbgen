@@ -1,0 +1,112 @@
+title: DC motor driver (L293D)
+notes:
+- Tier 3. A Pico drives both halves of an L293D (enable + two inputs each); the motors
+  run from their own supply on VCC2, the logic from the Pico's VBUS on VCC1. Pins
+  by number (EN1,2 has a comma).
+parts:
+  Pico:
+    symbol: MCU_Module:RaspberryPi_Pico
+    at: d60
+    rot: 180
+  U1:
+    symbol: Driver_Motor:L293D
+    at: f31
+    rot: 0
+  C1:
+    type: capacitor
+    value: 100nF
+    near: U1
+    pins:
+    - b31
+    - b34
+  C2:
+    type: electrolytic
+    value: 100uF
+    pins:
+    - g38
+    - g35
+  C3:
+    type: capacitor
+    value: 100nF
+    near: U1
+    pins:
+    - i38
+    - i35
+  J1:
+    type: offboard
+    title: Motor A
+    labels:
+    - A+
+    - A-
+  J2:
+    type: offboard
+    title: Motor B
+    labels:
+    - B+
+    - B-
+  J3:
+    type: offboard
+    title: Motor supply
+    labels:
+    - VMOT
+    - GND
+nets:
+  5V:
+    pins:
+    - Pico.VBUS
+    - U1.16
+    - C1.1
+    rail: +
+  VMOT:
+  - J3.1
+  - U1.8
+  - C2.+
+  - C3.1
+  GND:
+    pins:
+    - Pico.GND
+    - U1.GND
+    - J3.2
+    - C1.2
+    - C2.-
+    - C3.2
+    rail: '-'
+  EN12:
+  - Pico.GPIO16
+  - U1.1
+  IN1:
+  - Pico.GPIO17
+  - U1.2
+  IN2:
+  - Pico.GPIO18
+  - U1.7
+  EN34:
+  - Pico.GPIO13
+  - U1.9
+  IN3:
+  - Pico.GPIO14
+  - U1.10
+  IN4:
+  - Pico.GPIO15
+  - U1.15
+  MA1:
+  - U1.3
+  - J1.1
+  MA2:
+  - U1.6
+  - J1.2
+  MB1:
+  - U1.11
+  - J2.1
+  MB2:
+  - U1.14
+  - J2.2
+expect:
+  crossings: 10
+autowire: true
+_placed:
+- Pico
+- U1
+- C1
+- C2
+- C3

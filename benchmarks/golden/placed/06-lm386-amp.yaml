@@ -1,0 +1,121 @@
+title: LM386 audio amplifier
+notes:
+- 'Tier 2. The datasheet''s gain-20 circuit: volume pot into pin 3, 250 uF to the
+  speaker, a 10 R + 47 nF Zobel network, 10 uF on BYPASS. The LM386''s pins share
+  names (two -), so they go by number.'
+parts:
+  U1:
+    symbol: Amplifier_Audio:LM386
+    footprint: Package_DIP:DIP-8_W7.62mm
+    at: f56
+    rot: 0
+  RV1:
+    footprint: Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical
+    title: 10k volume
+    at: f49
+    rot: 0
+  C1:
+    type: electrolytic
+    value: 250uF
+    pins:
+    - a59
+    - a61
+  R1:
+    type: resistor
+    value: 10R
+    pins:
+    - c59
+    - c54
+  C2:
+    type: capacitor
+    value: 47nF
+    pins:
+    - a54
+    - top-54
+  C3:
+    type: electrolytic
+    value: 10uF
+    pins:
+    - a57
+    - top-57
+  C4:
+    type: capacitor
+    value: 100nF
+    near: U1
+    pins:
+    - top+59
+    - top-59
+  C5:
+    type: electrolytic
+    value: 100uF
+    pins:
+    - top+55
+    - top-55
+  J1:
+    type: offboard
+    title: Audio in
+    labels:
+    - IN
+    - GND
+  J2:
+    type: offboard
+    title: Speaker
+    labels:
+    - SPK+
+    - SPK-
+  J3:
+    type: offboard
+    title: 9 V supply
+    labels:
+    - 9V
+    - GND
+nets:
+  9V:
+    pins:
+    - J3.1
+    - U1.6
+    - C4.1
+    - C5.+
+    rail: +
+  GND:
+    pins:
+    - J3.2
+    - U1.4
+    - U1.2
+    - RV1.1
+    - J1.2
+    - C2.2
+    - C3.-
+    - C4.2
+    - C5.-
+    - J2.2
+    rail: '-'
+  IN:
+  - J1.1
+  - RV1.3
+  WIPER:
+  - RV1.2
+  - U1.3
+  OUT:
+  - U1.5
+  - C1.+
+  - R1.1
+  ZOBEL:
+  - R1.2
+  - C2.1
+  SPEAKER:
+  - C1.-
+  - J2.1
+  BYPASS:
+  - U1.7
+  - C3.+
+autowire: true
+_placed:
+- U1
+- RV1
+- C1
+- R1
+- C2
+- C3
+- C4
+- C5

@@ -1,0 +1,103 @@
+title: 555 LED blinker
+notes:
+- 'Tier 2. The classic astable: about 1 Hz with RA 1k, RB 10k, C1 10 uF (NE555 from
+  KiCad).'
+parts:
+  U1:
+    symbol: Timer:NE555P
+    at: e60
+    rot: 180
+  RA:
+    type: resistor
+    value: 1k
+    pins:
+    - h60
+    - h59
+  RB:
+    type: resistor
+    value: 10k
+    pins:
+    - j59
+    - j58
+  C1:
+    type: electrolytic
+    value: 10uF
+    pins:
+    - b61
+    - b60
+  C2:
+    type: capacitor
+    value: 10nF
+    pins:
+    - j57
+    - bot-57
+  C3:
+    type: capacitor
+    value: 100nF
+    near: U1
+    pins:
+    - top+59
+    - top-59
+  R3:
+    type: resistor
+    value: 330R
+    pins:
+    - d58
+    - d54
+  D1:
+    type: led
+    pins:
+    - b54
+    - top-54
+  J1:
+    type: offboard
+    title: Bench supply
+    labels:
+    - 5V
+    - GND
+nets:
+  5V:
+    pins:
+    - J1.1
+    - U1.VCC
+    - U1./RST
+    - RA.1
+    - C3.1
+    rail: +
+  GND:
+    pins:
+    - J1.2
+    - U1.GND
+    - C1.-
+    - C2.2
+    - C3.2
+    - D1.K
+    rail: '-'
+  DIS:
+  - U1.DISCH
+  - RA.2
+  - RB.1
+  TIMING:
+  - U1.THRES
+  - U1.TRIG
+  - RB.2
+  - C1.+
+  CTRL:
+  - U1.CONT
+  - C2.1
+  OUT:
+  - U1.OUT
+  - R3.1
+  LED:
+  - R3.2
+  - D1.A
+autowire: true
+_placed:
+- U1
+- RA
+- RB
+- C1
+- C2
+- C3
+- R3
+- D1

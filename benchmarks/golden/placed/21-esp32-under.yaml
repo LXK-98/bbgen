@@ -1,0 +1,144 @@
+title: ESP32 DevKitC on one board, wired under it, with sensor, LED, button and OLED
+notes:
+- 'Tier 4. 17''s circuit on one board. The ESP32-DevKitC''s rows are 1.0 in apart,
+  so on one board its body covers one side''s strips whole; it stands on its headers,
+  though, so flat wires laid before it go in run under it (raised: true). It reads
+  a DS18B20 on IO15 (4.7k pull-up), lights an LED on IO2, reads a button on IO4 (10k
+  pull-up) and drives an SSD1306 OLED on I2C (IO21/IO22).'
+boards:
+- full
+parts:
+  ESP32:
+    type: dip
+    pins: 38
+    width: 10
+    title: ESP32-DevKitC
+    raised: true
+    labels:
+    - 3V3
+    - EN
+    - VP
+    - VN
+    - IO34
+    - IO35
+    - IO32
+    - IO33
+    - IO25
+    - IO26
+    - IO27
+    - IO14
+    - IO12
+    - GND1
+    - IO13
+    - SD2
+    - SD3
+    - CMD
+    - 5V
+    - CLK
+    - SD0
+    - SD1
+    - IO15
+    - IO2
+    - IO0
+    - IO4
+    - IO16
+    - IO17
+    - IO5
+    - IO18
+    - IO19
+    - GND2
+    - IO21
+    - RX
+    - TX
+    - IO22
+    - IO23
+    - GND3
+    at: j12
+    rot: 0
+  U1:
+    symbol: Sensor_Temperature:DS18B20
+    footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
+    at: e43
+    rot: 270
+  OLED:
+    symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C
+    at: e5
+    rot: 90
+  R1:
+    type: resistor
+    value: 4k7
+    pins:
+    - top+42
+    - a42
+  R2:
+    type: resistor
+    value: 330R
+    pins:
+    - a26
+    - a31
+  D1:
+    type: led
+    pins:
+    - b31
+    - b34
+  R3:
+    type: resistor
+    value: 10k
+    pins:
+    - top+35
+    - a35
+  SW1:
+    type: dip
+    pins: 4
+    title: button
+    at: e35
+    rot: 180
+nets:
+  3V3:
+    pins:
+    - ESP32.3V3
+    - U1.VDD
+    - OLED.VCC
+    - R1.1
+    - R3.1
+    rail: +
+  GND:
+    pins:
+    - ESP32.GND1
+    - ESP32.GND2
+    - ESP32.GND3
+    - U1.GND
+    - OLED.GND
+    - D1.K
+    - SW1.2
+    rail: '-'
+  ONEWIRE:
+  - ESP32.IO15
+  - U1.DQ
+  - R1.2
+  LED_DRIVE:
+  - ESP32.IO2
+  - R2.1
+  LED:
+  - R2.2
+  - D1.A
+  BUTTON:
+  - ESP32.IO4
+  - R3.2
+  - SW1.1
+  SDA:
+  - ESP32.IO21
+  - OLED.SDA
+  SCL:
+  - ESP32.IO22
+  - OLED.SCL
+autowire: true
+_placed:
+- ESP32
+- U1
+- OLED
+- SW1
+- R1
+- R2
+- D1
+- R3

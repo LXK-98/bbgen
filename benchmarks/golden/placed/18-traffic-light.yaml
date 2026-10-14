@@ -1,0 +1,96 @@
+title: Pico traffic light
+notes:
+- 'Tier 2. Red, yellow and green LEDs on GPIO13-15 through 220R, and a pedestrian
+  button from GPIO12 to GND (the Pico''s own pull-up). The LEDs'' colours come from
+  color: on each.'
+- The button is a 4-pin DIP across the trench, as in 02.
+parts:
+  Pico:
+    symbol: MCU_Module:RaspberryPi_Pico
+    at: g4
+    rot: 0
+  D1:
+    type: led
+    color: red
+    pins:
+    - a24
+    - top-24
+  D2:
+    type: led
+    color: yellow
+    pins:
+    - a27
+    - top-27
+  D3:
+    type: led
+    color: green
+    pins:
+    - a31
+    - top-31
+  R1:
+    type: resistor
+    value: 220R
+    pins:
+    - i20
+    - i24
+  R2:
+    type: resistor
+    value: 220R
+    pins:
+    - j22
+    - j27
+  R3:
+    type: resistor
+    value: 220R
+    pins:
+    - c28
+    - c31
+  SW1:
+    type: dip
+    pins: 4
+    title: pedestrian button
+    at: f29
+    rot: 0
+nets:
+  RED:
+  - Pico.GPIO13
+  - R1.1
+  RED_LED:
+  - R1.2
+  - D1.A
+  YELLOW:
+  - Pico.GPIO14
+  - R2.1
+  YELLOW_LED:
+  - R2.2
+  - D2.A
+  GREEN:
+  - Pico.GPIO15
+  - R3.1
+  GREEN_LED:
+  - R3.2
+  - D3.A
+  BUTTON:
+  - Pico.GPIO12
+  - SW1.1
+  GND:
+    pins:
+    - Pico.GND
+    - D1.K
+    - D2.K
+    - D3.K
+    - SW1.2
+    rail: '-'
+expect:
+  flex: 2
+  label_clashes: 0
+autowire: true
+_placed:
+- Pico
+- SW1
+- D1
+- D2
+- D3
+- R1
+- R2
+- R3

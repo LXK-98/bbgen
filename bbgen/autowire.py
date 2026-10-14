@@ -42,7 +42,7 @@ import heapq
 import math
 
 from .board import RAILS, ROW_Y, Hole, parse_hole
-from . import trace
+from . import dump, trace
 from .check import _DSU
 from .costs import (BEND_COST, COVERED_COST, CROSS_COST, CROSS_WIRE_COST, FLEX_COST, FLEX_OVER_COST,
                     KEPT_COST, LEAD_OVER_COST, LEAD_TALL_COST, OFF_RAIL_COST, RAIL_END_COST, RAIL_LINK_COST,
@@ -65,6 +65,8 @@ def autowire(c: Circuit) -> None:
     first = len(c.wires)
     trace.step(c, "parts placed: wiring next", wiring=True, seconds=1.5)
     order = sorted(c.nets.values(), key=lambda n: (bool(rails.get(n.name)), _span(c, n)))
+    if dump.active():
+        dump.event("rails", build=True, rails=rails, order=[n.name for n in order])
     for flying in (False, True):
         for net in order:
             _wire_net(c, dsu, net, rails.get(net.name, []), node_pins, flying)
@@ -73,8 +75,15 @@ def autowire(c: Circuit) -> None:
     # flexible jumpers last
     built = sorted(c.wires[first:], key=lambda w: (w.flex, not rails.get(w.group), list(c.nets).index(w.group), w.num))
     _renumber(c, built, first)
+    if dump.active():
+        dump.event("wires", build=True, wires=[_dumped(c, w) for w in c.wires[first:]])
     groups = list(dict.fromkeys(w.group for w in built))
     c.groups += [g for g in groups if g not in c.groups]
+
+
+def _dumped(c: Circuit, w: Wire) -> dict:
+    return {"num": w.num, "net": w.group, "flex": w.flex, "via": list(w.via),
+            "ends": [c.hole_name(e.hole) if e.hole is not None else str(e.pin) for e in (w.a, w.b)]}
 
 
 def _span(c: Circuit, net: Net) -> float:
@@ -180,6 +189,7 @@ def _swap_holes(c: Circuit, w: Wire, x: Wire) -> None:
     """Two flying leads trade the holes their board ends are in (they lie on nothing, so nothing else changes)."""
     ew = w.b if w.a.pin is not None else w.a
     ex = x.b if x.a.pin is not None else x.a
+    dump.event("swap", build=True, nums=[w.num, x.num])
     ew.hole, ex.hole = ex.hole, ew.hole
     ew.spec, ex.spec = ex.spec, ew.spec
     for end, who in ((ew, f"W{w.num}"), (ex, f"W{x.num}")):
@@ -190,6 +200,8 @@ def _swap_holes(c: Circuit, w: Wire, x: Wire) -> None:
 def _put_back(c: Circuit, w: Wire) -> None:
     """Put a wire taken out back exactly as it was, under a number of its own."""
     w.num = max((x.num for x in c.wires), default=0) + 1
+    if dump.active():
+        dump.event("put back", build=True, **_dumped(c, w))
     who = f"W{w.num}"
     c._wired = c.__dict__.get("_wired", 0) + 1
     for end in (w.a, w.b):
@@ -420,6 +432,7 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
         if best is None:
             return  # no free hole to join them: the check reports the net as open
         _, end_a, end_b = best
+        dump.event("cost", build=True, net=net.name, key=best[0], flex=bool(flex))
         _lay(c, dsu, net, end_a, end_b, bool(flex), flying)
 
 
@@ -434,6 +447,8 @@ def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = Fals
     c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e.hole is not None)
     if w.flex:
         c.wires.append(w)  # it arches over the board: nothing lies under it
+        if dump.active():
+            dump.event("wire", build=True, **_dumped(c, w))
         if dsu is not None:
             dsu.union(na, nb)
         trace.step(c, f"wiring {net.name}: a flexible jumper", focus=[f"W{w.num}"], wiring=True)
@@ -445,6 +460,8 @@ def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = Fals
     for p, q in zip(pts, pts[1:]):
         c._add_segment(p, q, f"W{w.num}")
     c.wires.append(w)
+    if dump.active():
+        dump.event("wire", build=True, **_dumped(c, w))
     c._lain |= c._lies_over(w)
     if dsu is not None:
         dsu.union(na, nb)
@@ -622,6 +639,7 @@ def _lay_route(c: Circuit, dsu: _DSU, net: Net, route: list, nodes: list) -> boo
             if node not in nodes:
                 nodes.append(node)
                 c._pin_strips.add(node[1:])
+    dump.event("relay", build=True, net=net.name, nums=[w.num for w in laid])
     trace.step(c, f"wiring {net.name}: {len(laid)} wires through {'an empty strip' if len(laid) == 2 else 'empty strips'}",
                focus=[f"W{w.num}" for w in laid], wiring=True)
     return True
@@ -681,6 +699,7 @@ def _prune(c: Circuit, net: str, rails: list[tuple], node_pins: dict) -> None:
 
 
 def _unwire(c: Circuit, w: Wire) -> None:
+    dump.event("unwire", build=True, num=w.num)
     c.wires.remove(w)
     c._wired = c.__dict__.get("_wired", 0) + 1
     who = f"W{w.num}"

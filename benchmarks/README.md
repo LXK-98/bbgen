@@ -42,3 +42,20 @@ which on one board covers one side's strips whole: 17 puts it across two boards 
 
 What the benchmarks still show (13's bus, 14's crowding, leads crossing, 16's size), what was tried
 for each and where to start: [docs/open-points.md](../docs/open-points.md).
+## For the Rust port
+
+Two more scripts, for [docs/rust-port-plan.md](../docs/rust-port-plan.md):
+
+```bash
+python3 benchmarks/hotspots.py         # where the time goes: builds, ms per build, each stage's share
+python3 benchmarks/golden.py           # record the golden corpus into golden/
+python3 benchmarks/golden.py --diff golden/13-ben-eater-register.jsonl.gz other.jsonl
+```
+
+`hotspots.py` writes `hotspots.md`: each circuit built serially (plain, then under cProfile) and with
+the parallel search, the trial builds it needed and the ones workers started for nothing, and the
+layout's hash. `golden.py` records each circuit's build event by event ([bbgen/dump.py](../bbgen/dump.py)):
+the choices placement weighs, every trial and its score, the wires as they go in and the cost each was
+chosen at, the check. It also writes the file as placed (`golden/placed/`), which wires the same layout
+without placing anything. A port writes the same events; `--diff` names the first one where the two
+part ways.

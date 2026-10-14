@@ -29,7 +29,7 @@ import multiprocessing
 import os
 import random
 
-from . import trace
+from . import dump, trace
 from .measure import crossings
 from .board import RAILS, ROW_Y, STACK, Board, Hole, parse_hole
 from .circuit import (Circuit, CircuitError, Issue, _aligned, _key, _line, check_rail_count, library_for,
@@ -165,6 +165,7 @@ def place_legs(c, parts: list) -> None:
             continue
         a, b = pick
         part.legs = [c.hole_name(a), c.hole_name(b)]
+        dump.event("legs", build=True, ref=part.ref, legs=part.legs, rank=c._leg_rank.get(part.ref, 0))
         for i, hole in enumerate((a, b)):
             c._occupy(hole, f"{part.ref} leg {i + 1}")
             if not hole.is_rail:
@@ -865,9 +866,12 @@ def autoplace(data: dict, source: str) -> dict:
         models.append(model if not models else _Model(bases[-1]))
     candidates: dict = {}
     for k, m in enumerate(models):
+        dump.event("model", model=k, supplies=orders[k], choices={ref: [ch[:2] for ch in m.choices[ref]] for ref in m.auto})
         if m.auto:
             for seed in range(SEEDS):
-                for cost, state in m.anneal(seed):
+                found = m.anneal(seed)
+                dump.event("anneal", model=k, seed=seed, found=[(cost, _frozen(state)) for cost, state in found])
+                for cost, state in found:
                     candidates.setdefault((k, _frozen(state)), (cost, state, k))
         else:
             candidates[(k, ())] = (0.0, {}, k)
@@ -881,6 +885,7 @@ def autoplace(data: dict, source: str) -> dict:
                    kept=kept)
         if kept:
             best, model = (score, trial, c), models[k]
+            dump.event("keep", stage="start", score=score)
     if best is None:
         raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
                            "biggest yourself (at:), or use more boards")
@@ -919,6 +924,7 @@ def _turned(model, best, source: str):
             trace.step(c2, f"turn {' and '.join(combos[j])}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
                        kept=kept, focus=combos[j])
             if kept:
+                dump.event("keep", stage="turn", score=s2)
                 score, data, c = s2, trial, _built(trial, c2, source)
                 start = j + 1
                 break
@@ -965,7 +971,7 @@ def _worker_score(data: dict, source: str) -> float:
 
 
 def _parallel() -> bool:
-    return (JOBS > 1 and not _in_worker and not trace.active()
+    return (JOBS > 1 and not _in_worker and not trace.active() and not dump.active()
             and "fork" in multiprocessing.get_all_start_methods())
 
 
@@ -983,6 +989,8 @@ def _scored(trials, source: str):
     if not _parallel():
         for item, trial in it:
             score, c = _evaluate(trial, source)
+            if dump.active():
+                dump.event("trial", layout=_layout(trial), score=score)
             yield item, trial, score, c
         return
     pool = _pool()
@@ -997,6 +1005,16 @@ def _scored(trials, source: str):
         finally:
             for future in futures:
                 future.cancel()  # the search stopped short: the rest aren't wanted
+
+
+def _layout(trial: dict) -> dict:
+    """What a trial decides: where each part bbgen places goes (at and rot, or its legs' holes), and which leg
+    pair a re-placed two-lead part takes."""
+    out = {}
+    for ref in trial.get("_placed") or []:
+        spec = trial["parts"][ref]
+        out[ref] = [spec["at"], spec.get("rot")] if "at" in spec else spec.get("pins")
+    return {"parts": out, "leg_rank": trial.get("_leg_rank") or {}, "rail_order": trial.get("_rail_order") or []}
 
 
 def _built(trial: dict, c, source: str):
@@ -1133,6 +1151,7 @@ def _polish(leads: list[str], data: dict, score: float, c, source: str, budget: 
         for _, trial, s2, c2 in _scored(itertools.islice(trials(), budget - spent), source):
             spent += 1
             if s2 < score - 1e-9:
+                dump.event("keep", stage="polish", score=s2)
                 c2 = _built(trial, c2, source)
                 score, c = s2, c2
                 data = _with(trial, _pinned(c2, leads))
@@ -1168,6 +1187,7 @@ def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
                 trace.step(c2, f"repair {builds}: {what}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",
                            kept=kept, focus=refs)
             if s2 < score - 1e-9:
+                dump.event("keep", stage="repair", score=s2)
                 since = 0
                 # keep it, with every leg written down so the next move starts from exactly this
                 c2 = _built(trial, c2, source)

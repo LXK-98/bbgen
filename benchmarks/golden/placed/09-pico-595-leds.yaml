@@ -1,0 +1,212 @@
+title: Pico + 74HC595 + 8 LEDs
+notes:
+- Tier 3. A shift register drives eight LEDs from three GPIOs (data, shift clock,
+  latch).
+parts:
+  Pico:
+    symbol: MCU_Module:RaspberryPi_Pico
+    at: d59
+    rot: 180
+  U1:
+    symbol: 74xx:74HC595
+    footprint: Package_DIP:DIP-16_W7.62mm
+    at: f29
+    rot: 0
+  C1:
+    type: capacitor
+    value: 100nF
+    near: U1
+    pins:
+    - top+28
+    - top-28
+  R1:
+    type: resistor
+    value: 330R
+    pins:
+    - b30
+    - b25
+  D1:
+    type: led
+    pins:
+    - e25
+    - e23
+  R2:
+    type: resistor
+    value: 330R
+    pins:
+    - h29
+    - h24
+  D2:
+    type: led
+    pins:
+    - j24
+    - bot-24
+  R3:
+    type: resistor
+    value: 330R
+    pins:
+    - j30
+    - j25
+  D3:
+    type: led
+    pins:
+    - f25
+    - f23
+  R4:
+    type: resistor
+    value: 330R
+    pins:
+    - g31
+    - g26
+  D4:
+    type: led
+    pins:
+    - b24
+    - top-24
+  R5:
+    type: resistor
+    value: 330R
+    pins:
+    - h32
+    - h37
+  D5:
+    type: led
+    pins:
+    - i37
+    - i36
+  R6:
+    type: resistor
+    value: 330R
+    pins:
+    - d38
+    - d37
+  D6:
+    type: led
+    pins:
+    - a37
+    - top-37
+  R7:
+    type: resistor
+    value: 330R
+    pins:
+    - g34
+    - g39
+  D7:
+    type: led
+    pins:
+    - a39
+    - top-39
+  R8:
+    type: resistor
+    value: 330R
+    pins:
+    - f27
+    - d27
+  D8:
+    type: led
+    pins:
+    - a27
+    - top-27
+nets:
+  3V3:
+    pins:
+    - Pico.3V3
+    - U1.VCC
+    - U1./SRCLR
+    - C1.1
+    rail: +
+  GND:
+    pins:
+    - Pico.GND
+    - U1.GND
+    - U1./OE
+    - C1.2
+    - D1.K
+    - D2.K
+    - D3.K
+    - D4.K
+    - D5.K
+    - D6.K
+    - D7.K
+    - D8.K
+    rail: '-'
+  SER:
+  - Pico.GPIO2
+  - U1.SER
+  SRCLK:
+  - Pico.GPIO3
+  - U1.SRCLK
+  RCLK:
+  - Pico.GPIO4
+  - U1.RCLK
+  QA:
+  - U1.QA
+  - R1.1
+  LED0:
+  - R1.2
+  - D1.A
+  QB:
+  - U1.QB
+  - R2.1
+  LED1:
+  - R2.2
+  - D2.A
+  QC:
+  - U1.QC
+  - R3.1
+  LED2:
+  - R3.2
+  - D3.A
+  QD:
+  - U1.QD
+  - R4.1
+  LED3:
+  - R4.2
+  - D4.A
+  QE:
+  - U1.QE
+  - R5.1
+  LED4:
+  - R5.2
+  - D5.A
+  QF:
+  - U1.QF
+  - R6.1
+  LED5:
+  - R6.2
+  - D6.A
+  QG:
+  - U1.QG
+  - R7.1
+  LED6:
+  - R7.2
+  - D7.A
+  QH:
+  - U1.QH
+  - R8.1
+  LED7:
+  - R8.2
+  - D8.A
+expect:
+  warnings: 0
+autowire: true
+_placed:
+- Pico
+- U1
+- C1
+- R1
+- D1
+- R2
+- D2
+- R3
+- D3
+- R4
+- D4
+- R5
+- D5
+- R6
+- D6
+- R7
+- D7
+- R8
+- D8

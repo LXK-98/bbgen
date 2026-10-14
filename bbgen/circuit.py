@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from . import dump
 from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, STACK, Board, Hole, parse_hole
 from .parts import (FOOTPRINT_KINDS, LEAD_KINDS, Part, PartError, Pin, body_rect, make_part, placed_box,
                     rotate, slant_reason)
@@ -243,8 +244,9 @@ class Circuit:
         if needs_placing(data):
             from . import trace
             from .autoplace import autoplace  # it builds trial circuits of its own
-            with trace.placing():
+            with trace.placing(), dump.placing():
                 data = autoplace(data, source)
+            dump.event("placed", data=data)
         self._leg_rank: dict = data.get("_leg_rank") or {}
         self.rail_order: list = data.get("_rail_order") or []  # supplies in the order they take + rails  # autoplace's search: take a leg pair other than the best
         self._load_boards(data.get("boards") or [{"type": "full"}])
@@ -256,6 +258,9 @@ class Circuit:
         self._load_wires(data.get("wires") or [])
         self._load_nets(data.get("nets") or {})
         self._place()
+        if dump.active():
+            dump.event("parts", build=True, pins={ref: [self.hole_name(p.hole) if p.hole else None for p in part.pins]
+                                                  for ref, part in self.parts.items()})
         if data.get("autowire"):
             from .autowire import autowire  # it builds on the check, which imports this module
             autowire(self)

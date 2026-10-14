@@ -1,0 +1,139 @@
+title: ESP32 DevKitC off the board, with sensor, LED, button and OLED
+notes:
+- 'Tier 4. 17''s circuit on one board: the ESP32-DevKitC (38 pins) sits beside it,
+  reached by Dupont leads (female on the module''s header, male in the board). It
+  reads a DS18B20 on IO15 (4.7k pull-up), lights an LED on IO2, reads a button on
+  IO4 (10k pull-up) and drives an SSD1306 OLED on I2C (IO21/IO22).'
+boards:
+- full
+parts:
+  ESP32:
+    type: offboard
+    cols: 2
+    numbering: column
+    title: ESP32-DevKitC
+    labels:
+    - 3V3
+    - EN
+    - VP
+    - VN
+    - IO34
+    - IO35
+    - IO32
+    - IO33
+    - IO25
+    - IO26
+    - IO27
+    - IO14
+    - IO12
+    - GND1
+    - IO13
+    - SD2
+    - SD3
+    - CMD
+    - 5V
+    - CLK
+    - SD0
+    - SD1
+    - IO15
+    - IO2
+    - IO0
+    - IO4
+    - IO16
+    - IO17
+    - IO5
+    - IO18
+    - IO19
+    - GND2
+    - IO21
+    - RX
+    - TX
+    - IO22
+    - IO23
+    - GND3
+  U1:
+    symbol: Sensor_Temperature:DS18B20
+    footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
+    at: f55
+    rot: 270
+  OLED:
+    symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C
+    at: f61
+    rot: 270
+  R1:
+    type: resistor
+    value: 4k7
+    pins:
+    - h53
+    - h54
+  R2:
+    type: resistor
+    value: 330R
+    pins:
+    - d63
+    - f63
+  D1:
+    type: led
+    pins:
+    - h63
+    - h61
+  R3:
+    type: resistor
+    value: 10k
+    pins:
+    - bot+41
+    - h41
+  SW1:
+    type: dip
+    pins: 4
+    title: button
+    at: f41
+    rot: 0
+nets:
+  3V3:
+    pins:
+    - ESP32.3V3
+    - U1.VDD
+    - OLED.VCC
+    - R1.1
+    - R3.1
+    rail: +
+  GND:
+    pins:
+    - ESP32.GND1
+    - ESP32.GND2
+    - ESP32.GND3
+    - U1.GND
+    - OLED.GND
+    - D1.K
+    - SW1.2
+    rail: '-'
+  ONEWIRE:
+  - ESP32.IO15
+  - U1.DQ
+  - R1.2
+  LED_DRIVE:
+  - ESP32.IO2
+  - R2.1
+  LED:
+  - R2.2
+  - D1.A
+  BUTTON:
+  - ESP32.IO4
+  - R3.2
+  - SW1.1
+  SDA:
+  - ESP32.IO21
+  - OLED.SDA
+  SCL:
+  - ESP32.IO22
+  - OLED.SCL
+autowire: true
+_placed:
+- U1
+- OLED
+- SW1
+- R1
+- R2
+- D1
+- R3
