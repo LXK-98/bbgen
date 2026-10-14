@@ -38,7 +38,7 @@ CROWD_COST = 6.0       # per signal wire past what a column has room for
 LINK_COST = 1.0        # per hole between the nets a two-lead part joins
 OFFBOARD_COST = 0.15   # per column between an off-board pin's net and the board's edge
 SPACE_COST = 4.0       # per column short of three between two footprint parts
-KEEP_COST = 0.2        # per column of keep-out on the board (a USB cable is best off its edge)
+KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best off its edge)
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
 
 # two-lead parts' legs
@@ -47,6 +47,7 @@ CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
 
 # a built layout's score
 FLYING_WEIGHT = 0.3    # per hole of flying lead
+KEEP_WEIGHT = 1.5      # per hole of keep-out on the board, as KEEP_COST
 FLEX_WEIGHT = 12.0     # per flexible jumper: better than a warned-about wire (15 and up), worse than a tidy one
 LABEL_COST = 8.0       # per pair of two-lead parts close enough for their labels to collide
 
@@ -61,12 +62,13 @@ def rail_plan(nets: dict, leg_rails: dict) -> dict[str, list[str]]:
     the names: a lone ground net takes the - rails nobody else has, each supply a free + rail."""
     plan = {name: list(dict.fromkeys([*rails, *leg_rails.get(name, [])])) for name, rails in nets.items()}
     taken = {r for rails in plan.values() for r in rails}
-    grounds = [n for n in nets if _GROUND.match(n) and not plan[n]]
+    grounds = [n for n in nets if _GROUND.match(n) and not nets[n]]
     if len(grounds) == 1:
-        plan[grounds[0]] = [r for r in ("top-", "bot-") if r not in taken]
+        plan[grounds[0]] += [r for r in ("top-", "bot-") if r not in taken]
         taken |= set(plan[grounds[0]])
-    for name in nets:
-        if _SUPPLY.match(name) and not plan[name]:
+    supplies = [n for n in nets if _SUPPLY.match(n) and not nets[n]]
+    for name in supplies:
+        if not plan[name]:
             free = [r for r in ("top+", "bot+") if r not in taken]
             if free:
                 plan[name] = free[:1]
@@ -391,10 +393,16 @@ class _Model:
         if part.kind in ("pico", "dip"):
             halves = {"bot", "top"}  # a DIP or Pico straddles the trench
         keep = []
-        for _, rect in part.keepouts:
+        for what, rect in part.keepouts:
             room = self._covered(rect, rot, ax, ay)
             if room:
-                keep += [(h, room[0], room[1]) for h in sorted(room[2])]
+                klo, khi = room[0], room[1]
+                if "cable" in what.lower():  # the cable runs on past the plug, off the board's nearest edge
+                    if khi < lo:
+                        klo = 1
+                    elif klo > hi:
+                        khi = self.board.columns
+                keep += [(h, klo, khi) for h in sorted(room[2])]
         return f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep
 
     def _covered(self, rect, rot: int, ax: int, ay: int):
@@ -540,6 +548,7 @@ def _score(c, result) -> float:
             score += 10.0 * sum(not _aligned(p, q) for p, q in zip(pts, pts[1:]))
         elif w.a and w.b:  # a flying lead: shorter is tidier, and it isn't drawn across the board
             score += FLYING_WEIGHT * math.dist(c.end_xy(w.a), c.end_xy(w.b))
+    score += KEEP_WEIGHT * c.cable_holes()
     middles = []
     for part in c.parts.values():
         if part.kind in LEAD_KINDS and all(p.xy for p in part.pins):

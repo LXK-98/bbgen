@@ -73,6 +73,19 @@ class AutowireTest(unittest.TestCase):
         self.assertTrue(w.via)
         self.assertNotIn("OVER_PART", codes(r, "warning"))
 
+    def test_a_pin_across_the_trench_gets_the_other_rail(self):
+        # the cap puts 3V3 on the top rail; the Pico's 3V3 pin is on the bottom side, under the Pico's body
+        cap = {"type": "capacitor", "pins": ["top+49", "top-49"]}
+        c, r = auto({"Pico": {"type": "pico", "at": "c40", "rot": 180}, "C1": cap},
+                    {"3V3": ["Pico.3V3", "C1.1"], "GND": ["Pico.GND", "C1.2"]})
+        self.assertEqual(codes(r) + codes(r, "warning"), [])
+        self.assertIn(("j36", "bot+36"), [ends(c, w) for w in c.wires])  # a drop to the bottom rail
+        self.assertFalse(any(w.flex for w in c.wires))                    # not a jumper over the Pico
+        # with the pin on the top side, the bottom rail isn't worth its link
+        c, r = auto({"Pico": {"type": "pico", "at": "h20"}, "C1": cap},
+                    {"3V3": ["Pico.3V3", "C1.1"], "GND": ["Pico.GND", "C1.2"]})
+        self.assertFalse(any("bot" in end for w in c.wires for end in ends(c, w)))
+
     def test_numbered_rails_first(self):
         c, _ = auto({"Pico": PICO, "U1": DIP},
                     {"EN": ["Pico.GP21", "U1.EN"], "GND": ["Pico.GND", "U1.GND"]})

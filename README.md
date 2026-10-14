@@ -149,6 +149,10 @@ Which rail a net runs on comes from, in order:
 - `rail:` on the net: `VSYS: {pins: [...], rail: top+}`, or a list, `rail: [top-, bot-]`
 - a net named like ground (`GND`, ...) takes the `-` rails no other net uses, and one named like a
   supply (`VSYS`, `VBUS`, `VCC`, `VDD`, `5V`, `3V3`, `3.3V`, ...) a free `+` rail
+- the lone ground (or lone supply) net also takes the free rail on the other side of the trench
+  when it has pins there that nothing joins to a rail, and dropping them to it saves more than the
+  wire linking the two rails costs: a pin under a Pico then drops to the bottom rail instead of a
+  jumper arching over the Pico
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
 Many flexible jumpers say the same: parts that talk to each other are far apart or crowded.

@@ -401,6 +401,9 @@ def render(c: Circuit, result: Result, highlight: str | None = None, caption: st
         if part.extent:
             xs += [part.extent[0], part.extent[2]]
             ys += [part.extent[1], part.extent[3]]
+    for box, _ in c._bodies:  # a module hanging over the board's edge, or its keep-out
+        xs += [box[0], box[2]]
+        ys += [box[1], box[3]]
     minx, maxx, miny, maxy = min(xs) - 1, max(xs) + 1, min(ys) - HEADER, max(ys) + 1
     cv = _Canvas(minx, miny)
     legend_y = maxy + 0.6

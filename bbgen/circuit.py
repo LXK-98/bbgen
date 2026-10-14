@@ -191,6 +191,8 @@ class Circuit:
         self._bodies: list[tuple] = []             # (box, ref) for each footprint part
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
         self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
+        self._keepouts: set[str] = set()           # the names in _bodies that are keep-outs, not bodies
+        self._cables: list[tuple] = []             # (box, board) from a cable's plug to the board's edge
         if needs_placing(data):
             from . import trace
             from .autoplace import autoplace  # it builds trial circuits of its own
@@ -374,6 +376,14 @@ class Circuit:
         for what, rect in part.keepouts:  # room it needs beyond its body, like a USB cable's plug
             box = placed_box(part, rect)
             self._bodies.append((box, f"{part.ref}'s {what}"))
+            self._keepouts.add(f"{part.ref}'s {what}")
+            if "cable" in what.lower():  # the cable runs on past the plug, off the board's nearest edge
+                if box[2] <= x0:
+                    self._cables.append(((board.left, box[1], box[2], box[3]), board))
+                elif box[0] >= x1:
+                    self._cables.append(((box[0], box[1], board.right, box[3]), board))
+                else:
+                    self._cables.append((box, board))
             for hole in board.holes():
                 x, y = board.xy(hole)
                 if box[0] < x < box[2] and box[1] < y < box[3] and hole not in own:
@@ -533,6 +543,11 @@ class Circuit:
             self._occupy(option.hole, who)
         return End(spec, hole=option.hole)
 
+    def cable_holes(self) -> int:
+        """Holes on the board under a cable's plug or its way off the board: the room it costs."""
+        return sum(1 for box, board in self._cables for h in board.holes()
+                   if box[0] < board.xy(h)[0] < box[2] and box[1] < board.xy(h)[1] < box[3])
+
     # ---- slants ----
 
     def _find_slants(self) -> None:
@@ -623,6 +638,11 @@ class Circuit:
                     ref = self._covered[_key(self.end_xy(end))]
                     self.issues.append(Issue("warning", "OVER_PART", f"{name} ends in {self.hole_name(end.hole)}, "
                                              f"under {ref}: move one of them", holes=[end.hole]))
+            if w.flex and w.a and w.b and w.a.hole and w.b.hole:  # in the air, but not where a plug goes
+                zones = [z for z in self._bodies_crossed(self.end_xy(w.a), self.end_xy(w.b)) if z in self._keepouts]
+                if zones:
+                    self.issues.append(Issue("warning", "OVER_PART", f"{name} arches over {' and '.join(zones)}, "
+                                             "which needs that room: move one of them", holes=[w.a.hole, w.b.hole]))
             if not (w.a and w.b and w.a.hole and w.b.hole) or w.flex:
                 continue  # flying leads and flexible jumpers are in the air
             pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
