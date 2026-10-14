@@ -36,6 +36,7 @@ board).
 from __future__ import annotations
 
 import bisect
+import itertools
 import heapq
 import math
 
@@ -150,8 +151,36 @@ def _settle_leads(c: Circuit, node_pins: dict, first: int) -> None:
                     continue
                 _unwire(c, x)
             _put_back(c, w)
+        # two leads of one net that cross: each may go in the other's hole, uncrossing them (re-laying one at a
+        # time can't, as each still has the other's hole taken)
+        for w, x in itertools.combinations(leads, 2):
+            if w.group != x.group or not _cross(_lead_line(c, w), _lead_line(c, x)):
+                continue
+            before = sum(crossed(y) for y in leads)
+            _swap_holes(c, w, x)
+            if sum(crossed(y) for y in leads) < before:
+                moved = True
+                trace.step(c, f"leads W{w.num} and W{x.num} swap holes, uncrossing them", focus=[f"W{w.num}", f"W{x.num}"],
+                           wiring=True)
+            else:
+                _swap_holes(c, w, x)
         if not moved:
             return
+
+
+def _lead_line(c: Circuit, w: Wire):
+    return c.end_xy(w.a), c.end_xy(w.b)
+
+
+def _swap_holes(c: Circuit, w: Wire, x: Wire) -> None:
+    """Two flying leads trade the holes their board ends are in (they lie on nothing, so nothing else changes)."""
+    ew = w.b if w.a.pin is not None else w.a
+    ex = x.b if x.a.pin is not None else x.a
+    ew.hole, ex.hole = ex.hole, ew.hole
+    ew.spec, ex.spec = ex.spec, ew.spec
+    for end, who in ((ew, f"W{w.num}"), (ex, f"W{x.num}")):
+        c.occupied[end.hole] = who
+        c._used[_key(c.boards[end.hole.board].xy(end.hole))] = who
 
 
 def _put_back(c: Circuit, w: Wire) -> None:
@@ -273,10 +302,14 @@ def _rails(c: Circuit, dsu: _DSU, node_pins: dict) -> dict[str, list[tuple]]:
             stranded = [g for g in pieces.values()
                         if all(n[0] == "strip" and n[2] == half for n in g)
                         and not any(dsu.find(s) == dsu.find(g[0]) for s in own)]
+            # the stranded pieces taken together: neighbours among them join each other cheaply, but the lot still
+            # needs a way to the rest of the net (one ground pin next to another says nothing of how far both
+            # are from the rail)
             gain = 0.0
-            for g in stranded:
-                rest = [n for other in pieces.values() if other is not g for n in other] + own
-                gain += max(0.0, _cheapest(c, net, node_pins, g, rest) - _cheapest(c, net, node_pins, g, strips))
+            if stranded:
+                group = [n for g in stranded for n in g]
+                rest = [n for other in pieces.values() if other not in stranded for n in other] + own
+                gain = max(0.0, _cheapest(c, net, node_pins, group, rest) - _cheapest(c, net, node_pins, group, strips))
             # the wire linking the rails: cheap at their ends, where it's board setup rather than circuit, if it
             # gets through there; otherwise costed like any other
             link = _link_cost(c, net, node_pins, [s for s in own if s[2].endswith(sign)], strips) if gain else 0.0
