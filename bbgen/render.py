@@ -231,8 +231,13 @@ def _footprint(cv: _Canvas, part: Part) -> None:
         cv.text(cx, cy + 0.45, part.title, 6.5, fill="#dfe9df")
     else:
         above, below = ((x0 + x1) / 2, y0 - 0.5, "middle"), ((x0 + x1) / 2, y1 + 0.55, "middle")
-        cv.label([below, above] if part.kind == "sip" else [above, below], label, 6.5, part.ref, weight="bold",
-                 halo="#ffffff")
+        spots = [below, above] if part.kind == "sip" else [above, below]
+        # if both hide something: flush with either end of the body, then a row further out
+        for y in (spots[0][1], spots[1][1]):
+            spots += [(x0, y, "start"), (x1, y, "end")]
+        for x, y, _ in spots[:2]:
+            spots.append((x, y + (0.5 if y > (y0 + y1) / 2 else -0.5), "middle"))
+        cv.label(spots, label, 6.5, part.ref, weight="bold", halo="#ffffff")
 
 
 def _lead(cv: _Canvas, part: Part) -> None:
@@ -477,9 +482,16 @@ def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> No
     for w, (x, y), color in drawn:
         label = f"W{w.num}"
         half = (len(label) * 5.2 * 0.62 + 4) / 2 / P
-        spots = [(x, y)] + [_along(c, w, t) for t in (0.3, 0.7, 0.2, 0.8)]
-        x, y = min(spots, key=lambda p: (cv.clash((p[0] - half, p[1] - 0.24, p[0] + half, p[1] + 0.24), label),
-                                          spots.index(p)))
+        spots = [(x, y)] + [_along(c, w, t) for t in (0.3, 0.7, 0.2, 0.8, 0.4, 0.6, 0.1, 0.9)]
+        # last resort: just beside the middle, off to either side of the wire
+        a, b = _along(c, w, 0.45), _along(c, w, 0.55)
+        side = (0.0, 0.5) if abs(b[0] - a[0]) >= abs(b[1] - a[1]) else (half + 0.3, 0.0)
+        spots += [(x + side[0], y + side[1]), (x - side[0], y - side[1])]
+
+        def clash(p):
+            return cv.clash((p[0] - half, p[1] - 0.24, p[0] + half, p[1] + 0.24), label)
+        # beside the wire only to get clear of something: it reads as the wire's tag less well
+        x, y = min(spots, key=lambda p: (clash(p) + 0.5 * (spots.index(p) > 8), spots.index(p)))
         cv.rect(x - half, y - 0.24, x + half, y + 0.24, "#ffffff", color, 1, rx=0.1, extra=' opacity="0.92"')
         cv.labels.append(((x - half, y - 0.24, x + half, y + 0.24), label))
         cv.text(x, y, label, 5.2, fill=INK, weight="bold")
