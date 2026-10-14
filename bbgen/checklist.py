@@ -67,8 +67,11 @@ def checklist(c: Circuit, result: Result) -> str:
     if result.issues:
         out += ["", "## Check", ""]
         out += [f"- **{i.level}** `{i.code}`: {i.message}" for i in result.issues]
-    if c.notes:
-        out += ["", "## Notes", ""] + [f"- {n}" for n in c.notes]
+    guessed = [f"- ASSUMED: `{n.name}` is {'a supply (+ rail)' if n.polarity == '+' else 'a ground (- rail)'}, from "
+               f"its name; say `rail: {n.polarity}` (or `rail: none`) in the file to be sure"
+               for n in c.nets.values() if n.guessed]
+    if c.notes or guessed:
+        out += ["", "## Notes", ""] + [f"- {n}" for n in c.notes] + guessed
 
     out += ["", "## Boards", ""]
     for b in c.boards.values():

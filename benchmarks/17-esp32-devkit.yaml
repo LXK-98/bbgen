@@ -21,8 +21,8 @@ parts:
   R3: {type: resistor, value: 10k}
   SW1: {type: dip, pins: 4, title: button}
 nets:
-  3V3: [ESP32.3V3, U1.VDD, OLED.VCC, R1.1, R3.1]
-  GND: [ESP32.GND1, ESP32.GND2, ESP32.GND3, U1.GND, OLED.GND, D1.K, SW1.2]
+  3V3: {pins: [ESP32.3V3, U1.VDD, OLED.VCC, R1.1, R3.1], rail: +}
+  GND: {pins: [ESP32.GND1, ESP32.GND2, ESP32.GND3, U1.GND, OLED.GND, D1.K, SW1.2], rail: -}
   ONEWIRE: [ESP32.IO15, U1.DQ, R1.2]
   LED_DRIVE: [ESP32.IO2, R2.1]
   LED: [R2.2, D1.A]

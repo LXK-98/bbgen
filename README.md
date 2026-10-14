@@ -134,25 +134,36 @@ end to steer by.
 With `autowire: true` at the top of the file, bbgen adds the wires itself: place the parts, list
 the nets, and leave `wires` out (or write only the ones you want a say in; they're kept). Each net
 is joined with the fewest, shortest wires it can find, preferring straight runs and rail drops
-from the row next to the rail. A wire that would cross a part is bent around it, and each
-off-board pin gets its own flying lead. The checklist lists them by net, rails' nets first.
+from the row next to the rail, and each off-board pin gets its own flying lead. The checklist lists
+them by net, rails' nets first.
 
-Where every wire lying on the board would slant, lie along another wire or cross a part (and a
-short bend around it won't do), bbgen uses a flexible jumper instead: a crowded board gets a few
-jumpers arching over it rather than a tangle of warnings. A wire that can't help slanting (across
-the trench between two columns) stays a short rigid one. `flex: false` at the top of the file turns
-flexible jumpers off, for an all-rigid build; then bbgen warns about what it couldn't lay straight.
+A wire bbgen lays on the board is always straight, crosses no part, runs along no other wire, and
+lies over no other wire's end or a pin's last free hole. Where no such wire will do, it uses a
+flexible jumper instead: a crowded board gets a few jumpers arching over it rather than bent or
+slanted wires. `flex: false` at the top of the file turns flexible jumpers off, for an all-rigid
+build; then bbgen bends wires around parts, and warns about what it couldn't lay straight.
+
+A net that's a supply says `rail: +`, a ground `rail: -`; bbgen picks which rail. Every supply
+gets a `+` rail of its own and every ground a `-` one (a full board has two of each, four with
+`split_rails: true`, and each further board adds more); with more than that, bbgen stops with an
+error rather than putting two voltages on one rail. `rail: top+` (or a list, `rail: [top-, bot-]`)
+puts a net on those rails instead, and `rail: none` keeps a net off the rails. A net that says
+nothing is taken as a ground or supply by its name (`GND`, `VSS`; `VSYS`, `VBUS`, `VCC`, `5V`,
+`3V3`, ...), and the checklist says it assumed so.
 
 Which rail a net runs on comes from, in order:
 
 - the rails its parts already plug into (a decoupling cap with a leg in `top+28`)
-- `rail:` on the net: `VSYS: {pins: [...], rail: top+}`, or a list, `rail: [top-, bot-]`
-- a net named like ground (`GND`, ...) takes the `-` rails no other net uses, and one named like a
-  supply (`VSYS`, `VBUS`, `VCC`, `VDD`, `5V`, `3V3`, `3.3V`, ...) a free `+` rail
-- the lone ground (or lone supply) net also takes the free rail on the other side of the trench
-  when it has pins there that nothing joins to a rail, and dropping them to it saves more than the
-  wire linking the two rails costs: a pin under a Pico then drops to the bottom rail instead of a
-  jumper arching over the Pico
+- the rails its `rail:` names
+- a lone ground takes the `-` rails no other net uses; each supply a free `+` rail of its own (with
+  two, placement tries both ways round)
+- the lone ground (or lone supply) also takes the free rail on the other side of the trench when it
+  has pins there that nothing joins to a rail, and dropping them to it saves more than the wire
+  linking the two rails: a pin under a Pico then drops to the bottom rail instead of a jumper
+  arching over the Pico
+
+A rail nothing on the board uses isn't wired. Two rails of one net are joined at their ends (their
+first or last five holes), out of the circuit's way: that's setting up the board, not the circuit.
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
 Many flexible jumpers say the same: parts that talk to each other are far apart or crowded.
@@ -266,7 +277,7 @@ parts:
 | `pico` | `at` (pin 1), `rot`, or bbgen | Raspberry Pi Pico, pins named GP0..GP28, GND, VSYS, 3V3, ... Unrotated: USB left, pins 1-20 along the bottom. Its GND pins are joined on the board; AGND isn't. Its body blocks rows d-g beneath it, and its USB cable rows e-f past the USB end. |
 | `dip` | `at` (pin 1), `rot`, or bbgen | `pins`, `width` (row spacing in 0.1 in, default 3), `labels`. Unrotated: pin 1 bottom-left, notch left. Use it for SMD-to-DIP adapters too. |
 | `sip` | `at` (pin 1), `rot`, or bbgen | a single row: headers, trimmers |
-| `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. |
+| `resistor`, `capacitor`, `electrolytic`, `diode`, `led` | `pins: [leg1, leg2]`, or bbgen | `value`. Polarised legs are `+`/`-` and `A`/`K`, in that order. An LED is drawn from above, the flat on its rim at the cathode; its `color` is `red` (the default), `green`, `yellow`, `blue`, `white`, `orange` or `#rrggbb`. |
 | any, from KiCad | `at` (pin 1), `rot`, or bbgen | `symbol: Library:Name`, `footprint: Library:Name`, `adapter` (see above) |
 | `offboard` | drawn beside the board | `labels`, `cols`, `numbering: row` (1, 2 across the first row) or `column`, `place: right` or `below`. A label ending in `!` is drawn red. |
 
@@ -281,8 +292,9 @@ resistor's `value` (`10k`, `4k7`, `330R`) is drawn as its colour bands. Two-lead
 
 Wires, nets and parts take `red`, `black`, `blue`, `green`, `yellow`, `orange`, `white`, `purple`,
 `gray`, `brown`, `pink`, `cyan`, or `#rrggbb`. A wire is its net's colour unless it says
-otherwise. A net without a colour gets black if its name is a ground (`GND`, `VSS`, ...), red if
-it's a supply (`VSYS`, `5V`, ...), and otherwise a colour no other net has, until they run out.
+otherwise. A net without a colour gets black if it's a ground, red if it's a supply (orange, pink
+and brown for a second, third and fourth supply), and otherwise a colour no other net has, until
+they run out.
 
 ### What the check reports
 
@@ -295,11 +307,13 @@ it's a supply (`VSYS`, `5V`, ...), and otherwise a colour no other net has, unti
 | `HOLE_TAKEN` | two things in one hole, or a hole under a part's body |
 | `OFF_HOLES` | a pin lands in the trench or off the board |
 | `NOT_PLACED`, `TWO_NETS`, `BAD_*` | a pin in a net isn't on the board; a pin in two nets; a reference that doesn't resolve |
-| `BAD_RAIL` | a net's `rail:` isn't a rail, or names one another net already uses |
+| `BAD_RAIL` | a net's `rail:` isn't a rail, names one another net already uses, puts a supply on a `-` rail (or a ground on a `+` one), or no rail is left for it |
+| `END_COVERED` | a wire ends in a hole that a wire put in before it lies over (wires go in by number, flexible jumpers last): it can't be plugged in |
 | `DANGLING` (warning) | a wire ends in a strip with nothing else in it |
 | `NO_EFFECT` (warning) | both ends of a wire are in the same strip |
 | `DIAGONAL` (warning) | a wire or two-lead part slants where it could run straight; the message says how |
-| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body (for a wire, the message gives bends around it), a wire ends under a two-lead part, or runs along another wire or part |
+| `OVER_PART` (warning) | a wire or two-lead part lies over a part's body (for a wire, the message gives bends around it), a wire ends under a two-lead part or runs along a part, or a flexible jumper arches over a keep-out |
+| `NESTED` (warning) | a wire lies over one put in before it, end to end: buildable, but it hides the inner one |
 
 ## With Claude Code
 

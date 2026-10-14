@@ -27,8 +27,10 @@ import math
 import random
 
 from . import trace
+from .measure import crossings
 from .board import RAILS, ROW_Y, Board, Hole, parse_hole
-from .circuit import _GROUND, _SUPPLY, Circuit, CircuitError, Issue, _aligned, _key, _line, library_for
+from .circuit import (Circuit, CircuitError, Issue, _aligned, _key, _line, check_rail_count, library_for,
+                      net_polarity)
 from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, body_rect, make_part, rotate
 
 # the estimate, for footprint parts
@@ -42,11 +44,17 @@ KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best 
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
 
 # two-lead parts' legs
+ROUND = ("led", "electrolytic")  # parts with a round body about two holes across, drawn from above
+ROUND_GAP = 1.9        # their centres closer than this: the bodies touch
+ROUND_COST = 25.0      # per round body it would touch
+LEG_SLANT_COST = 20.0  # a two-lead part slanting: worse than lying straight and needing a wire more
 JUNCTION_COST = 6.0    # a leg in an empty strip of its own, which then needs a wire to its net
 CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
 
 # a built layout's score
 FLYING_WEIGHT = 0.3    # per hole of flying lead
+RAIL_LINK_WEIGHT = 3.0  # a wire joining two rails, whatever its length (as autowire's LINK_COST)
+CROSS_WEIGHT = 2.0     # per pair of wires crossing: what makes a layout look tangled
 KEEP_WEIGHT = 1.5      # per hole of keep-out on the board, as KEEP_COST
 FLEX_WEIGHT = 12.0     # per flexible jumper: better than a warned-about wire (15 and up), worse than a tidy one
 LABEL_COST = 8.0       # per pair of two-lead parts close enough for their labels to collide
@@ -57,23 +65,29 @@ SPAN = {"resistor": (2, 5), "diode": (3, 5), "capacitor": (1, 3), "electrolytic"
 
 # ---- which nets run on which rails ----
 
-def rail_plan(nets: dict, leg_rails: dict) -> dict[str, list[str]]:
-    """{net: [rail, ...]} from each net's `rail:`, the rails its two-lead parts' legs are written on, and
-    the names: a lone ground net takes the - rails nobody else has, each supply a free + rail."""
-    plan = {name: list(dict.fromkeys([*rails, *leg_rails.get(name, [])])) for name, rails in nets.items()}
+def rail_plan(polarity: dict, explicit: dict, leg_rails: dict, order=()) -> dict[str, list[str]]:
+    """{net: [rail, ...]}, as autowire assigns them: the rails each net's `rail:` names and its two-lead parts'
+    legs are written on; then a lone ground takes the - rails nobody else has, and each supply (in `order`)
+    a free + rail."""
+    plan = {name: list(dict.fromkeys([*explicit.get(name, []), *leg_rails.get(name, [])])) for name in polarity}
     taken = {r for rails in plan.values() for r in rails}
-    grounds = [n for n in nets if _GROUND.match(n) and not nets[n]]
-    if len(grounds) == 1:
-        plan[grounds[0]] += [r for r in ("top-", "bot-") if r not in taken]
-        taken |= set(plan[grounds[0]])
-    supplies = [n for n in nets if _SUPPLY.match(n) and not nets[n]]
-    for name in supplies:
-        if not plan[name]:
-            free = [r for r in ("top+", "bot+") if r not in taken]
-            if free:
-                plan[name] = free[:1]
-                taken.add(free[0])
+    claimed = {n for n, rails in plan.items() if rails}
+    for sign in "-+":
+        nets = [n for n, p in polarity.items() if p == sign and n not in claimed]
+        nets.sort(key=lambda n: list(order).index(n) if n in order else len(order))
+        rows = [r for r in (f"top{sign}", f"bot{sign}") if r not in taken]
+        # a lone ground or supply plans on both: wiring takes the second when pins need it, and placement keeps
+        # those pins' drops to it clear
+        shares = [rows] if len(nets) == 1 else [[r] for r in rows]
+        for net, share in zip(nets, shares):
+            plan[net] += share
+            taken |= set(share)
     return {name: rails for name, rails in plan.items() if rails}
+
+
+def _free_supplies(polarity: dict, explicit: dict, leg_rails: dict) -> list[str]:
+    """The supplies that pick their own + rail: the ones placement tries both ways round."""
+    return [n for n, p in polarity.items() if p == "+" and not explicit.get(n) and not leg_rails.get(n)]
 
 
 def _leg_rails(parts: dict, pin_net) -> dict[str, list[str]]:
@@ -92,9 +106,12 @@ def _leg_rails(parts: dict, pin_net) -> dict[str, list[str]]:
 def place_legs(c, parts: list) -> None:
     """Choose holes for each two-lead part that has no `pins`, then place it as if they were written."""
     net_of = {pin: net.name for net in c.nets.values() for pin in net.pins}
-    plan = rail_plan({n: [r.split(":")[-1] for r in net.rails] for n, net in c.nets.items()},
-                     _leg_rails(c.parts, net_of.get))
+    plan = rail_plan({n: net.polarity for n, net in c.nets.items()},
+                     {n: [r.split(":")[-1] for r in net.rails] for n, net in c.nets.items()},
+                     _leg_rails(c.parts, net_of.get), c.rail_order)
     board = c.boards[c.default_board]
+    c._rounds = [((p.pins[0].xy[0] + p.pins[1].xy[0]) / 2, (p.pins[0].xy[1] + p.pins[1].xy[1]) / 2)
+                 for p in c.parts.values() if p.kind in ROUND and all(x.xy for x in p.pins)]
     extra: dict[str, set] = {}   # strips a net gained from legs placed here
     drops = _Drops(board, _drops(c, board, plan, net_of))
     served: set = set()          # pins that already have a decoupling cap
@@ -112,7 +129,7 @@ def place_legs(c, parts: list) -> None:
             c.issues.append(Issue("error", "BAD_LEG", f"{part.ref}: no free hole for a leg; give its pins"))
             continue
         legs = _Legs(c, board, part, nets, [_strips(c, board, n, extra) for n in nets],
-                     _home(c, part, nets, plan, served), drops)
+                     _home(c, part, nets, plan, served), drops, plan)
         xy = legs.xy
         pick = legs.choose(_pairs(board, options, reach), c._leg_rank.get(part.ref, 0))
         if pick is None:
@@ -124,10 +141,14 @@ def place_legs(c, parts: list) -> None:
             c._occupy(hole, f"{part.ref} leg {i + 1}")
             if not hole.is_rail:
                 extra.setdefault(nets[i], set()).add(board.strip(hole))
-        if legs.home_pins:  # the pin this cap now serves
+        if legs.home_pins:  # the pin this cap now serves: the one whose strip a leg is in, else the nearest
+            strips = {board.strip(h) for h in (a, b) if not h.is_rail}
+            mine = [p for p in legs.home_pins if p.hole is not None and board.strip(p.hole) in strips]
             x = (xy(a)[0] + xy(b)[0]) / 2
-            served.add(min(legs.home_pins, key=lambda p: abs(p.xy[0] - x)))
+            served.add(mine[0] if mine else min(legs.home_pins, key=lambda p: abs(p.xy[0] - x)))
         c._place_leads(part)
+        if part.kind in ROUND:
+            c._rounds.append(((xy(a)[0] + xy(b)[0]) / 2, (xy(a)[1] + xy(b)[1]) / 2))
 
 
 def _pairs(board: Board, options: list[list[Hole]], reach: float) -> list[tuple]:
@@ -153,7 +174,7 @@ class _Legs:
     part (what it lies along or over, strips it fills up); both are never negative, so pairs can be taken
     cheapest first and the costly part skipped once a pair can't win."""
 
-    def __init__(self, c, board: Board, part, nets: list, own: list, home, drops):
+    def __init__(self, c, board: Board, part, nets: list, own: list, home, drops, plan: dict):
         self.c, self.board, self.part, self.drops = c, board, part, drops
         self.own = own
         self.own_x = [[board.xy(board.strip_holes(s)[0])[0] for s in mine] for mine in own]
@@ -161,6 +182,7 @@ class _Legs:
         for net in nets:  # a net that goes off the board: keep its new strips near the connector
             lead = [p for p in c.nets[net].pins if p.part.kind == "offboard"]
             self.lead_x.append(lead[0].xy[0] if lead else None)
+        self.on_rail = [n in plan for n in nets]
         self.home_x = home[0] if home and home[0] is not None else None
         self.home_pins = home[1] if home and home[0] is None else None
         self._xy: dict = {}
@@ -181,19 +203,28 @@ class _Legs:
     def cheap(self, a: Hole, b: Hole, pa, pb) -> float:
         lo, hi = SPAN[self.part.kind]
         span = math.dist(pa, pb)
-        cost = 3.0 * max(0.0, lo - span, span - hi) + 10.0 * (not _aligned(pa, pb))
+        cost = 3.0 * max(0.0, lo - span, span - hi) + LEG_SLANT_COST * (not _aligned(pa, pb))
         cost += 8.0 * self.drops.blocked(a, b, pa, pb)  # in the way of pins' own straight drops to their rails
         for xy in (pa, pb):  # room around each leg, so parts and their labels don't pile up
             cost += CROWD_LEG_COST * sum(_key((xy[0] + dx, xy[1] + dy)) in self.c._used
                                          for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)))
         for i, (leg, xy) in enumerate(((a, pa), (b, pb))):
+            if self.lead_x[i] is not None and (leg.is_rail or self.board.strip(leg) not in self.own[i]):
+                # near the connector its net comes in by: a lead to a new strip gets shorter; on a rail, which
+                # carries it anyway, only to break ties
+                cost += (0.05 if leg.is_rail else 0.3) * abs(xy[0] - self.lead_x[i])
             if leg.is_rail or self.board.strip(leg) in self.own[i]:
                 continue
             if self.own_x[i]:  # an empty strip for a net that has strips: it'll need a wire to them
                 cost += JUNCTION_COST + 0.5 * min(abs(xy[0] - x) for x in self.own_x[i])
-            if self.lead_x[i] is not None:
-                cost += 0.3 * abs(xy[0] - self.lead_x[i])
+            else:  # ... or to its rail or connector: one wire, still better than a slant
+                cost += JUNCTION_COST / 2
+            if self.on_rail[i] and leg.col not in self.board.rail_cols:
+                cost += GAP_COST  # the wire down to its rail would slant
         x = (pa[0] + pb[0]) / 2
+        if self.part.kind in ROUND:  # an LED or a can is about two holes across: never touching another
+            mid = (x, (pa[1] + pb[1]) / 2)
+            cost += ROUND_COST * sum(1 for other in self.c._rounds if math.dist(mid, other) < ROUND_GAP)
         if self.home_x is not None:
             cost += 0.5 * abs(x - self.home_x)
         elif self.home_pins:
@@ -277,10 +308,12 @@ def _leg_options(c, board: Board, net: str, plan: dict, extra: dict) -> list[Hol
 
 
 def _empty_near(c, board: Board, mine: list[Hole], others: list[Hole], reach: float) -> list[Hole]:
-    """Free holes in empty strips, for a leg whose net has no rail: within reach of the other leg's strips, or
-    anywhere if the net has nothing on the board yet. A leg there is joined to its net later by a wire."""
+    """Free holes in empty strips: within reach of the other leg's strips, or anywhere if the net has nothing
+    on the board yet. A leg there is joined to its net later by a wire. For a net on a rail, only right
+    beside the other leg (an LED lying flat beside its resistor, a wire then dropping to the rail) rather
+    than slanting to the rail."""
     if any(h.is_rail for h in mine):
-        return []
+        reach = min(reach, 3)
     cols = {h.col for h in others if not h.is_rail}
     if mine and not cols:
         return []
@@ -296,13 +329,15 @@ def _empty_near(c, board: Board, mine: list[Hole], others: list[Hole], reach: fl
 
 def _home(c, part, nets, plan, served):
     """(x, pin) the part should sit near: its `near` part, or for a decoupling cap the nearest pin of its
-    supply that has no cap yet."""
-    if part.near and part.near in c.parts:
+    supply (on its `near` part) that has no cap yet."""
+    decoupling = all(n in plan for n in nets)
+    if part.near and part.near in c.parts and not decoupling:
         xs = [p.xy[0] for p in c.parts[part.near].pins if p.xy]
         return (sum(xs) / len(xs), None) if xs else None
-    if all(n in plan for n in nets):
-        supply = [n for n in nets if not _GROUND.match(n)] or nets
-        pins = [p for p in c.nets[supply[0]].pins if p.hole is not None and p.part.kind in FOOTPRINT_KINDS]
+    if decoupling:  # by a supply pin that has no cap yet (of its near part, if it names one)
+        supply = [n for n in nets if c.nets[n].polarity != "-"] or nets
+        pins = [p for p in c.nets[supply[0]].pins if p.hole is not None and p.part.kind in FOOTPRINT_KINDS
+                and (not part.near or p.part.ref == part.near)]
         pins = [p for p in pins if p not in served] or pins
         if pins:
             return None, pins  # resolved per candidate: the nearest of these
@@ -317,12 +352,14 @@ class _Model:
     def __init__(self, data: dict):
         board_spec = (data.get("boards") or [{"type": "full"}])[0]
         board_spec = {"type": board_spec} if isinstance(board_spec, str) else board_spec
-        self.board = Board(1, board_spec.get("type", "full"), board_spec.get("rails"))
+        self.board = Board(1, board_spec.get("type", "full"), board_spec.get("rails"), board_spec.get("split_rails", False))
         self.gaps = {c for c in range(1, self.board.columns + 1) if c not in self.board.rail_cols}
         library = library_for(data)
         self.parts = {str(ref): make_part(str(ref), spec, library) for ref, spec in (data.get("parts") or {}).items()}
         self.nets: dict[str, list] = {}
         explicit: dict[str, list[str]] = {}
+        polarity: dict[str, str | None] = {}
+        self.guessed: set = set()
         for name, spec in (data.get("nets") or {}).items():
             spec = {"pins": spec} if isinstance(spec, list) else spec
             pins = []
@@ -331,10 +368,16 @@ class _Model:
                 if ref in self.parts:
                     pins += [p for p in self.parts[ref].find(token) if p not in pins]
             self.nets[str(name)] = pins
-            rails = spec.get("rail") or []
-            explicit[str(name)] = [str(r).split(":")[-1] for r in ([rails] if isinstance(rails, str) else rails)]
+            sign, physical, guessed = net_polarity(str(name), spec)
+            polarity[str(name)] = sign
+            if guessed:
+                self.guessed.add(str(name))
+            explicit[str(name)] = [r.split(":")[-1] for r in physical]
+        check_rail_count(polarity, self.guessed, [self.board])
         self.net_of = {pin: name for name, pins in self.nets.items() for pin in pins}
-        self.plan = rail_plan(explicit, _leg_rails(self.parts, self.net_of.get))
+        legs = _leg_rails(self.parts, self.net_of.get)
+        self.free_supplies = _free_supplies(polarity, explicit, legs)
+        self.plan = rail_plan(polarity, explicit, legs, data.get("_rail_order") or ())
         self.rail_y = {r: self.board.rail_y(r) for r in RAILS}
         # two-lead parts join two nets
         self.links = [tuple(self.net_of.get(p) for p in part.pins) for part in self.parts.values()
@@ -542,6 +585,8 @@ def _score(c, result) -> float:
     for w in c.wires:
         if w.a and w.b and w.flex:  # tidier than a slant, but it hides what it arches over
             score += FLEX_WEIGHT + math.dist(c.end_xy(w.a), c.end_xy(w.b))
+        elif w.a and w.b and w.a.hole and w.b.hole and w.a.hole.is_rail and w.b.hole.is_rail and not w.via:
+            score += RAIL_LINK_WEIGHT  # two rails joined: board setup, out of the way at their ends
         elif w.a and w.b and w.a.hole and w.b.hole:
             pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
             score += sum(math.dist(p, q) for p, q in zip(pts, pts[1:]))
@@ -549,11 +594,15 @@ def _score(c, result) -> float:
         elif w.a and w.b:  # a flying lead: shorter is tidier, and it isn't drawn across the board
             score += FLYING_WEIGHT * math.dist(c.end_xy(w.a), c.end_xy(w.b))
     score += KEEP_WEIGHT * c.cable_holes()
+    score += CROSS_WEIGHT * crossings(c)
+    rounds = [((part.pins[0].xy[0] + part.pins[1].xy[0]) / 2, (part.pins[0].xy[1] + part.pins[1].xy[1]) / 2)
+              for part in c.parts.values() if part.kind in ROUND and all(p.xy for p in part.pins)]
+    score += ROUND_COST * sum(1 for i, a in enumerate(rounds) for b in rounds[i + 1:] if math.dist(a, b) < ROUND_GAP)
     middles = []
     for part in c.parts.values():
         if part.kind in LEAD_KINDS and all(p.xy for p in part.pins):
             a, b = part.pins[0].xy, part.pins[1].xy
-            score += 10.0 * (not _aligned(a, b)) + 3.0 * max(0.0, math.dist(a, b) - SPAN[part.kind][1])
+            score += LEG_SLANT_COST * (not _aligned(a, b)) + 3.0 * max(0.0, math.dist(a, b) - SPAN[part.kind][1])
             middles.append(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
     for i, (x1, y1) in enumerate(middles):  # two parts this close: their labels collide
         score += LABEL_COST * sum(abs(x1 - x2) < 2.5 and abs(y1 - y2) < 1.5 for x2, y2 in middles[i + 1:])
@@ -577,23 +626,33 @@ def autoplace(data: dict, source: str) -> dict:
     base = copy.deepcopy(data)
     base.setdefault("autowire", True)  # placed by bbgen, so wired by it unless told otherwise
     base["_placed"] = [*model.auto, *leads]
+    # two supplies picking their own + rails: which takes the top one changes where parts want to go, so
+    # both ways round compete
+    orders = [model.free_supplies]
+    if len(model.free_supplies) > 1:
+        orders.append(model.free_supplies[::-1])
+    models, bases = [], []
+    for order in orders:
+        bases.append({**base, "_rail_order": order} if len(orders) > 1 else base)
+        models.append(model if not models else _Model(bases[-1]))
     candidates: dict = {}
-    if model.auto:
-        for seed in range(SEEDS):
-            for cost, state in model.anneal(seed):
-                candidates.setdefault(_frozen(state), (cost, state))
-    else:
-        candidates[()] = (0.0, {})
+    for k, m in enumerate(models):
+        if m.auto:
+            for seed in range(SEEDS):
+                for cost, state in m.anneal(seed):
+                    candidates.setdefault((k, _frozen(state)), (cost, state, k))
+        else:
+            candidates[(k, ())] = (0.0, {}, k)
     best = None
     starts = sorted(candidates.values(), key=lambda t: t[0])[:KEEP * 2]
-    for i, (_, state) in enumerate(starts, 1):
-        trial = _with(base, {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()})
+    for i, (_, state, k) in enumerate(starts, 1):
+        trial = _with(bases[k], {ref: {"at": at, "rot": rot} for ref, (at, rot, *_) in state.items()})
         score, c = _evaluate(trial, source)
         kept = best is None or score < best[0]
         trace.step(c, f"starting layout {i} of {len(starts)}: score {score:.0f}" + (" ✓ best so far" if kept else ""),
                    kept=kept)
         if kept:
-            best = (score, trial, c)
+            best, model = (score, trial, c), models[k]
     if best is None:
         raise CircuitError("bbgen found no way to fit these parts on the board without overlapping; place the "
                            "biggest yourself (at:), or use more boards")

@@ -19,8 +19,9 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    (`symbol: Timer:NE555P`; find names with `bbgen find <words>`): their pin names then come
    from KiCad, not from you. Two-lead parts and connectors stay bbgen's own types.
    Leave out `at`, two-lead parts' `pins` and `wires`: bbgen places and wires everything itself
-   (README, "Automatic placement"). Give a net `rail:` when it should run on a rail its name
-   doesn't imply, and a decoupling cap `near:` its chip.
+   (README, "Automatic placement"). Say what each supply and ground is: `rail: +` or `rail: -`
+   (bbgen picks the physical rail; each voltage gets its own), and `rail: none` for a net that only
+   looks like one. Give a decoupling cap `near:` its chip.
    Only place a part yourself (`at`, `pins`) where you have a reason to, such as the user's
    preference or a physical constraint bbgen can't know.
 3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a

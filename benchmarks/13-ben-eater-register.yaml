@@ -29,8 +29,8 @@ parts:
   J2: {type: offboard, title: Control, labels: [/LOAD, /ENABLE, CLK, CLR]}
   J3: {type: offboard, title: 5 V supply, labels: [5V, GND]}
 nets:
-  5V: [J3.1, U1.VCC, U2.VCC, U3.VCC, U3.A->B, C1.1, C2.1, C3.1]
-  GND: [J3.2, U1.GND, U2.GND, U3.GND, U1.Oe1, U1.Oe2, U2.Oe1, U2.Oe2, C1.2, C2.2, C3.2, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K]
+  5V: {pins: [J3.1, U1.VCC, U2.VCC, U3.VCC, U3.A->B, C1.1, C2.1, C3.1], rail: +}
+  GND: {pins: [J3.2, U1.GND, U2.GND, U3.GND, U1.Oe1, U1.Oe2, U2.Oe1, U2.Oe2, C1.2, C2.2, C3.2, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K], rail: -}
   LOAD: [J2.1, U1.E1, U1.E2, U2.E1, U2.E2]
   ENABLE: [J2.2, U3.CE]
   CLK: [J2.3, U1.Cp, U2.Cp]
@@ -59,3 +59,4 @@ nets:
   BUS7: [J1.8, U2.D3, U3.B7]
   Q7: [U2.Q3, U3.A7, R8.1]
   LED7: [R8.2, D8.A]
+expect: {crossings: 30}  # both 74LS173s turned to face the 74LS245

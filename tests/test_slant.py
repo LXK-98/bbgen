@@ -96,10 +96,26 @@ class OverPartTest(unittest.TestCase):
         _, r = build({"R1": {"type": "resistor", "pins": ["d25", "top-25"]}}, [["b25", "b30"]])
         self.assertIn("W1 ends in b25, under R1", next(i.message for i in r.issues if i.code == "OVER_PART"))
 
-    def test_wire_along_another(self):
+    def test_wire_inside_one_built_before_it(self):
+        # W1 lies over a12 and a18 before W2 goes in: W2's ends can't be plugged in
         _, r = build({}, [["a10", "a20"], ["a12", "a18"]])
-        msgs = [i.message for i in r.issues if i.code == "OVER_PART"]
-        self.assertTrue(any(m.startswith("W2 runs along W1") for m in msgs), msgs)
+        msgs = [i.message for i in r.issues if i.code == "END_COVERED"]
+        self.assertTrue(any(m.startswith("W2 ends in a12, under W1") for m in msgs), msgs)
+
+    def test_wires_nested_the_buildable_way(self):
+        # the inner wire first, then the outer one over it: buildable, but it hides the inner one
+        _, r = build({}, [["a12", "a18"], ["a10", "a20"]])
+        self.assertEqual(codes(r), [])
+        self.assertIn("W2 lies over W1", next(i.message for i in r.issues if i.code == "NESTED"))
+
+    def test_wires_interleaved(self):
+        _, r = build({}, [["a10", "a20"], ["a15", "a25"]])
+        self.assertIn("END_COVERED", codes(r))
+
+    def test_a_flexible_jumper_under_a_wire(self):
+        # jumpers go in last: one can't end under a wire lying on the board
+        _, r = build({}, [["a10", "a20"], {"from": "a15", "to": "c40", "flex": True}])
+        self.assertIn("END_COVERED", codes(r))
 
 
 if __name__ == "__main__":

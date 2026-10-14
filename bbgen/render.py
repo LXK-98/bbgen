@@ -9,7 +9,7 @@ from xml.sax.saxutils import escape
 from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, TRENCH_Y, Board
 from .check import Result, end_node, wire_color
 from .circuit import Circuit, Wire, color_hex
-from .parts import FOOTPRINT_KINDS, LEAD_KINDS, Part, body_rect, placed_box, rotate
+from .parts import FOOTPRINT_KINDS, LEAD_KINDS, LED_COLORS, Part, body_rect, placed_box, rotate
 
 P = 20.0     # pixels per grid unit (0.1 in)
 FONT = "DejaVu Sans, Helvetica, Arial, sans-serif"
@@ -66,10 +66,44 @@ def _outline(color: str) -> str:
     return "#1d1d1d"
 
 
+def _text_box(gx, gy, s, size, anchor="middle", vertical=False):
+    """A label's extent in grid units, roughly."""
+    w, h = len(s) * size * 0.55 / P, size * 0.8 / P
+    lo = {"start": 0.0, "end": -w, "middle": -w / 2}[anchor]
+    if vertical:  # reads bottom to top: the length runs up from gy
+        return (gx - h / 2, gy - lo - w, gx + h / 2, gy - lo)
+    return (gx + lo, gy - h / 2, gx + lo + w, gy + h / 2)
+
+
+def _seg_hits_box(a, b, box) -> bool:
+    """A straight run passing through a box (sampled: runs are short and boxes small)."""
+    x0, y0, x1, y1 = box
+    n = max(2, int(math.dist(a, b) * 4))
+    return any(x0 < a[0] + (b[0] - a[0]) * t / n < x1 and y0 < a[1] + (b[1] - a[1]) * t / n < y1
+               for t in range(n + 1))
+
+
 class _Canvas:
     def __init__(self, x0: float, y0: float):
         self.x0, self.y0, self.out = x0, y0, []
         self.late: list[str] = []  # part labels, drawn over the wires
+        self.labels: list[tuple] = []  # (box, text) in grid units for each label over the wires, and wire tags
+        self.spots: list[tuple] = []   # wire ends and bends: a label must never hide one
+        self.segs: list[tuple] = []    # (a, b, owner) for each wire run: a label had better not lie across one
+
+    def clash(self, box, owner: str = "") -> float:
+        """How badly a label there would hide things: wire ends and other labels count most."""
+        x0, y0, x1, y1 = box
+        n = 3.0 * sum(1 for x, y in self.spots if x0 < x < x1 and y0 < y < y1)
+        n += 3.0 * sum(1 for b, _ in self.labels if x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1)
+        n += sum(1 for a, b, who in self.segs if who != owner and _seg_hits_box(a, b, box))
+        return n
+
+    def label(self, spots: list, s: str, size: float, owner: str = "", **kw) -> None:
+        """A label at the first of spots [(gx, gy, anchor), ...] that hides least."""
+        best = min(range(len(spots)), key=lambda i: (self.clash(_text_box(*spots[i][:2], s, size, spots[i][2]), owner), i))
+        gx, gy, anchor = spots[best]
+        self.text(gx, gy, s, size, anchor, late=True, **kw)
 
     def X(self, gx: float) -> float:
         return (gx - self.x0) * P
@@ -83,6 +117,8 @@ class _Canvas:
     def text(self, gx, gy, s, size=7.0, anchor="middle", fill=INK, weight="normal", vertical=False,
              halo=None, late=False) -> None:
         """Text centred across its height on (gx, gy); vertical text reads bottom to top."""
+        if late:
+            self.labels.append((_text_box(gx, gy, s, size, anchor, vertical), s))
         x, y = self.X(gx), self.Y(gy)
         tr = ""
         if vertical:
@@ -193,10 +229,10 @@ def _footprint(cv: _Canvas, part: Part) -> None:
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         cv.text(cx, cy - 0.4, part.ref, 9, fill="#ffffff", weight="bold")
         cv.text(cx, cy + 0.45, part.title, 6.5, fill="#dfe9df")
-    elif part.kind == "sip":
-        cv.text((x0 + x1) / 2, y1 + 0.55, label, 6.5, weight="bold", halo="#ffffff", late=True)
     else:
-        cv.text((x0 + x1) / 2, y0 - 0.5, label, 6.5, weight="bold", halo="#ffffff", late=True)
+        above, below = ((x0 + x1) / 2, y0 - 0.5, "middle"), ((x0 + x1) / 2, y1 + 0.55, "middle")
+        cv.label([below, above] if part.kind == "sip" else [above, below], label, 6.5, part.ref, weight="bold",
+                 halo="#ffffff")
 
 
 def _lead(cv: _Canvas, part: Part) -> None:
@@ -210,6 +246,9 @@ def _lead(cv: _Canvas, part: Part) -> None:
         nx, ny = -nx, -ny  # the side facing up (or left)
     if part.kind == "electrolytic":
         _can(cv, part, (ax, ay), (bx, by), (ux, uy), (nx, ny), length)
+        return
+    if part.kind == "led":
+        _led(cv, part, (ax, ay), (bx, by), (ux, uy), (nx, ny), length)
         return
     fill, stroke, thick, longest = LEAD_STYLE[part.kind]
     if length < 1.8:  # standing up beside its legs, half a pitch over: between rows, not on the next holes
@@ -244,9 +283,54 @@ def _lead(cv: _Canvas, part: Part) -> None:
                 "#d9d9d9", 0.1)
     for x, y in ((ax, ay), (bx, by)):
         cv.circle(x, y, 0.13, "#9a9a9a", "#555", 0.6)
-    off = thick / 2 + 0.5
-    cv.text(cx + nx * off, cy + ny * off, f"{part.ref} {part.value}".strip(), 6.2, weight="bold", halo="#ffffff",
-            late=True)
+    _part_label(cv, part, (cx, cy), (ux, uy), (nx, ny), thick / 2 + 0.5, blen / 2)
+
+
+def _part_label(cv: _Canvas, part: Part, centre, u, n, off: float, half: float) -> None:
+    """A two-lead part's label: beside it on the upper side if that hides nothing, else the other side, else
+    past one of its ends."""
+    (cx, cy), (ux, uy), (nx, ny) = centre, u, n
+    end = half + 0.35
+    spots = [(cx + nx * off, cy + ny * off, "middle"), (cx - nx * off, cy - ny * off, "middle")]
+    for k in (1, -1):
+        x, y = cx + ux * end * k, cy + uy * end * k
+        anchor = "middle" if abs(ux) < 0.5 else ("start" if ux * k > 0 else "end")
+        spots.append((x, y + (0.35 if abs(ux) < 0.5 and uy * k > 0 else -0.35 if abs(ux) < 0.5 else 0), anchor))
+    cv.label(spots, f"{part.ref} {part.value}".strip(), 6.2, part.ref, weight="bold", halo="#ffffff")
+
+
+def _shade(hex_color: str, k: float) -> str:
+    """A colour darkened (k < 1) or lightened toward white (k > 1)."""
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    if k <= 1:
+        r, g, b = (int(v * k) for v in (r, g, b))
+    else:
+        r, g, b = (int(v + (255 - v) * (k - 1)) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _led(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
+    """An LED seen from above: its round lens inside the wider flange, with the flat cut into the flange on
+    the cathode side (leg 2)."""
+    (ax, ay), (bx, by), (ux, uy), (nx, ny) = a, b, u, n
+    color = part.color or "red"
+    lens, flange = LED_COLORS.get(color) or (_shade(color, 1.25), _shade(color, 0.7))
+    cx, cy, r = (ax + bx) / 2, (ay + by) / 2, 0.75
+    if length > 2 * r:  # legs reach past the LED
+        cv.line(ax, ay, cx - ux * r, cy - uy * r, "#8d8d8d", 0.1)
+        cv.line(bx, by, cx + ux * r, cy + uy * r, "#8d8d8d", 0.1)
+    d = r * 0.78  # the flat: a chord across the flange, toward the cathode
+    h = math.sqrt(r * r - d * d)
+    p1 = (cx + ux * d + nx * h, cy + uy * d + ny * h)
+    p2 = (cx + ux * d - nx * h, cy + uy * d - ny * h)
+    sweep = 1 if ux * ny - uy * nx > 0 else 0  # the long way round, away from the flat, whichever way it faces
+    cv.add(f'<path d="M {cv.X(p1[0]):.1f} {cv.Y(p1[1]):.1f} A {r * P:.1f} {r * P:.1f} 0 1 {sweep} {cv.X(p2[0]):.1f} '
+           f'{cv.Y(p2[1]):.1f} Z" fill="{flange}" stroke="{_shade(flange, 0.6)}" stroke-width="1"/>')
+    cv.circle(cx, cy, r * 0.72, lens, _shade(flange, 0.8), 0.8)
+    cv.circle(cx - r * 0.25, cy - r * 0.25, r * 0.18, "#ffffff", "none", 0)  # the lens's shine
+    for x, y in (a, b):  # where the legs go, under the LED
+        cv.circle(x, y, 0.12, "none", "#6b6b6b", 1)
+    _part_label(cv, part, (cx, cy), (ux, uy), (nx, ny), r + 0.45, r)
 
 
 def _can(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
@@ -271,9 +355,7 @@ def _can(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
         cv.line(cx - dx * k, cy - dy * k, cx + dx * k, cy + dy * k, "#8e959c", 0.05)
     for x, y in (a, b):  # where the legs go, under the can
         cv.circle(x, y, 0.12, "none", "#6b6b6b", 1)
-    off = r + 0.45
-    cv.text(cx + nx * off, cy + ny * off, f"{part.ref} {part.value}".strip(), 6.2, weight="bold", halo="#ffffff",
-            late=True)
+    _part_label(cv, part, (cx, cy), (ux, uy), (nx, ny), r + 0.45, r)
 
 
 def _offboard(cv: _Canvas, part: Part) -> None:
@@ -356,6 +438,22 @@ def _focus(cv: _Canvas, c: Circuit, focus) -> None:
                        f'stroke-width="{0.8 * P:.1f}" stroke-linecap="round" stroke-linejoin="round"/>')
 
 
+def _along(c: Circuit, w: Wire, t: float):
+    """The point a fraction t along a wire as drawn (its curve, for a flying lead or jumper)."""
+    path, pts, _ = _wire_path(c, w)
+    if isinstance(path, tuple):
+        ax, ay, qx, qy, bx, by = path
+        return ((1 - t) ** 2 * ax + 2 * (1 - t) * t * qx + t * t * bx, (1 - t) ** 2 * ay + 2 * (1 - t) * t * qy + t * t * by)
+    lengths = [math.dist(p, q) for p, q in zip(pts, pts[1:])]
+    goal = t * sum(lengths)
+    for (p, q), d in zip(zip(pts, pts[1:]), lengths):
+        if goal <= d or d == lengths[-1]:
+            k = goal / d if d else 0.0
+            return p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k
+        goal -= d
+    return pts[-1]
+
+
 def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> None:
     drawn = []
     # flexible jumpers over the wires lying on the board, as they're plugged in last
@@ -379,7 +477,11 @@ def _wires(cv: _Canvas, c: Circuit, result: Result, highlight: str | None) -> No
     for w, (x, y), color in drawn:
         label = f"W{w.num}"
         half = (len(label) * 5.2 * 0.62 + 4) / 2 / P
+        spots = [(x, y)] + [_along(c, w, t) for t in (0.3, 0.7, 0.2, 0.8)]
+        x, y = min(spots, key=lambda p: (cv.clash((p[0] - half, p[1] - 0.24, p[0] + half, p[1] + 0.24), label),
+                                          spots.index(p)))
         cv.rect(x - half, y - 0.24, x + half, y + 0.24, "#ffffff", color, 1, rx=0.1, extra=' opacity="0.92"')
+        cv.labels.append(((x - half, y - 0.24, x + half, y + 0.24), label))
         cv.text(x, y, label, 5.2, fill=INK, weight="bold")
 
 
@@ -395,6 +497,11 @@ def render(c: Circuit, result: Result, highlight: str | None = None, caption: st
            focus=()) -> str:
     """The drawing; highlight dims every wire group but that one. caption and focus are for the frames of
     a video of bbgen at work: a line saying what the step did, and the parts and wires it changed."""
+    return draw(c, result, highlight, caption, focus)[0]
+
+
+def draw(c: Circuit, result: Result, highlight: str | None = None, caption: str | None = None, focus=()):
+    """The drawing's SVG, and the canvas it was drawn on (whose labels the measures look at)."""
     xs = [x for b in c.boards.values() for x in (b.left, b.right)]
     ys = list(OUTLINE_Y)
     for part in c.parts.values():
@@ -431,6 +538,11 @@ def render(c: Circuit, result: Result, highlight: str | None = None, caption: st
     if caption:
         cv.text(maxx - 0.8, miny + 1.1, caption, 11, "end", "#b35c00", weight="bold")
 
+    for w in c.wires:
+        if w.a and w.b:
+            pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
+            cv.spots += [pts[0], pts[-1], *w.via_xy]
+            cv.segs += [(p, q, f"W{w.num}") for p, q in zip(pts, pts[1:])]
     for board in c.boards.values():
         _board(cv, c, result, board)
     for part in c.parts.values():
@@ -466,4 +578,4 @@ def render(c: Circuit, result: Result, highlight: str | None = None, caption: st
             f'<defs><pattern id="keepout" width="8" height="8" patternUnits="userSpaceOnUse" '
             f'patternTransform="rotate(45)"><rect width="8" height="8" fill="#efe9dc"/>'
             f'<line x1="0" y1="0" x2="0" y2="8" stroke="#d3c9b1" stroke-width="3"/></pattern></defs>\n'
-            f'<rect width="100%" height="100%" fill="#ffffff"/>\n' + "\n".join(cv.out) + "\n</svg>\n")
+            f'<rect width="100%" height="100%" fill="#ffffff"/>\n' + "\n".join(cv.out) + "\n</svg>\n"), cv

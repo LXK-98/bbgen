@@ -5,6 +5,7 @@ parts:
   R1: {type: resistor, value: 330R}
   D1: {type: led}
 nets:
-  5V: [J1.1, R1.1]
+  5V: {pins: [J1.1, R1.1], rail: +}
   LED: [R1.2, D1.A]
-  GND: [J1.2, D1.K]
+  GND: {pins: [J1.2, D1.K], rail: -}
+expect: {warnings: 0, flex: 0, flying: 20}  # LED lying straight, built next to the supply

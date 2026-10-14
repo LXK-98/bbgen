@@ -36,10 +36,17 @@ class AutowireTest(unittest.TestCase):
                          {frozenset({"a4", "top+4"}), frozenset({"a27", "top+27"})})
 
     def test_a_lone_ground_takes_the_minus_rails(self):
-        c, r = auto({"Pico": PICO, "U1": DIP}, {"GND": ["Pico.GND", "U1.GND"]})
+        c, r = auto({"Pico": PICO, "U1": DIP, "C1": {"type": "capacitor", "pins": ["top+45", "top-45"]}},
+                    {"GND": ["Pico.GND", "U1.GND", "C1.2"], "VSYS": ["Pico.VSYS", "C1.1"]})
         self.assertEqual(codes(r), [])
-        rails = {e.hole.row for w in c.wires for e in (w.a, w.b) if e.hole and e.hole.is_rail}
+        rails = {e.hole.row for w in c.wires if w.group == "GND" for e in (w.a, w.b) if e.hole and e.hole.is_rail}
         self.assertTrue(rails <= {"top-", "bot-"} and rails)
+
+    def test_a_rail_nothing_needs_is_left_alone(self):
+        # one straight wire joins the two grounds: no drops to a rail and no wire to a rail nothing else uses
+        c, r = auto({"Pico": PICO, "U1": DIP}, {"GND": ["Pico.GND", "U1.GND"]})
+        self.assertEqual(codes(r) + codes(r, "warning"), [])
+        self.assertEqual([ends(c, w) for w in c.wires], [("b20", "b26")])
 
     def test_rail_names_a_rail(self):
         c, r = auto({"U1": DIP}, {"VCC": {"pins": ["U1.VIN", "U1.VOUT"], "rail": "bot+"}})
@@ -65,10 +72,14 @@ class AutowireTest(unittest.TestCase):
         self.assertEqual(codes(r), [])
         self.assertEqual([w.auto for w in c.wires], [False])
 
-    def test_a_wire_across_a_part_is_bent_around_it(self):
+    def test_a_wire_across_a_part_arches_over_it(self):
         opamp = {"type": "dip", "pins": 6, "at": "e42", "rot": 180, "labels": ["OUT", "V-", "IN+", "IN-", "X", "V+"]}
         c, r = auto({"U1": opamp}, {"FB": ["U1.OUT", "U1.IN-"]})
-        self.assertEqual(codes(r), [])
+        self.assertEqual(codes(r) + codes(r, "warning"), [])
+        [w] = c.wires
+        self.assertTrue(w.flex)  # bbgen never bends a wire itself
+        # with flexible jumpers turned off, it's bent around the part instead
+        c, r = auto({"U1": opamp}, {"FB": ["U1.OUT", "U1.IN-"]}, flex=False)
         [w] = c.wires
         self.assertTrue(w.via)
         self.assertNotIn("OVER_PART", codes(r, "warning"))

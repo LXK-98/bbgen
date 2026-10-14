@@ -11,8 +11,8 @@ parts:
   D1: {type: led}
   J1: {type: offboard, title: Bench supply, labels: [5V, GND]}
 nets:
-  5V: [J1.1, U1.VCC, U1./RST, RA.1, C3.1]
-  GND: [J1.2, U1.GND, C1.-, C2.2, C3.2, D1.K]
+  5V: {pins: [J1.1, U1.VCC, U1./RST, RA.1, C3.1], rail: +}
+  GND: {pins: [J1.2, U1.GND, C1.-, C2.2, C3.2, D1.K], rail: -}
   DIS: [U1.DISCH, RA.2, RB.1]
   TIMING: [U1.THRES, U1.TRIG, RB.2, C1.+]
   CTRL: [U1.CONT, C2.1]

@@ -27,6 +27,11 @@ PICO_PINS = {
 PICO_GND = (3, 8, 13, 18, 23, 28, 38)
 # Room for a USB cable's plug past the Pico's USB end, relative to pin 1: the "USB Cable" courtyard zone
 # of KiCad's Module:RaspberryPi_Pico_Common_THT footprint (x 3.14-14.64 mm, y -3.57 to -23.07 mm).
+# an LED seen from above: (lens, flange) for each colour it comes in
+LED_COLORS = {
+    "red": ("#f0473b", "#b3261c"), "green": ("#3fc35a", "#1e8a35"), "yellow": ("#f7d730", "#c4a40a"),
+    "blue": ("#4a8cf0", "#1f56b3"), "white": ("#fbfbfb", "#c9c9c9"), "orange": ("#ff9636", "#cc6510"),
+}
 PICO_USB_KEEPOUT = (-9.08, -5.76, -1.41, -1.24)
 
 LEAD_KINDS = {
@@ -170,6 +175,11 @@ def make_part(ref: str, spec: dict, library: tuple | None = None) -> Part:
         raise PartError(f"parts.{ref}: unknown type {kind!r} (expected one of {', '.join(KINDS)}, "
                         "or a KiCad symbol: Library:Name)")
     part = Part(ref, kind, str(spec.get("title") or ""), str(spec.get("value") or ""), spec.get("color"))
+    if kind == "led" and part.color is not None:
+        name = str(part.color).lower()
+        if name not in LED_COLORS and not re.fullmatch(r"#[0-9a-fA-F]{6}", name):
+            raise PartError(f"parts.{ref}: an LED's color is {', '.join(LED_COLORS)} or #rrggbb")
+        part.color = name
 
     part.near = str(spec["near"]) if spec.get("near") else None
     if kind in FOOTPRINT_KINDS:

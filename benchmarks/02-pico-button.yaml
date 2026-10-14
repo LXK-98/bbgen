@@ -1,6 +1,6 @@
 title: Pico button and LED
 notes:
-  - "Tier 1. A button with a pull-down on GPIO15, an LED on GPIO16."
+  - "Tier 1. A button with a pull-down on GPIO15, an LED on GPIO14: both on the same side of the Pico."
   - "Gap: KiCad's 6 mm tactile switch (SW_PUSH_6mm) is off the 0.1 in grid, so the switch is a 4-pin DIP
     across the trench. Pressing joins pin 1 to pin 2; bbgen doesn't know its other pins are joined inside."
 parts:
@@ -10,8 +10,9 @@ parts:
   R2: {type: resistor, value: 330R}
   D1: {type: led}
 nets:
-  3V3: [Pico.3V3, SW1.2]
+  3V3: {pins: [Pico.3V3, SW1.2], rail: +}
   BTN: [Pico.GPIO15, SW1.1, R1.1]
-  LED_DRIVE: [Pico.GPIO16, R2.1]
+  LED_DRIVE: [Pico.GPIO14, R2.1]
   LED: [R2.2, D1.A]
-  GND: [Pico.GND, R1.2, D1.K]
+  GND: {pins: [Pico.GND, R1.2, D1.K], rail: -}
+expect: {label_clashes: 0}

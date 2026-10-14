@@ -6,6 +6,8 @@ notes:
     an SN74LVC1T45 shifts TE up to GP27, and P30/P32 get 10k pull-ups to VDDIO."
   - "ASSUMED: the TSSOP-24 parts sit on 0.6 in wide DIP-24 adapters, pad n on pin n. The circuit is
     big for one board; bbgen can't spread it over two yet."
+boards:
+  - {type: full, split_rails: true}  # three supplies: VSYS, 3V0 and 3V3 each need a + rail
 parts:
   Pico: {symbol: MCU_Module:RaspberryPi_Pico, footprint: Module:RaspberryPi_Pico_Common_THT}
   U12: {symbol: Regulator_Linear:ME6211C30M5, adapter: {pins: 6, map: {5: 6}}}
@@ -44,11 +46,11 @@ parts:
     cols: 2
     labels: {1: D9, 2: D0, 3: GND, 4: 'BL 12.76V!', 5: BL, 6: GND, 7: TE, 8: GND, 9: D17, 10: D16, 11: D15, 12: D14, 13: D13, 14: D12, 15: D11, 16: D10, 17: GND, 18: D8, 19: D7, 20: D6, 21: D5, 22: D4, 23: D3, 24: D2, 25: D1, 26: VDDIO, 27: '/WR', 28: 'D/C', 29: '/CS', 30: P30, 31: GND, 32: P32, 33: 3V0, 34: REF}
 nets:
-  VSYS: [Pico.VSYS, U12.VIN, U11.VIN, C1.1, C3.1, C5.+]
-  GND: [Pico.GND, U12.VSS, U11.GND, U13.V-, RV1.3, R3.2, R4.2, C1.2, C2.2, C3.2, C4.2, C5.-, C6.2,
+  VSYS: {pins: [Pico.VSYS, U12.VIN, U11.VIN, C1.1, C3.1, C5.+], rail: +}
+  GND: {pins: [Pico.GND, U12.VSS, U11.GND, U13.V-, RV1.3, R3.2, R4.2, C1.2, C2.2, C3.2, C4.2, C5.-, C6.2,
         J1.3, J1.6, J1.8, J1.17, J1.31, U1.GND, U2.GND, U3.GND, U4.GND, U1./OE, U2./OE, U3./OE,
-        U3.A6, U3.A7, U3.A8, C7.2, C8.2, C9.2, C10.2, C11.2, C12.2, C13.2, C14.2]
-  3V0: {pins: [U12.VOUT, C2.1, U13.V+, C6.1, R1.1, R2.1, J1.33], rail: bot+}
+        U3.A6, U3.A7, U3.A8, C7.2, C8.2, C9.2, C10.2, C11.2, C12.2, C13.2, C14.2], rail: -}
+  3V0: {pins: [U12.VOUT, C2.1, U13.V+, C6.1, R1.1, R2.1, J1.33], rail: +}
   VDDIO: [U11.VOUT, C4.1, J1.26, U1.VCCB, U2.VCCB, U3.VCCB, U4.VCCA, U4.DIR, R7.1, R8.1, C8.1, C10.1, C12.1, C13.1]
   EN_3V0: [Pico.GPIO21, U12.CE, R3.1]
   EN_VDDIO: [Pico.GPIO26_ADC0, U11.EN, R4.1]
@@ -57,7 +59,7 @@ nets:
   REF_IN: [R5.2, U13.+, Pico.GPIO22]
   REF_OUT: [U13.1, U13.-, R6.1]
   REF: [R6.2, J1.34]
-  3V3: [Pico.3V3, U1.VCCA, U1.DIR, U2.VCCA, U2.DIR, U3.VCCA, U3.DIR, U4.VCCB, C7.1, C9.1, C11.1, C14.1]
+  3V3: {pins: [Pico.3V3, U1.VCCA, U1.DIR, U2.VCCA, U2.DIR, U3.VCCA, U3.DIR, U4.VCCB, C7.1, C9.1, C11.1, C14.1], rail: +}
   TE: [J1.7, U4.A]
   TE_3V3: [U4.B, Pico.GPIO27_ADC1]
   P30: [J1.30, R7.2]

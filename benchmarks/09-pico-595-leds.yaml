@@ -21,8 +21,8 @@ parts:
   R8: {type: resistor, value: 330R}
   D8: {type: led}
 nets:
-  3V3: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1]
-  GND: [Pico.GND, U1.GND, U1./OE, C1.2, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K]
+  3V3: {pins: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1], rail: +}
+  GND: {pins: [Pico.GND, U1.GND, U1./OE, C1.2, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K], rail: -}
   SER: [Pico.GPIO2, U1.SER]
   SRCLK: [Pico.GPIO3, U1.SRCLK]
   RCLK: [Pico.GPIO4, U1.RCLK]
@@ -42,3 +42,4 @@ nets:
   LED6: [R7.2, D7.A]
   QH: [U1.QH, R8.1]
   LED7: [R8.2, D8.A]
+expect: {warnings: 0}

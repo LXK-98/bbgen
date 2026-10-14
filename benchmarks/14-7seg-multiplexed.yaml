@@ -24,8 +24,8 @@ parts:
   Q4: {symbol: Transistor_BJT:PN2222A, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
   R12: {type: resistor, value: 1k}
 nets:
-  3V3: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1]
-  GND: [Pico.GND, U1.GND, U1./OE, C1.2, Q1.E, Q2.E, Q3.E, Q4.E]
+  3V3: {pins: [Pico.3V3, U1.VCC, U1./SRCLR, C1.1], rail: +}
+  GND: {pins: [Pico.GND, U1.GND, U1./OE, C1.2, Q1.E, Q2.E, Q3.E, Q4.E], rail: -}
   SER: [Pico.GPIO2, U1.SER]
   SRCLK: [Pico.GPIO3, U1.SRCLK]
   RCLK: [Pico.GPIO4, U1.RCLK]
@@ -57,3 +57,4 @@ nets:
   DIGIT4: [DISP1.CC4, Q4.C]
   BASE4: [R12.2, Q4.B]
   SEL4: [Pico.GPIO9, R12.1]
+expect: {slanted: 3, warnings: 2}  # not worked on yet: holds it where it is

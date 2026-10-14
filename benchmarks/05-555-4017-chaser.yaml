@@ -24,8 +24,8 @@ parts:
   D10: {type: led}
   J1: {type: offboard, title: 9 V supply, labels: [9V, GND]}
 nets:
-  9V: [J1.1, U1.VCC, U1./RST, RA.1, U2.VDD, C3.1, C4.1]
-  GND: [J1.2, U1.GND, C1.-, C2.2, C3.2, C4.2, U2.VSS, U2.CKEN, U2.Reset, R1.2]
+  9V: {pins: [J1.1, U1.VCC, U1./RST, RA.1, U2.VDD, C3.1, C4.1], rail: +}
+  GND: {pins: [J1.2, U1.GND, C1.-, C2.2, C3.2, C4.2, U2.VSS, U2.CKEN, U2.Reset, R1.2], rail: -}
   DIS: [U1.DISCH, RA.2, RB.1]
   TIMING: [U1.THRES, U1.TRIG, RB.2, C1.+]
   CTRL: [U1.CONT, C2.1]

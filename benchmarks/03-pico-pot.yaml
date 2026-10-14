@@ -5,6 +5,7 @@ parts:
   RV1: {footprint: Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical, title: 10k pot}
   C1: {type: capacitor, value: 100nF}
 nets:
-  3V3: [Pico.3V3, RV1.3]
+  3V3: {pins: [Pico.3V3, RV1.3], rail: +}
   ADC: [Pico.GPIO26_ADC0, RV1.2, C1.1]
-  AGND: [Pico.AGND, RV1.1, C1.2]
+  AGND: {pins: [Pico.AGND, RV1.1, C1.2], rail: -}
+expect: {flex: 1, crossings: 0}  # one jumper: the pot body leaves each pin strip one free hole, all in row a

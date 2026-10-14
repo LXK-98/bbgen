@@ -12,9 +12,9 @@ parts:
   J2: {type: offboard, title: Motor B, labels: [B+, B-]}
   J3: {type: offboard, title: Motor supply, labels: [VMOT, GND]}
 nets:
-  5V: [Pico.VBUS, U1.16, C1.1]
+  5V: {pins: [Pico.VBUS, U1.16, C1.1], rail: +}
   VMOT: [J3.1, U1.8, C2.+, C3.1]
-  GND: [Pico.GND, U1.GND, J3.2, C1.2, C2.-, C3.2]
+  GND: {pins: [Pico.GND, U1.GND, J3.2, C1.2, C2.-, C3.2], rail: -}
   EN12: [Pico.GPIO10, U1.1]
   IN1: [Pico.GPIO11, U1.2]
   IN2: [Pico.GPIO12, U1.7]
@@ -25,3 +25,4 @@ nets:
   MA2: [U1.6, J1.2]
   MB1: [U1.11, J2.1]
   MB2: [U1.14, J2.2]
+expect: {crossings: 10}  # the L293D turned so its wires don't cross

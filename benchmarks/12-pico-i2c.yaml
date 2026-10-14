@@ -12,8 +12,8 @@ parts:
   SW1: {type: dip, pins: 4, title: button 1}
   SW2: {type: dip, pins: 4, title: button 2}
 nets:
-  3V3: [Pico.3V3, U1.VCC, OLED.VCC, R1.1, R2.1, C1.1, SW1.2, SW2.2]
-  GND: [Pico.GND, U1.GND, U1.A0, U1.A1, U1.A2, U1.WP, OLED.GND, C1.2]
+  3V3: {pins: [Pico.3V3, U1.VCC, OLED.VCC, R1.1, R2.1, C1.1, SW1.2, SW2.2], rail: +}
+  GND: {pins: [Pico.GND, U1.GND, U1.A0, U1.A1, U1.A2, U1.WP, OLED.GND, C1.2], rail: -}
   SDA: [Pico.GPIO4, U1.SDA, OLED.SDA, R1.2]
   SCL: [Pico.GPIO5, U1.SCL, OLED.SCL, R2.2]
   BTN1: [Pico.GPIO14, SW1.1]

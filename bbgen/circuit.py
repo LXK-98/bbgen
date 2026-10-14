@@ -25,6 +25,7 @@ COLORS = {
     "gray": "#8a8a8a", "grey": "#8a8a8a", "brown": "#8c564b", "pink": "#e377c2",
     "cyan": "#17becf",
 }
+SUPPLY_COLORS = ("red", "orange", "pink", "brown")  # a second or third supply mustn't look like the first
 NET_PALETTE = ("blue", "green", "yellow", "orange", "purple", "white", "brown", "cyan", "pink", "gray")
 _GROUND = re.compile(r"^(A|D|P)?(GND|VSS|0V)", re.I)
 _SUPPLY = re.compile(r"^(VSYS|VBUS|VIN|VCC|VDD|VBAT|\+?\d+V\d*|\+?\d+\.\d+V)$", re.I)  # 5V, 3V3, 3.3V
@@ -79,7 +80,9 @@ class Net:
     name: str
     pins: list[Pin]
     color: str
-    rails: list[str] = field(default_factory=list)  # rails it should run on (autowire)
+    rails: list[str] = field(default_factory=list)  # physical rails the file puts it on (top+, 2:bot-)
+    polarity: str | None = None  # "+" a supply, "-" a ground (on a rail of that sign), None neither
+    guessed: bool = False        # polarity taken from the name, not said in the file
 
 
 @dataclass
@@ -97,6 +100,45 @@ EPS = 1e-6
 DETOUR_REACH = 12  # how many columns past its ends a wire may go to get around a part
 # every height a hole sits at, rails included
 _LEVELS = sorted({*ROW_Y.values(), *(y for pair in RAIL_PAIR_Y.values() for y in pair)})
+
+
+def net_polarity(name: str, spec) -> tuple[str | None, list[str], bool]:
+    """(polarity, physical rails, guessed) from a net's `rail:`: + or - for a supply or a ground (bbgen picks
+    which rail), a rail's name (top+, 2:bot-) to pin it there, none for neither; without one, the name
+    decides (GND, VSS: ground; 5V, 3V3, VCC, VSYS...: supply) and the checklist says so."""
+    raw = spec.get("rail") if isinstance(spec, dict) else None
+    items = [] if raw is None else [raw] if isinstance(raw, str) else raw
+    if not isinstance(items, list):
+        raise CircuitError(f"nets.{name}: rail is +, -, none, a rail's name (top+, bot-) or a list of names")
+    items = [str(r).strip() for r in items]
+    if items == ["none"]:
+        return None, [], False
+    signs = {r[-1] for r in items if r and r[-1] in "+-"}
+    if len(signs) > 1:
+        raise CircuitError(f"nets.{name}: rail gives both + and - rails; a net is a supply or a ground, not both")
+    physical = [r for r in items if r not in ("+", "-")]
+    if signs:
+        return signs.pop(), physical, False
+    if physical:
+        return None, physical, False
+    guess = "-" if _GROUND.match(name) else "+" if _SUPPLY.match(name) else None
+    return guess, [], guess is not None
+
+
+def check_rail_count(polarity: dict, guessed: set, boards) -> None:
+    """Every supply needs a + rail of its own, every ground a - rail: a CircuitError when there are more than
+    the boards have."""
+    for sign, what in (("+", "positive supplies"), ("-", "grounds")):
+        nets = [n for n, p in polarity.items() if p == sign]
+        strips = {b.strip(h) + (b.id,) for b in boards for h in b.holes() if h.row.endswith(sign)}
+        if len(nets) > len(strips):
+            guesses = [n for n in nets if n in guessed]
+            note = (f" ({', '.join(guesses)} {'is' if len(guesses) == 1 else 'are'} taken as "
+                    f"{'a supply' if sign == '+' else 'a ground'} from the name: say rail: none if not)" if guesses else "")
+            raise CircuitError(f"nets: {len(nets)} {what} ({', '.join(nets)}) but the board{'s' * (len(boards) > 1)} "
+                               f"{'have' if len(boards) > 1 else 'has'} {len(strips)} {sign} rail"
+                               f"{'s' * (len(strips) != 1)}: each needs its own. Split the rails (split_rails: true) "
+                               f"or add a board{note}")
 
 
 def _key(xy) -> tuple[float, float]:
@@ -198,7 +240,8 @@ class Circuit:
             from .autoplace import autoplace  # it builds trial circuits of its own
             with trace.placing():
                 data = autoplace(data, source)
-        self._leg_rank: dict = data.get("_leg_rank") or {}  # autoplace's search: take a leg pair other than the best
+        self._leg_rank: dict = data.get("_leg_rank") or {}
+        self.rail_order: list = data.get("_rail_order") or []  # supplies in the order they take + rails  # autoplace's search: take a leg pair other than the best
         self._load_boards(data.get("boards") or [{"type": "full"}])
         self.library = library_for(data)
         self._load_parts(data.get("parts") or {})
@@ -213,6 +256,7 @@ class Circuit:
             autowire(self)
         self._find_slants()
         self._find_over_parts()
+        self._find_stacking()
 
     @classmethod
     def load(cls, path) -> Circuit:
@@ -297,13 +341,13 @@ class Circuit:
                     self.issues.append(Issue("error", "BAD_NET", f"nets.{name}: {e}"))
                     continue
                 pins += [p for p in found if p not in pins]
-            colors[name] = (str(spec["color"]) if spec.get("color") else
-                            "black" if _GROUND.match(name) else "red" if _SUPPLY.match(name) else None)
-            rails = spec.get("rail") or []
-            rails = [rails] if isinstance(rails, str) else rails
-            if not isinstance(rails, list):
-                raise CircuitError(f"nets.{name}: rail is a rail name or a list of them (top+, bot-, ...)")
-            self.nets[name] = Net(name, pins, "", [str(r) for r in rails])
+            polarity, rails, guessed = net_polarity(name, spec)
+            supplies = sum(1 for n in self.nets.values() if n.polarity == "+")  # each its own colour
+            colors[name] = (str(spec["color"]) if spec.get("color") else "black" if polarity == "-" else
+                            SUPPLY_COLORS[supplies % len(SUPPLY_COLORS)] if polarity == "+" else None)
+            self.nets[name] = Net(name, pins, "", rails, polarity, guessed)
+        check_rail_count({n.name: n.polarity for n in self.nets.values()},
+                         {n.name for n in self.nets.values() if n.guessed}, list(self.boards.values()))
         # the rest take palette colours that no net has already
         used = {color_hex(c).lower() for c in colors.values() if c}
         palette = cycle([c for c in NET_PALETTE if color_hex(c).lower() not in used] or NET_PALETTE)
@@ -647,7 +691,9 @@ class Circuit:
                 continue  # flying leads and flexible jumpers are in the air
             pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
             ends = f"({self.hole_name(w.a.hole)} → {self.hole_name(w.b.hole)})"
-            along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for who in self._along_who(p, q, name)))
+            wires = {f"W{x.num}" for x in self.wires}  # wire on wire: _find_stacking's business
+            along = list(dict.fromkeys(who for p, q in zip(pts, pts[1:]) for who in self._along_who(p, q, name)
+                                       if who not in wires))
             if along:
                 self.issues.append(Issue("warning", "OVER_PART", f"{name} runs along {' and '.join(along)} {ends}, "
                                          "hiding it: move one of them", holes=[w.a.hole, w.b.hole]))
@@ -667,6 +713,43 @@ class Circuit:
                         "warning", "OVER_PART", f"{part.ref} lies over {' and '.join(refs)} "
                         f"({self.hole_name(part.pins[0].hole)} → {self.hole_name(part.pins[1].hole)}): "
                         "put its legs where it clears the part", holes=[p.hole for p in part.pins]))
+
+    def _lies_over(self, w: Wire) -> set:
+        """Positions of the holes a wire lying on the board covers: between its ends, and at its bends."""
+        if w.flex or not (w.a and w.b and w.a.hole and w.b.hole):
+            return set()
+        pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
+        out = {_key(v) for v in w.via_xy}
+        for p, q in zip(pts, pts[1:]):
+            if _aligned(p, q):
+                out.update(self._between(p, q))
+        return out
+
+    def _find_stacking(self) -> None:
+        """Wires on wires, in the order they're built (the checklist's: by number, flexible jumpers last). An end
+        in a hole that a wire built before it lies over can't be plugged in; a wire lying over one built
+        before it, end to end, hides it."""
+        rank = {w.num: (w.flex, w.num) for w in self.wires}
+        flat = [(w, self._lies_over(w)) for w in self.wires if not w.flex]
+        for w in self.wires:
+            for end in (w.a, w.b):
+                if not (end and end.hole):
+                    continue
+                k = _key(self.end_xy(end))
+                for other, over in flat:
+                    if other is not w and k in over and rank[other.num] < rank[w.num]:
+                        what = "the jumper" if w.flex else f"W{w.num}"
+                        self.issues.append(Issue(
+                            "error", "END_COVERED", f"W{w.num} ends in {self.hole_name(end.hole)}, under W{other.num}, "
+                            f"which goes in first: {what} can't be plugged in. Move one of them", holes=[end.hole]))
+        for i, (w, over) in enumerate(flat):  # nested: a wire lying along one built before it, over both its ends
+            for other, over2 in flat[:i]:
+                if rank[other.num] < rank[w.num] and {_key(self.end_xy(e)) for e in (other.a, other.b) if e and e.hole} <= over \
+                        and other.a and other.a.hole:
+                    self.issues.append(Issue(
+                        "warning", "NESTED", f"W{w.num} lies over W{other.num}, hiding it, and has to come out before it "
+                        f"can: buildable, but hard to trace (nested: flex makes the outer one a flexible jumper)",
+                        holes=[w.a.hole, w.b.hole]))
 
     def _detour(self, a: Hole, b: Hole, who: str = "") -> list[str] | None:
         found = self._detour_cost(a, b, who)

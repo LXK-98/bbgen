@@ -16,11 +16,12 @@ parts:
   D2: {type: led}
   J1: {type: offboard, title: Load, labels: [A, B]}
 nets:
-  VBUS: [Pico.VBUS, K1.2, D1.K, R2.1]
+  VBUS: {pins: [Pico.VBUS, K1.2, D1.K, R2.1], rail: +}
   COIL: [K1.6, D1.A, Q1.C, D2.K]
   LED: [R2.2, D2.A]
   DRIVE: [Pico.GPIO15, R1.1]
   BASE: [R1.2, Q1.B]
-  GND: [Pico.GND, Q1.E]
+  GND: {pins: [Pico.GND, Q1.E], rail: -}
   LOAD_A: [K1.1, J1.1]
   LOAD_B: [K1.7, J1.2]
+expect: {warnings: 0}  # no wire to a rail nothing else uses
