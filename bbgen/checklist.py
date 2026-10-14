@@ -1,4 +1,5 @@
-"""The build checklist: parts first, then the wires group by group, then any flexible jumpers."""
+"""The build checklist: parts first, then the wires group by group, then any raised modules (over the wires laid
+under them), then any flexible jumpers."""
 
 from __future__ import annotations
 
@@ -83,16 +84,21 @@ def checklist(c: Circuit, result: Result) -> str:
         split = ", rails split in the middle" if b.split_rails else ""
         out.append(f"- board {b.id}: {b.kind}-size{split}. Rails: {', '.join(rails)}")
 
+    raised = [p for p in c.parts.values() if p.raised and p.kind != "offboard"]
     out += ["", "## Parts", "", "Place these first.", ""]
     for part in c.parts.values():
-        name = " ".join(x for x in (part.title, part.value) if x) or part.kind
-        out.append(f"- [ ] **{part.ref}** {name}: {_where(c, part)}")
+        if part not in raised:
+            out.append(_part_line(c, part))
 
     out += ["", "## Wires"]
     flex = [w for w in c.wires if w.flex]
     sections = [(f"### {g}", [w for w in c.wires if w.group == g and not w.flex]) for g in c.groups]
     sections.append(("## Flexible jumpers\n\nPlug these in last: they arch over the rest.", flex))
     for head, wires in sections:
+        if head.startswith("## Flexible") and raised:
+            out += ["", "## Raised modules", "", "Put these in now, standing on their headers over the wires laid "
+                    "under them.", ""]
+            out += [_part_line(c, part) for part in raised]
         if not wires:
             continue
         out += ["", f"{head} ({len(wires)})" if head.startswith("###") else head, ""]
@@ -106,9 +112,18 @@ def checklist(c: Circuit, result: Result) -> str:
             bends = f", bent over {', '.join(f'`{v}`' for v in w.via)}" if w.via else ""
             if w.flex:
                 bends = f", {_jumper_length(c, w)} flexible jumper"
+            under = c.under(w)
+            beneath = f" · runs under {' and '.join(under)}: lay it flat, before {'they go' if len(under) > 1 else 'it goes'} in" \
+                if under else ""
             out.append(f"- [ ] **W{w.num}** {wire_color(c, result, w)}: `{a}` → `{b}`{bends} · {nets} "
-                       f"({_end(c, result, w.a)} ↔ {_end(c, result, w.b)})")
+                       f"({_end(c, result, w.a)} ↔ {_end(c, result, w.b)}){beneath}")
     return "\n".join(out) + "\n"
+
+
+def _part_line(c: Circuit, part: Part) -> str:
+    name = " ".join(x for x in (part.title, part.value) if x) or part.kind
+    raised = "; it stands on its headers, over the wires that run under it" if part.raised else ""
+    return f"- [ ] **{part.ref}** {name}: {_where(c, part)}{raised}"
 
 
 def _jumper_length(c: Circuit, w) -> str:

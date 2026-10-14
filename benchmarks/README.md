@@ -1,6 +1,6 @@
 # Benchmarks
 
-Nineteen circuits someone might really build on a breadboard, from an LED and a resistor to the
+Twenty-one circuits someone might really build on a breadboard, from an LED and a resistor to the
 iPod LCD driver's 18-bit bus. Each file holds only parts and nets: no places, no legs, no wires.
 bbgen does all of it, so the run measures bbgen alone.
 
@@ -32,10 +32,10 @@ and after in `out/diff/`.
 | 1, very simple | 01 LED, 02 Pico button + LED, 03 pot into a Pico ADC |
 | 2, one chip | 04 555 blinker, 05 555 + 4017 chaser, 06 LM386 amp, 07 LM358 amp, 08 transistor relay driver, 18 Pico traffic light (coloured LEDs), 19 5 V and 3.3 V side by side (two supplies) |
 | 3, MCU + chips | 09 Pico + 74HC595 + LEDs, 10 ATmega328P on a breadboard, 11 L293D motors, 12 Pico I2C bus |
-| 4, complex | 13 Ben Eater register, 14 multiplexed 7-segment, 15 iPod M1, 16 iPod M2, 17 ESP32 DevKit |
+| 4, complex | 13 Ben Eater register, 14 multiplexed 7-segment, 15 iPod M1, 16 iPod M2, 17 ESP32 DevKit across two stacked boards, 20 the same ESP32 off the board on leads, 21 the same on one board, wired under it |
 
 Known gaps the circuits work around (noted in each file): a 6 mm tactile switch and an HC-49
 crystal are off KiCad's 0.1 in grid, so they're a 4-pin DIP and a two-lead part; TO-92 parts use
-`TO-92_Inline_Wide`. 16 takes two boards side by side. 17's ESP32 is 1.0 in wide, which covers
-one side's strips whole on one board; builders put two boards one above the other for it, which
-bbgen doesn't lay out (its boards go side by side).
+`TO-92_Inline_Wide`. 16 takes two boards side by side. The ESP32 DevKitC's rows are 1.0 in apart,
+which on one board covers one side's strips whole: 17 puts it across two boards snapped together,
+20 off the board on Dupont leads, and 21 on one board with flat wires run under it (`raised: true`).

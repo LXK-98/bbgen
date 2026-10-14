@@ -94,6 +94,7 @@ class _Option:
     pin: Pin | None = None        # an off-board pin
     fixed: bool = False           # a hole written out, claimed already
     covered: bool = False         # under a two-lead part's body (set by autowire)
+    under: bool = False           # under a raised module: a flat wire may end here, nothing else
     kept: bool = False            # a rail end kept for a supply's flying lead (set by autowire)
 
 
@@ -235,6 +236,8 @@ class Circuit:
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
         self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
         self._keepouts: set[str] = set()           # the names in _bodies that are keep-outs, not bodies
+        self._raised: list[tuple] = []             # (box, ref) for each raised module: flat wires go under it
+        self._under: dict[tuple, str] = {}         # positions of the holes under a raised module -> its ref
         self._tall: set[str] = set()               # parts standing tall (a pot, a can, an LED): nothing passes over
         self._cables: list[tuple] = []             # (box, board) from a cable's plug to the board's edge
         if needs_placing(data):
@@ -258,6 +261,7 @@ class Circuit:
             autowire(self)
         self._find_slants()
         self._find_over_parts()
+        self._find_under()
         self._find_stacking()
 
     @classmethod
@@ -431,15 +435,32 @@ class Circuit:
         flat = part.kind in ("pico", "dip") or part.source.startswith(("Package_DIP:", "Module:")) \
             or "Package_DIP:" in part.source or "Module:" in part.source
         m = 0.0 if flat else CLEARANCE
-        self._bodies.append(((x0 - m, y0 - m, x1 + m, y1 + m), part.ref))
-        if not flat:
-            self._tall.add(part.ref)
         own = {p.hole for p in part.pins}
+        if part.raised:  # up on its headers: the holes under it take flat wires, put in before it
+            self._raised.append(((x0, y0, x1, y1), part.ref))
+            # but its headers are plastic strips along its rows of pins, sitting on the board: nothing crosses one
+            rows: dict = {}
+            for pin in part.pins:
+                if pin.xy:
+                    line = round(pin.xy[1], 3) if abs(rotate((1, 0), part.rot)[1]) < 1e-9 else round(pin.xy[0], 3)
+                    rows.setdefault(line, []).append(pin.xy)
+            for pts in rows.values():
+                xs, ys = [x for x, _ in pts], [y for _, y in pts]
+                self._bodies.append(((min(xs) - 0.5, min(ys) - 0.3, max(xs) + 0.5, max(ys) + 0.3)
+                                     if max(ys) - min(ys) < 1e-9 else
+                                     (min(xs) - 0.3, min(ys) - 0.5, max(xs) + 0.3, max(ys) + 0.5), part.ref))
+        else:
+            self._bodies.append(((x0 - m, y0 - m, x1 + m, y1 + m), part.ref))
+            if not flat:
+                self._tall.add(part.ref)
         for other in self.boards.values():  # a part across two boards stacked covers holes on both
             for hole in other.holes():
                 x, y = other.xy(hole)
                 if x0 < x < x1 and y0 < y < y1 and hole not in own:
-                    self._occupy(hole, f"the body of {part.ref}")
+                    if part.raised:
+                        self._under[_key((x, y))] = part.ref
+                    else:
+                        self._occupy(hole, f"the body of {part.ref}")
         for what, rect in part.keepouts:  # room it needs beyond its body, like a USB cable's plug
             box = placed_box(part, rect)
             self._bodies.append((box, f"{part.ref}'s {what}"))
@@ -529,7 +550,7 @@ class Circuit:
         who = f"W{w.num}"
         try:
             w.via_xy = [self._via(v) for v in w.via]
-            a, b = self._options(sa, self._hint(sb)), self._options(sb, self._hint(sa))
+            a, b = self._options(sa, self._hint(sb), not w.flex), self._options(sb, self._hint(sa), not w.flex)
             if w.via_xy:  # each end runs to its nearest bend
                 pa = self._best(a, [_Option(None, w.via_xy[0])])[0]
                 pb = self._best([o for o in b if o.hole is None or o.hole != pa.hole],
@@ -741,6 +762,48 @@ class Circuit:
                         f"({self.hole_name(part.pins[0].hole)} → {self.hole_name(part.pins[1].hole)}): "
                         "put its legs where it clears the part", holes=[p.hole for p in part.pins]))
 
+    def _find_under(self) -> None:
+        """Under a raised module there's room for a flat wire and nothing else: not a two-lead part's leg, nor a
+        flexible jumper's or a flying lead's plug; and a two-lead part can't lie across one."""
+        for part in self.parts.values():
+            if part.kind not in LEAD_KINDS or not all(p.xy for p in part.pins):
+                continue
+            for pin in part.pins:
+                if _key(pin.xy) in self._under:
+                    self.issues.append(Issue("error", "HOLE_TAKEN", f"{part.ref} leg in {self.hole_name(pin.hole)}, "
+                                             f"under {self._under[_key(pin.xy)]}: only a flat wire goes under a raised "
+                                             "module", holes=[pin.hole]))
+            refs = self._raised_crossed(part.pins[0].xy, part.pins[1].xy)
+            if refs:
+                self.issues.append(Issue("warning", "OVER_PART", f"{part.ref} lies across {' and '.join(refs)}, "
+                                         "which stands over it: put its legs where it clears the part",
+                                         holes=[p.hole for p in part.pins]))
+        for w in self.wires:
+            if not (w.flex or (w.a and w.a.pin) or (w.b and w.b.pin)):
+                continue
+            for end in (w.a, w.b):
+                if end and end.hole and _key(self.end_xy(end)) in self._under:
+                    what = "a flexible jumper's" if w.flex else "a flying lead's"
+                    self.issues.append(Issue("error", "HOLE_TAKEN", f"W{w.num} ends in {self.hole_name(end.hole)}, "
+                                             f"under {self._under[_key(self.end_xy(end))]}: {what} plug won't go "
+                                             "under a raised module", holes=[end.hole]))
+
+    def _raised_crossed(self, a, b) -> list[str]:
+        """The raised modules a straight run from a to b passes under (or a part would lie across)."""
+        x0, x1, y0, y1 = min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1])
+        return [ref for box, ref in self._raised
+                if x1 > box[0] and x0 < box[2] and y1 > box[1] and y0 < box[3] and _crosses(a, b, box)]
+
+    def under(self, w: Wire) -> list[str]:
+        """The raised modules a flat wire lies under or ends under: it goes in before them."""
+        if w.flex or not (w.a and w.b and w.a.hole and w.b.hole):
+            return []
+        keys = self._lies_over(w) | {_key(self.end_xy(e)) for e in (w.a, w.b)}
+        refs = {self._under[k] for k in keys if k in self._under}
+        pts = [self.end_xy(w.a), *w.via_xy, self.end_xy(w.b)]
+        refs |= {r for p, q in zip(pts, pts[1:]) for r in self._raised_crossed(p, q)}
+        return sorted(refs)
+
     def _lies_over(self, w: Wire) -> set:
         """Positions of the holes a wire lying on the board covers: between its ends, and at its bends."""
         if w.flex or not (w.a and w.b and w.a.hole and w.b.hole):
@@ -895,9 +958,9 @@ class Circuit:
         except _Unresolved:
             return None
 
-    def _options(self, spec: str, hint) -> list[_Option]:
+    def _options(self, spec: str, hint, flat: bool = False) -> list[_Option]:
         """Every place one end could go: a hole written out, a free hole on a bare rail, a free hole in a
-        pin's strip, or an off-board pin."""
+        pin's strip, or an off-board pin. Only a flat wire's end may go under a raised module."""
         parsed = parse_hole(spec)
         if parsed:
             board_id, row, col = parsed
@@ -907,17 +970,18 @@ class Circuit:
             if row not in RAILS:
                 raise _Unresolved(f"'{spec}' needs a column number")
             board = self._board(board_id)
-            return self._free(board, [h for h in board.holes() if h.row == row], None, f"the {row} rail")
+            return self._free(board, [h for h in board.holes() if h.row == row], None, f"the {row} rail", flat)
         pin = self._pin(spec, hint)
         if pin.part.kind == "offboard":
             return [_Option(None, pin.xy, pin=pin)]
         if pin.hole is None:
             raise _Unresolved(f"{pin} is not on the board")
         board = self.boards[pin.hole.board]
-        return self._free(board, board.strip_holes(board.strip(pin.hole)), pin.xy, f"the strip of {pin}")
+        return self._free(board, board.strip_holes(board.strip(pin.hole)), pin.xy, f"the strip of {pin}", flat)
 
-    def _free(self, board: Board, holes: list[Hole], near, what: str) -> list[_Option]:
-        free = [_Option(h, board.xy(h), _dist(board.xy(h), near)) for h in holes if h not in self.occupied]
+    def _free(self, board: Board, holes: list[Hole], near, what: str, flat: bool = False) -> list[_Option]:
+        free = [_Option(h, board.xy(h), _dist(board.xy(h), near)) for h in holes if h not in self.occupied
+                and (flat or _key(board.xy(h)) not in self._under)]
         if not free:
             raise _Unresolved(f"no free hole left in {what}")
         return free

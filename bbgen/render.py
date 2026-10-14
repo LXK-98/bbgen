@@ -534,7 +534,7 @@ def draw(c: Circuit, result: Result, highlight: str | None = None, caption: str 
         if part.extent:
             xs += [part.extent[0], part.extent[2]]
             ys += [part.extent[1], part.extent[3]]
-    for box, _ in c._bodies:  # a module hanging over the board's edge, or its keep-out
+    for box, _ in [*c._bodies, *c._raised]:  # a module hanging over the board's edge, or its keep-out
         xs += [box[0], box[2]]
         ys += [box[1], box[3]]
     minx, maxx, miny, maxy = min(xs) - 1, max(xs) + 1, min(ys) - HEADER, max(ys) + 1
@@ -574,7 +574,7 @@ def draw(c: Circuit, result: Result, highlight: str | None = None, caption: str 
     for part in c.parts.values():
         _keepouts(cv, c, part)
     for part in c.parts.values():
-        if part.kind in FOOTPRINT_KINDS:
+        if part.kind in FOOTPRINT_KINDS and not part.raised:
             _footprint(cv, part)
         elif part.kind == "offboard":
             _offboard(cv, part)
@@ -582,6 +582,11 @@ def draw(c: Circuit, result: Result, highlight: str | None = None, caption: str 
         if part.kind in LEAD_KINDS:
             _lead(cv, part)
     _wires(cv, c, result, highlight)
+    for part in c.parts.values():  # up on its headers, over the wires laid under it: see-through, to show them
+        if part.kind in FOOTPRINT_KINDS and part.raised:
+            cv.add('<g opacity="0.78">')
+            _footprint(cv, part)
+            cv.add("</g>")
     _focus(cv, c, focus)
     cv.out += cv.late
     _marks(cv, c, result)

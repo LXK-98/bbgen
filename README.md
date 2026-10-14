@@ -248,6 +248,14 @@ footprint). The holes in it are taken, so nothing can go there (`HOLE_TAKEN`), a
 across it gets `OVER_PART`, the drawing hatches it, and the checklist says which holes to keep
 clear. Put the USB end at the board's edge and it costs no holes at all.
 
+A module that stands on its headers (an ESP32 DevKit, a Pico) can say `raised: true`: then the
+holes under it aren't taken, and flat wires may end there or run beneath it, out past its ends
+(never across a row of its pins: the header's plastic sits on the board). They go in before it,
+and the checklist lists the module after them and marks each one that runs under it; the drawing
+shows it see-through over them. Nothing else fits under it: a two-lead part's leg, or a flexible
+jumper's or a flying lead's plug, there is an error (`HOLE_TAKEN`). That's how a 1.0 in wide
+module fits on one board, with its pins in rows `b` and `j`.
+
 ### Where parts land
 
 The rows are spaced like the holes, with the trench counting as two more: `a`-`e` are 1 apart,

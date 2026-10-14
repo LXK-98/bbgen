@@ -276,7 +276,7 @@ class _Legs:
     def costly(self, a: Hole, b: Hole, pa, pb) -> float:
         c = self.c
         cost = {0: 0.0, 1: 3.0, 2: 0.0, 3: 20.0}[c._shape(pa, pb)[0]]
-        cost += 30.0 * len(c._bodies_crossed(pa, pb))
+        cost += 30.0 * (len(c._bodies_crossed(pa, pb)) + len(c._raised_crossed(pa, pb)))
         covered = c._between(pa, pb) if _aligned(pa, pb) else []
         for leg in (a, b):  # a strip it fills up can't take the wire its net still needs
             if not leg.is_rail and not any(h != a and h != b and k not in covered
@@ -349,7 +349,7 @@ def _leg_options(c, board: "_Boards", net: str, plan: dict, extra: dict) -> list
     holes = [h for s in strips for h in board.strip_holes(s)]
     holes += [h for h in board.holes() if h.row in plan.get(net, [])]
     room = getattr(c, "_lead_room", set())
-    return [h for h in holes if h not in c.occupied and h not in room]
+    return [h for h in holes if h not in c.occupied and h not in room and _key(board.xy(h)) not in c._under]
 
 
 def lead_room(c) -> set:
@@ -396,7 +396,7 @@ def _empty_near(c, board: "_Boards", mine: list[Hole], others: list[Hole], reach
             continue
         holes = board.strip_holes(strip)
         if not any(h in c.occupied for h in holes):
-            out += holes
+            out += [h for h in holes if _key(board.xy(h)) not in c._under]
     return out
 
 
@@ -583,7 +583,7 @@ class _Model:
         for x, y in xy.values():
             key = ("top" if y < 8 else "bot", x)
             taken[key] = taken.get(key, 0) + 1
-        rect = body_rect(part)
+        rect = None if part.raised else body_rect(part)  # a raised module's body leaves room for wires under it
         if rect is not None:
             x0, y0, x1, y1 = self._box(rect, rot, ax, ay)
             pins = set(xy.values())
@@ -601,7 +601,7 @@ class _Model:
         still needs (a display whose pins' strips are under it). Nets with pins on both sides have to go round by
         the other half, or jump over."""
         rect = body_rect(part)
-        if rect is None:
+        if rect is None or part.raised:
             return []
         shift, dx, vlo, vhi = view
         x0, y0, x1, y1 = self._box(rect, rot, ax, ay)
@@ -826,7 +826,8 @@ def _score(c, result) -> float:
             a, b = part.pins[0].xy, part.pins[1].xy
             score += LEG_SLANT_COST * (not _aligned(a, b)) + 3.0 * max(0.0, math.dist(a, b) - SPAN[part.kind][1])
             # lying over a part's body: it has to come out before the part can, and hides its pins
-            score += LEG_OVER_COST * sum(1 for r in c._bodies_crossed(a, b) if r != part.ref and r not in c._keepouts)
+            score += LEG_OVER_COST * (sum(1 for r in c._bodies_crossed(a, b) if r != part.ref and r not in c._keepouts)
+                                      + len(c._raised_crossed(a, b)))
             middles.append(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
     for i, (x1, y1) in enumerate(middles):  # two parts this close: their labels collide
         score += LABEL_COST * sum(abs(x1 - x2) < 2.5 and abs(y1 - y2) < 1.5 for x2, y2 in middles[i + 1:])

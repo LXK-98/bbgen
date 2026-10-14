@@ -87,6 +87,7 @@ class Part:
     legs: list[str] = field(default_factory=list)  # two-lead parts: where each leg goes
     slant: str | None = None  # two-lead parts: why it may lie slanted
     near: str | None = None   # a part to keep it close to, when bbgen places it
+    raised: bool = False      # stands on its headers: flat wires may run under it, put in before it
     auto: bool = False        # placed by bbgen, not the file
     keepouts: list = field(default_factory=list)  # (what, rect relative to pin 1): room it needs that isn't body
     body: tuple | None = None  # kicad: its outline relative to pin 1, unrotated
@@ -185,6 +186,7 @@ def make_part(ref: str, spec: dict, library: tuple | None = None) -> Part:
     if kind in FOOTPRINT_KINDS:
         part.at = spec.get("at")  # None: bbgen places it
         part.rot = int(spec.get("rot", 0))
+        part.raised = bool(spec.get("raised"))
         if part.rot not in (0, 90, 180, 270):
             raise PartError(f"parts.{ref}: rot must be 0, 90, 180 or 270")
 

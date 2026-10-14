@@ -284,8 +284,8 @@ def _rails(c: Circuit, dsu: _DSU, node_pins: dict) -> dict[str, list[tuple]]:
         for net in nets[len(shares):]:
             c.issues.append(Issue("error", "BAD_RAIL", f"nets.{net.name}: no {sign} rail is left for it"))
     # the lone ground (and a lone supply) also takes its free rail on the other side of the trench when it
-    # has pins there that nothing joins to a rail, and dropping them to it saves more than the wire linking
-    # the two rails costs
+    # has pins there that nothing joins to a rail, or off-board pins whose leads that rail is nearer, and what
+    # they save is more than the wire linking the two rails costs
     lone = [(nets[0], sign) for sign in "-+"
             for nets in [[n for n in c.nets.values() if n.polarity == sign and not n.rails]] if len(nets) == 1
             and sum(1 for n in c.nets.values() if n.polarity == sign) == 1]
@@ -314,6 +314,9 @@ def _rails(c: Circuit, dsu: _DSU, node_pins: dict) -> dict[str, list[tuple]]:
                 group = [n for g in stranded for n in g]
                 rest = [n for other in pieces.values() if other not in stranded for n in other] + own
                 gain = max(0.0, _cheapest(c, net, node_pins, group, rest) - _cheapest(c, net, node_pins, group, strips))
+            for pin in net.pins:  # a supply's lead from a connector pin on this side: shorter to this rail
+                if pin.part.kind == "offboard" and pin.xy:
+                    gain += max(0.0, _lead_estimate(c, pin, own) - _lead_estimate(c, pin, strips))
             # the wire linking the rails: cheap at their ends, where it's board setup rather than circuit, if it
             # gets through there; otherwise costed like any other
             link = _link_cost(c, net, node_pins, [s for s in own if s[2].endswith(sign)], strips) if gain else 0.0
@@ -332,7 +335,7 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
     _join(c, dsu, net, rails, node_pins, flying)
     if flying:
         named = {spec.split(":")[-1] for spec in net.rails}
-        _prune(c, [s for s in rails if s[2] not in named], node_pins)
+        _prune(c, net.name, [s for s in rails if s[2] not in named], node_pins)
 
 
 def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, flying: bool) -> None:
@@ -358,7 +361,9 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
                 if flying and (i in lone) == (j in lone):
                     continue  # each lead joins one off-board pin to the board
                 oi, oj = options[i], options[j]
-                if flying:  # a lead of a net on a rail lands on the rail, never in a strip in the middle
+                if flying:  # a lead's plug won't go under a raised module; a lead of a net on a rail lands on the
+                    oi = [o for o in oi if not o[1].under]  # rail, never in a strip in the middle
+                    oj = [o for o in oj if not o[1].under]
                     oi = [o for o in oi if o[1].hole is not None and o[1].hole.is_rail] or oi
                     oj = [o for o in oj if o[1].hole is not None and o[1].hole.is_rail] or oj
                 if not flying and _has_rail(groups[i]) and _has_rail(groups[j]):  # rail to rail: at their ends
@@ -389,7 +394,8 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
             for bound, p, q, _ in pairs:
                 if found and bound + FLEX_COST > found[0][0][0] + 1e-9:
                     break  # pairs are sorted by bound: none further on can be cheaper
-                if p[1].hole is not None and q[1].hole is not None and not _over_keepout(c, p[1].xy, q[1].xy):
+                if p[1].hole is not None and q[1].hole is not None and not _over_keepout(c, p[1].xy, q[1].xy) \
+                        and not p[1].under and not q[1].under:  # a jumper's plug won't go under a raised module
                     key = (round(bound + FLEX_COST + _flex_over(c, p[1].xy, q[1].xy), 6),
                            round(p[1].near + q[1].near, 6), p[1].xy, q[1].xy)
                     found.append((key, p, q))
@@ -642,8 +648,8 @@ def _rail_ends(c: Circuit, options: list) -> list:
     return [o for *_, o in sorted(out, key=lambda t: t[:2])]
 
 
-def _prune(c: Circuit, rails: list[tuple], node_pins: dict) -> None:
-    """Take out wires whose only job is to reach a rail no pin uses."""
+def _prune(c: Circuit, net: str, rails: list[tuple], node_pins: dict) -> None:
+    """Take out a net's wires whose only job is to reach a rail no pin uses."""
     changed = True
     while changed:
         changed = False
@@ -659,6 +665,19 @@ def _prune(c: Circuit, rails: list[tuple], node_pins: dict) -> None:
                 _unwire(c, here[0])
                 trace.step(c, f"dropping W{here[0].num}: it only reached a rail nothing uses", wiring=True)
                 changed = True
+        # a route to that rail through an empty strip leaves its first wire ending in the strip, now with nothing
+        # else in it: that goes too
+        for w in [w for w in c.wires if w.auto and w.group == net]:
+            for end in (w.a, w.b):
+                if end and end.hole is not None and not end.hole.is_rail:
+                    strip = ("strip", *c.boards[end.hole.board].strip(end.hole))
+                    holes = set(c.boards[end.hole.board].strip_holes(strip[1:]))
+                    others = [x for x in c.wires if x is not w and any(e and e.hole in holes for e in (x.a, x.b))]
+                    if not node_pins.get(strip) and not others:
+                        _unwire(c, w)
+                        trace.step(c, f"dropping W{w.num}: it only led to a rail nothing uses", wiring=True)
+                        changed = True
+                        break
 
 
 def _unwire(c: Circuit, w: Wire) -> None:
@@ -694,7 +713,8 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
         if _key(xy) in c._lain:
             continue  # under a wire lying on the board: an end can't be plugged in there
         near = min((math.dist(xy, p.xy) for p in mine if p.xy), default=0.0)
-        out.append((spec, _Option(hole, xy, near, covered=_key(xy) in c._covered, kept=hole in c._lead_room), node))
+        out.append((spec, _Option(hole, xy, near, covered=_key(xy) in c._covered, kept=hole in c._lead_room,
+                                  under=_key(xy) in c._under), node))
     return out
 
 
@@ -784,7 +804,7 @@ def _spare(c: Circuit, strip) -> int:
 def _flex_over(c: Circuit, a, b) -> float:
     """What a flexible jumper from a to b costs for the parts it arches over (a tall one counts double: the
     jumper sags against it)."""
-    over = [r for r in c._bodies_crossed(a, b) if r not in c._keepouts]
+    over = [r for r in c._bodies_crossed(a, b) if r not in c._keepouts] + c._raised_crossed(a, b)
     return FLEX_OVER_COST * (len(over) + sum(1 for r in over if r in c._tall))
 
 
@@ -803,6 +823,22 @@ def _wires_crossed(c: Circuit, a, b) -> int:
             pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
             n += sum(_cross((a, b), (p, q)) for p, q in zip(pts, pts[1:]))
     return n
+
+
+def _lead_estimate(c: Circuit, pin, strips: list) -> float:
+    """Roughly what a flying lead from an off-board pin to the nearest free hole of these rail strips costs: its
+    length, and what it would pass over."""
+    best = math.inf
+    for strip in strips:
+        board = c.boards[strip[1]]
+        for h in board.strip_holes(strip[1:]):
+            if h in c.occupied:
+                continue
+            xy = board.xy(h)
+            over = [b for b in c._bodies_crossed(pin.xy, xy) if b not in c._keepouts]
+            cost = math.dist(pin.xy, xy) + LEAD_OVER_COST * len(over) + LEAD_TALL_COST * sum(b in c._tall for b in over)
+            best = min(best, cost)
+    return best
 
 
 def _link_cost(c: Circuit, net: Net, node_pins: dict, a: list, b: list) -> float:
