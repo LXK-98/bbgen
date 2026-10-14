@@ -20,6 +20,17 @@ between two parts of the board.
 Nets without a rail are routed first, the shortest first: they have the fewest ways to go, and the
 rails' nets can nearly always reach a rail. The checklist still lists the rails' nets first, since
 they're built first.
+
+Tried and left out: rip-up and reroute. After the first pass, each net left with a flexible jumper
+came out together with the nets whose wires lay where it arched over, and was wired again first, the
+others after it; the result was kept only with fewer jumpers (then crossings, then wire). On the
+benchmarks' layouts it removed no jumper (one crossing fewer on 13, and only with 20 tries) and took
+up to six times as long. The jumpers left there are for want of room, not order: a bus between two
+chips needs a row of its own for each line past the other's, and the rows beside a chip run out
+(13's BUS3-BUS7), so rewiring the nets in the way only turned another of them into a jumper. What
+helps there is placement leaving the room. Worth trying again if layouts turn up whose jumpers are
+about order (a jumper whose net, wired first, would lie straight without forcing another net off the
+board).
 """
 
 from __future__ import annotations
