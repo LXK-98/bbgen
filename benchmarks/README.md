@@ -39,3 +39,6 @@ crystal are off KiCad's 0.1 in grid, so they're a 4-pin DIP and a two-lead part;
 `TO-92_Inline_Wide`. 16 takes two boards side by side. The ESP32 DevKitC's rows are 1.0 in apart,
 which on one board covers one side's strips whole: 17 puts it across two boards snapped together,
 20 off the board on Dupont leads, and 21 on one board with flat wires run under it (`raised: true`).
+
+What the benchmarks still show (13's bus, 14's crowding, leads crossing, 16's size), what was tried
+for each and where to start: [docs/open-points.md](../docs/open-points.md).
