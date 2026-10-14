@@ -53,7 +53,8 @@ def autowire(c: Circuit) -> None:
 
     c._ends = {_key(c.end_xy(e)) for w in c.wires for e in (w.a, w.b) if e and e.hole is not None}
     c._lain = set().union(*(c._lies_over(w) for w in c.wires))
-    c._pin_strips = {node[1:] for node in node_pins if node[0] == "strip"}
+    in_nets = {p for net in c.nets.values() for p in net.pins}  # pins nothing connects need no hole kept free
+    c._pin_strips = {node[1:] for node, pins in node_pins.items() if node[0] == "strip" and set(pins) & in_nets}
     c._strip_at = {_key(b.xy(h)): b.strip(h) for b in c.boards.values() for h in b.holes()}
     rails = _rails(c, dsu, node_pins)
     first = len(c.wires)
@@ -219,6 +220,12 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
                     ei, ej = _rail_ends(c, oi), _rail_ends(c, oj)
                     if ei and ej:
                         oi, oj = ei, ej
+                        # the outermost column where it can run straight across
+                        col = next((p[1].hole.col for p in ei for q in ej if p[1].hole.col == q[1].hole.col
+                                    and _lies_clear(c, p[1].xy, q[1].xy)), None)
+                        if col is not None:
+                            oi = [p for p in ei if p[1].hole.col == col]
+                            oj = [q for q in ej if q[1].hole.col == col]
                 # a slant is let off lightly only when no pair of these pieces' holes could be straight
                 unavoidable = not any(_could_be_straight(c, a, b) for a in _strip_holes(c, oi)
                                       for b in _strip_holes(c, oj))
@@ -277,16 +284,17 @@ END_GROUP = 5  # a rail's first and last five holes are its ends
 
 
 def _rail_ends(c: Circuit, options: list) -> list:
-    """The options in a rail's end holes (its first or last five), the right end first: a wire joining two
-    rails goes there, out of the circuit's way (and nearest where a supply's leads come in)."""
+    """The options in a rail's end holes (its first or last five), the outermost first and the right end
+    before the left: a wire joining two rails goes there, as far out of the circuit's way as it can (and
+    nearest where a supply's leads come in)."""
     out = []
     for o in options:
         h = o[1].hole
         if h is not None and h.is_rail:
             cols = sorted(x.col for x in c.boards[h.board].strip_holes(c.boards[h.board].strip(h)))
             if h.col in cols[:END_GROUP] or h.col in cols[-END_GROUP:]:
-                out.append(o)
-    return sorted(out, key=lambda o: -o[1].hole.col)
+                out.append((min(h.col - cols[0], cols[-1] - h.col), -h.col, o))
+    return [o for *_, o in sorted(out, key=lambda t: t[:2])]
 
 
 def _prune(c: Circuit, rails: list[tuple], node_pins: dict) -> None:
@@ -304,6 +312,7 @@ def _prune(c: Circuit, rails: list[tuple], node_pins: dict) -> None:
                 continue  # a wire the file wrote
             if len(here) == 1:
                 _unwire(c, here[0])
+                trace.step(c, f"dropping W{here[0].num}: it only reached a rail nothing uses", wiring=True)
                 changed = True
 
 
@@ -375,9 +384,12 @@ def _cost(c: Circuit, p: _Option, q: _Option, unavoidable: bool = False):
             if level == 2 and unavoidable:
                 level = 1  # no pair of these pieces' holes lines up: a slant is the only way
             length += SHAPE_COST[level] + CROSS_COST * len(c._bodies_crossed(p.xy, q.xy))
-    else:
+    else:  # a flying lead: from the board's edge, over as little as can be
         board_end = q if p.pin is not None else p
         length += 0.0 if board_end.hole.is_rail else OFF_RAIL_COST
+        over = [b for b in c._bodies_crossed(p.xy, q.xy) if b not in c._keepouts]
+        length += LEAD_OVER_COST * (len(over) + _wires_crossed(c, p.xy, q.xy))
+        length += LEAD_TALL_COST * sum(1 for b in over if b in c._tall)  # it would hang right against it
     length += COVERED_COST * (p.covered + q.covered)
     return round(length, 6), round(p.near + q.near, 6), p.xy, q.xy
 
@@ -411,6 +423,18 @@ def _over_keepout(c: Circuit, a, b) -> bool:
 
 
 LINK_COST = 3.0  # a wire joining two rails at their ends
+LEAD_OVER_COST = 5.0  # per part or wire a flying lead passes over: more than landing off the rail
+LEAD_TALL_COST = 40.0  # per tall part (a can, an LED, a pot) it would pass over: only if there's no other way
+
+
+def _wires_crossed(c: Circuit, a, b) -> int:
+    from .measure import _cross
+    n = 0
+    for w in c.wires:
+        if w.a and w.b:
+            pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
+            n += sum(_cross((a, b), (p, q)) for p, q in zip(pts, pts[1:]))
+    return n
 
 
 def _link_cost(c: Circuit, net: Net, node_pins: dict, a: list, b: list) -> float:

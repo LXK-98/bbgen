@@ -38,9 +38,11 @@ GAP_COST = 8.0         # a rail's pin in a column with no rail holes: its drop w
 RAIL_COST = 0.5        # per row between a rail's pin and the rail
 CROWD_COST = 6.0       # per signal wire past what a column has room for
 LINK_COST = 1.0        # per hole between the nets a two-lead part joins
-OFFBOARD_COST = 0.15   # per column between an off-board pin's net and the board's edge
+OFFBOARD_COST = 0.3    # per column between an off-board pin's net and the board's edge
 SPACE_COST = 4.0       # per column short of three between two footprint parts
 KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best off its edge)
+ROOM_COST = 2.0        # per free row short of four in the strip of a pin in a net (a wide part a row off
+                       # centre gives its busy side more)
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
 
 # two-lead parts' legs
@@ -48,6 +50,7 @@ ROUND = ("led", "electrolytic")  # parts with a round body about two holes acros
 ROUND_GAP = 1.9        # their centres closer than this: the bodies touch
 ROUND_COST = 25.0      # per round body it would touch
 LEG_SLANT_COST = 20.0  # a two-lead part slanting: worse than lying straight and needing a wire more
+SECOND_RAIL_COST = 5.0  # a leg on a net's second rail, which then needs linking to the first
 JUNCTION_COST = 6.0    # a leg in an empty strip of its own, which then needs a wire to its net
 CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
 
@@ -125,6 +128,9 @@ def place_legs(c, parts: list) -> None:
         options = [_leg_options(c, board, n, plan, extra) for n in nets]
         reach = SPAN[part.kind][1] + 4  # far longer than the part: only if nothing shorter fits
         options = [opts + _empty_near(c, board, opts, other, reach) for opts, other in zip(options, options[::-1])]
+        for i, other in enumerate(options[::-1]):  # nothing free nearby (beside a Pico, say): look further out
+            if not options[i]:
+                options[i] = _empty_near(c, board, [], other, board.columns)
         if not all(options):
             c.issues.append(Issue("error", "BAD_LEG", f"{part.ref}: no free hole for a leg; give its pins"))
             continue
@@ -183,6 +189,7 @@ class _Legs:
             lead = [p for p in c.nets[net].pins if p.part.kind == "offboard"]
             self.lead_x.append(lead[0].xy[0] if lead else None)
         self.on_rail = [n in plan for n in nets]
+        self.main_rail = [plan[n][0] if plan.get(n) else None for n in nets]
         self.home_x = home[0] if home and home[0] is not None else None
         self.home_pins = home[1] if home and home[0] is None else None
         self._xy: dict = {}
@@ -209,6 +216,8 @@ class _Legs:
             cost += CROWD_LEG_COST * sum(_key((xy[0] + dx, xy[1] + dy)) in self.c._used
                                          for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)))
         for i, (leg, xy) in enumerate(((a, pa), (b, pb))):
+            if leg.is_rail and self.main_rail[i] and leg.row != self.main_rail[i]:
+                cost += SECOND_RAIL_COST  # its net's other rail: a wire then has to link the two
             if self.lead_x[i] is not None and (leg.is_rail or self.board.strip(leg) not in self.own[i]):
                 # near the connector its net comes in by: a lead to a new strip gets shorter; on a rail, which
                 # carries it anyway, only to break ties
@@ -300,11 +309,40 @@ class _Drops:
 
 
 def _leg_options(c, board: Board, net: str, plan: dict, extra: dict) -> list[Hole]:
-    """Free holes a leg on this net could go in: its strips and its rails."""
+    """Free holes a leg on this net could go in: its strips and its rails (not the end kept for a supply's
+    leads)."""
     strips = sorted({board.strip(p.hole) for p in c.nets[net].pins if p.hole is not None} | extra.get(net, set()))
     holes = [h for s in strips for h in board.strip_holes(s)]
     holes += [h for h in board.holes() if h.row in plan.get(net, [])]
-    return [h for h in holes if h not in c.occupied]
+    room = getattr(c, "_lead_room", set())
+    return [h for h in holes if h not in c.occupied and h not in room]
+
+
+def lead_room(c) -> set:
+    """lead_room for a circuit with its parts placed: worked out the way placement and wiring both see it."""
+    net_of = {pin: net.name for net in c.nets.values() for pin in net.pins}
+    plan = rail_plan({n: net.polarity for n, net in c.nets.items()},
+                     {n: [r.split(":")[-1] for r in net.rails] for n, net in c.nets.items()},
+                     _leg_rails(c.parts, net_of.get), c.rail_order)
+    return _lead_room(c, c.boards[c.default_board], plan, net_of)
+
+
+def _lead_room(c, board: Board, plan: dict, net_of: dict) -> set:
+    """The rail holes a supply's flying leads should land in: the two at the rail's end nearest the connector,
+    on the rail of its net nearest the pin. Parts keep out of them, so a lead comes in from the board's edge
+    rather than reaching past them."""
+    out = set()
+    for part in c.parts.values():
+        if part.kind != "offboard":
+            continue
+        for pin in part.pins:
+            rails = plan.get(net_of.get(pin), [])
+            if not rails or pin.xy is None:
+                continue
+            row = min(rails, key=lambda r: abs(board.rail_y(r) - pin.xy[1]))
+            holes = sorted((h for h in board.holes() if h.row == row), key=lambda h: abs(board.xy(h)[0] - pin.xy[0]))
+            out.update(holes[:2])
+    return out
 
 
 def _empty_near(c, board: Board, mine: list[Hole], others: list[Hole], reach: float) -> list[Hole]:
@@ -465,7 +503,8 @@ class _Model:
     def _choices(self, part) -> list:
         cols = range(1, self.board.columns + 1)
         if part.kind == "pico":
-            spots = [("h", c, 0) for c in cols] + [("c", c, 180) for c in cols]
+            # centred on the trench, or a row off it either way: more room on one side, if that's where it's needed
+            spots = [(r, c, 0) for r in "ghi" for c in cols] + [(r, c, 180) for r in "bcd" for c in cols]
         elif part.kind == "dip":
             if part.width != 3:
                 raise PartError(f"parts.{part.ref}: bbgen only places 0.3 in DIPs; give it at:")
@@ -475,7 +514,7 @@ class _Model:
         else:  # sip
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 180)]
         out = [o for o in (self._layout(part, *s) for s in spots) if o]
-        if part.kind == "kicad":  # straddling the trench: as many free holes as can be left in every pin's strip
+        if part.kind == "kicad":  # straddling the trench: centred, or at most a row off (wide parts only)
             def room(lay):
                 return min((y - 3) if y < 8 else (14 - y) for _, y in lay[2].values())
             best = {}
@@ -483,7 +522,7 @@ class _Model:
                 straddles = len({y < 8 for _, y in o[2].values()}) > 1
                 best[o[1], straddles] = max(best.get((o[1], straddles), -1), room(o) if straddles else 0)
             out = [o for o in out if len({y < 8 for _, y in o[2].values()}) == 1
-                   or room(o) == best[o[1], True]]
+                   or room(o) >= best[o[1], True] - 1]
         return out
 
     def cost(self, state: dict) -> float:
@@ -504,6 +543,10 @@ class _Model:
                     if other != ref and any(h1 == h2 and a1 <= b2 and a2 <= b1 for h2, a2, b2 in lay2[3]):
                         return math.inf
         where = {pin: xy for lay in layouts.values() for pin, xy in lay[2].items()}
+        for pin, (x, y) in where.items():  # a pin in a net wants free rows in its strip, out toward the rail
+            if pin in self.net_of and y in ROW_Y.values():
+                room = (y - ROW_Y["a"]) if y < 8 else (ROW_Y["j"] - y)
+                cost += ROOM_COST * max(0, 4 - room)
         crowd: dict = {}
         for name, pins in self.nets.items():
             pts = [where[p] for p in pins if p in where]
@@ -611,6 +654,9 @@ def _score(c, result) -> float:
 
 TURN_ALL = 4          # up to this many footprint parts, every combination of them turned round is built
 REPAIR_BUILDS = 120   # full builds the repair search may spend
+LOOKAHEAD = 60.0      # a chip move scoring within this of the best gets its two-lead parts polished before judging
+LOOKAHEAD_BUILDS = 12 # ... in at most this many builds
+LOOKAHEAD_TIMES = 6   # ... and at most this many times a search
 PATIENCE = 40         # builds in a row without an improvement before it stops
 
 
@@ -757,6 +803,9 @@ def _moves(model: _Model, leads: list[str], c, result, data: dict):
         if flips:
             flipped[ref] = flips[0]
             yield {**unpinned, ref: {"at": flips[0][0], "rot": flips[0][1]}}, {}
+    shifted = _shifted(model, data, state)  # every chip a row up (or down) together: room on one side for wires
+    for change in shifted:
+        yield {**unpinned, **change}, {}
     for ref in sorted(leads, key=lambda r: rank.get(r, len(rank))):
         for k in range(4):
             yield {**{r: ch for r, ch in pinned.items() if r != ref}, ref: {"pins": None}}, {ref: k}
@@ -780,6 +829,9 @@ def _describe(model, data: dict, changes: dict, ranks: dict) -> tuple[str, list[
     if ranks:
         [(ref, k)] = ranks.items()
         return f"{ref} into its {('best', '2nd best', '3rd best', '4th best')[k]} legs", [ref]
+    moved = [ref for ref, ch in changes.items() if "at" in ch]
+    if len(moved) > 1:
+        return f"move {' and '.join(moved)} a row", moved
     for ref, ch in changes.items():
         if "at" in ch:
             flip = _flip(model, data, ref)
@@ -789,10 +841,56 @@ def _describe(model, data: dict, changes: dict, ranks: dict) -> tuple[str, list[
     return "re-place the two-lead parts", []
 
 
+def _shifted(model, data: dict, state: dict) -> list[dict]:
+    """The layout with every footprint part bbgen places moved a row up, or a row down, where they all can go."""
+    out = []
+    for dr in (1, -1):
+        change = {}
+        for ref, now in state.items():
+            row = chr(ord(now[0][0]) + dr)
+            ch = next((c for c in model.choices[ref] if (c[0], c[1]) == (row + now[0][1:], now[1])), None)
+            if ch is None:
+                break
+            change[ref] = {"at": ch[0], "rot": ch[1]}
+        else:
+            if change and model.cost({**state, **{r: next(c for c in model.choices[r] if (c[0], c[1]) ==
+                                                           (v["at"], v["rot"])) for r, v in change.items()}}) < math.inf:
+                out.append(change)
+    return out
+
+
+def _polish(leads: list[str], data: dict, score: float, c, source: str, budget: int):
+    """A few leg-pair moves on a fresh layout, greedily: (score, data, circuit, builds spent)."""
+    spent = 0
+    data = _with(data, _pinned(c, leads))
+    improved = True
+    while improved and spent < budget:
+        improved = False
+        from .check import check
+        rank = {ref: i for i, ref in enumerate(_trouble(c, check(c)))}
+        for ref in sorted(leads, key=lambda r: rank.get(r, len(rank)))[:4]:
+            for k in (1, 2):
+                trial = _with(data, {ref: {"pins": None}})
+                trial["_leg_rank"] = {ref: k}
+                s2, c2 = _evaluate(trial, source)
+                spent += 1
+                if s2 < score - 1e-9:
+                    score, c = s2, c2
+                    data = _with(trial, _pinned(c2, leads))
+                    data.pop("_leg_rank", None)
+                    improved = True
+                    break
+                if spent >= budget:
+                    break
+            if improved or spent >= budget:
+                break
+    return score, data, c, spent
+
+
 def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
     from .check import check
     score, data, c = best
-    builds = since = 0
+    builds = since = polishes = 0
     improved = True
     while improved and builds < REPAIR_BUILDS and since < PATIENCE:
         improved = False
@@ -802,7 +900,13 @@ def _repair(model: _Model, leads: list[str], best, source: str) -> dict:
             s2, c2 = _evaluate(trial, source)
             builds += 1
             since += 1
-            if trace.active():
+            if not ranks and score <= s2 < score + LOOKAHEAD and polishes < LOOKAHEAD_TIMES:
+                # a chip moved, its two-lead parts placed afresh: they deserve a polish before it's judged (on a
+                # budget of its own, so the search itself keeps its builds)
+                s3, d3, c3, _ = _polish(leads, trial, s2, c2, source, LOOKAHEAD_BUILDS)
+                polishes += 1
+                if s3 < s2:
+                    s2, c2, trial = s3, c3, d3
                 what, refs = _describe(model, data, changes, ranks)
                 kept = s2 < score - 1e-9
                 trace.step(c2, f"repair {builds}: {what}: score {score:.0f} → {s2:.0f} {'✓' if kept else '✗'}",

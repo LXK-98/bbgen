@@ -53,3 +53,17 @@ class FlexTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TallPartTest(unittest.TestCase):
+    def test_no_wire_lies_across_a_can(self):
+        # a can standing in row c, cols 20-21: a straight wire along row c from 15 to 25 would pass under it
+        can = {"type": "electrolytic", "pins": ["c20", "c21"]}
+        c, r = auto({"C1": can, "R1": {"type": "resistor", "pins": ["d13", "d15"]},
+                     "R2": {"type": "resistor", "pins": ["d25", "d27"]}},
+                    {"X": ["R1.2", "R2.1"], "A": ["C1.1"], "B": ["C1.2"], "P": ["R1.1"], "Q": ["R2.2"]})
+        self.assertEqual(codes(r), [])
+        for w in c.wires:  # every wire lying on the board keeps clear of it
+            if not w.flex and w.a.hole and w.b.hole:
+                self.assertNotIn("C1", c._bodies_crossed(c.end_xy(w.a), c.end_xy(w.b)), w.num)
+        self.assertIn("C1", c._bodies_crossed((15, 5), (25, 5)))  # (which a run along row c would cross)

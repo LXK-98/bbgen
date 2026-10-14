@@ -1,6 +1,6 @@
 title: Transistor relay driver
 notes:
-  - "Tier 2. GPIO15 drives a PN2222A through 1k; the transistor switches the relay coil from VBUS, a 1N4148
+  - "Tier 2. GPIO16 drives a PN2222A through 1k; the transistor switches the relay coil from VBUS, a 1N4148
     across the coil catches the flyback. An LED shows the coil is on."
   - "KiCad's PN2222A footprint (TO-92_Inline) is 1.27 mm pitch, off the grid: TO-92_Inline_Wide instead."
   - "Relay: a Standex Meder DIP reed relay (SPST, closing), which sits across the trench like a DIP-14.
@@ -19,7 +19,7 @@ nets:
   VBUS: {pins: [Pico.VBUS, K1.2, D1.K, R2.1], rail: +}
   COIL: [K1.6, D1.A, Q1.C, D2.K]
   LED: [R2.2, D2.A]
-  DRIVE: [Pico.GPIO15, R1.1]
+  DRIVE: [Pico.GPIO16, R1.1]
   BASE: [R1.2, Q1.B]
   GND: {pins: [Pico.GND, Q1.E], rail: -}
   LOAD_A: [K1.1, J1.1]

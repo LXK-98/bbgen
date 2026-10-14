@@ -162,8 +162,11 @@ Which rail a net runs on comes from, in order:
   linking the two rails: a pin under a Pico then drops to the bottom rail instead of a jumper
   arching over the Pico
 
-A rail nothing on the board uses isn't wired. Two rails of one net are joined at their ends (their
-first or last five holes), out of the circuit's way: that's setting up the board, not the circuit.
+A rail nothing on the board uses isn't wired. Two rails of one net are joined at their ends (the
+outermost column where a straight link fits), out of the circuit's way: that's setting up the
+board, not the circuit. The rail ends nearest a supply connector are kept free of parts, so its
+leads come in from the board's edge, and a flying lead avoids passing over parts and wires (never
+over a tall one: a pot, a can, an LED, a transistor).
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
 Many flexible jumpers say the same: parts that talk to each other are far apart or crowded.
@@ -191,8 +194,9 @@ nets: ...
   `near:` overrides that.
 - The same file always gives the same layout. The checklist says where everything went.
 
-It places by trying layouts and building the best ones for real, then repairing the best build a
-move at a time: it prefers straight wires and parts, short wires, parts with room around them,
+A part wider than the trench (a Pico) may sit a row off centre, when its busy side needs the
+room. It places by trying layouts and building the best ones for real, then repairing the best build a
+move at a time (turning chips, moving them all a row, re-placing the two-lead parts): it prefers straight wires and parts, short wires, parts with room around them,
 and no warnings. It's a good start, not an oracle: if something reads badly, give that part a
 place and build again.
 
@@ -216,7 +220,9 @@ A wire or two-lead part lying over a part's body hides its pins and has to come 
 part can. bbgen warns (`OVER_PART`), and for a wire suggests bends that take it around:
 `via: [d43, g43]`. The checklist lists the bends with the wire. It also warns about a wire that
 ends in a hole under a two-lead part's body (a resistor standing up to a rail covers the holes
-between its legs), and one that runs along another wire or part, hiding it. Wires may cross.
+between its legs), and one that runs along another wire or part, hiding it. Wires may cross. An LED
+or a can counts as a body about two holes across, and a wire bbgen lays keeps a quarter of a hole
+from a tall part (a pot, a transistor, a regulator); a DIP's or a module's body hugs its pins.
 
 Some parts need room beyond their body: a Pico needs space for its USB cable's plug past the USB
 end (rows `e`-`f`, the 8 columns from 2 past pin 1; the "USB Cable" zone of KiCad's Pico

@@ -26,7 +26,9 @@ class TraceTest(unittest.TestCase):
         self.assertTrue(any("starting layout 1 of" in s for s in captions))
         self.assertTrue(any("parts placed: wiring next" in s for s in captions))
         wiring = [s for s in captions if re.search(r"wiring \w+: ", s)]
-        self.assertEqual(len(wiring), len(c.wires))  # one frame per wire, none from placement's trial builds
+        dropped = [s for s in captions if "dropping W" in s]
+        # one frame per wire put in (and one per wire taken out again), none from placement's trial builds
+        self.assertEqual(len(wiring) - len(dropped), len(c.wires))
 
     def test_every_try_records_more(self):
         with trace.recording() as kept:

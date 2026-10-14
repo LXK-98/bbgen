@@ -15,9 +15,9 @@ nets:
   5V: {pins: [Pico.VBUS, U1.16, C1.1], rail: +}
   VMOT: [J3.1, U1.8, C2.+, C3.1]
   GND: {pins: [Pico.GND, U1.GND, J3.2, C1.2, C2.-, C3.2], rail: -}
-  EN12: [Pico.GPIO10, U1.1]
-  IN1: [Pico.GPIO11, U1.2]
-  IN2: [Pico.GPIO12, U1.7]
+  EN12: [Pico.GPIO16, U1.1]
+  IN1: [Pico.GPIO17, U1.2]
+  IN2: [Pico.GPIO18, U1.7]
   EN34: [Pico.GPIO13, U1.9]
   IN3: [Pico.GPIO14, U1.10]
   IN4: [Pico.GPIO15, U1.15]

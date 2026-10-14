@@ -97,6 +97,8 @@ class _Option:
 
 
 EPS = 1e-6
+CLEARANCE = 0.25  # room a wire lying on the board keeps from a part's body
+ROUND_BODY = {"led": 0.9, "electrolytic": 0.9}  # half the width of a 5 mm LED or can, in holes
 DETOUR_REACH = 12  # how many columns past its ends a wire may go to get around a part
 # every height a hole sits at, rails included
 _LEVELS = sorted({*ROW_Y.values(), *(y for pair in RAIL_PAIR_Y.values() for y in pair)})
@@ -234,6 +236,7 @@ class Circuit:
         self._pin_holes: set[Hole] = set()         # holes a footprint part's pins sit in
         self._covered: dict[tuple, str] = {}       # positions under a two-lead part's body -> its ref
         self._keepouts: set[str] = set()           # the names in _bodies that are keep-outs, not bodies
+        self._tall: set[str] = set()               # parts standing tall (a pot, a can, an LED): nothing passes over
         self._cables: list[tuple] = []             # (box, board) from a cable's plug to the board's edge
         if needs_placing(data):
             from . import trace
@@ -361,6 +364,8 @@ class Circuit:
             if part.kind in FOOTPRINT_KINDS:
                 self._place_footprint(part)
         self._layout_offboard()
+        from .autoplace import lead_room  # rail ends kept for a supply's flying leads (leg placement, autowire)
+        self._lead_room = lead_room(self)
         # Holes written out explicitly are claimed before anything is auto-placed.
         for part in self.parts.values():
             for i, leg in enumerate(part.legs):
@@ -411,7 +416,14 @@ class Circuit:
                 self._occupy(pin.hole, str(pin))
                 self._pin_holes.add(pin.hole)
         x0, y0, x1, y1 = placed_box(part, body_rect(part))
-        self._bodies.append(((x0, y0, x1, y1), part.ref))
+        # a wire alongside can't lie right against a tall part (a pot, a transistor, a regulator); a DIP's or a
+        # module's body hugs its pins, and a wire past its end is fine
+        flat = part.kind in ("pico", "dip") or part.source.startswith(("Package_DIP:", "Module:")) \
+            or "Package_DIP:" in part.source or "Module:" in part.source
+        m = 0.0 if flat else CLEARANCE
+        self._bodies.append(((x0 - m, y0 - m, x1 + m, y1 + m), part.ref))
+        if not flat:
+            self._tall.add(part.ref)
         own = {p.hole for p in part.pins}
         for hole in board.holes():
             x, y = board.xy(hole)
@@ -496,6 +508,10 @@ class Circuit:
             self._add_segment(a, b, part.ref)
             if _aligned(a, b):  # it lies over the holes between its legs
                 self._covered.update((k, part.ref) for k in self._between(a, b))
+            if part.kind in ROUND_BODY:  # standing up, about two holes across: nothing lies flat under it
+                cx, cy, r = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, ROUND_BODY[part.kind]
+                self._bodies.append(((cx - r, cy - r, cx + r, cy + r), part.ref))
+                self._tall.add(part.ref)
 
     def _route(self, w: Wire) -> None:
         sa, sb = w.spec
@@ -707,7 +723,7 @@ class Circuit:
             self.issues.append(Issue("warning", "OVER_PART", f"{route}: {fix}", holes=[w.a.hole, w.b.hole]))
         for part in self.parts.values():
             if part.kind in LEAD_KINDS and all(p.xy for p in part.pins):
-                refs = self._bodies_crossed(part.pins[0].xy, part.pins[1].xy)
+                refs = [r for r in self._bodies_crossed(part.pins[0].xy, part.pins[1].xy) if r != part.ref]
                 if refs:
                     self.issues.append(Issue(
                         "warning", "OVER_PART", f"{part.ref} lies over {' and '.join(refs)} "
