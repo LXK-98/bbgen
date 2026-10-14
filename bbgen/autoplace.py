@@ -37,7 +37,7 @@ from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, body_rect, make_part,
 # the estimate, for footprint parts
 GAP_COST = 8.0         # a rail's pin in a column with no rail holes: its drop will slant
 RAIL_COST = 0.5        # per row between a rail's pin and the rail
-CROWD_COST = 6.0       # per signal wire past what a column has room for
+CROWD_COST = 4.0       # per signal wire past what a column has room for
 LINK_COST = 1.0        # per hole between the nets a two-lead part joins
 OFFBOARD_COST = 0.3    # per column between an off-board pin's net and the board's edge
 SPACE_COST = 4.0       # per column short of three between two footprint parts
@@ -494,7 +494,28 @@ class _Model:
                     elif klo > hi:
                         khi = self.board.columns
                 keep += [(h, klo, khi) for h in sorted(room[2])]
-        return f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy)
+        return (f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy),
+                self._taken(part, rot, ax, ay, xy))
+
+    def _taken(self, part, rot: int, ax: int, ay: int, xy: dict) -> dict:
+        """{(half, column): rows} the part takes in each strip it's in: its pins, and the holes under its body.
+        What's left is the room wires have to run past it along the board."""
+        taken: dict = {}
+        for x, y in xy.values():
+            key = ("top" if y < 8 else "bot", x)
+            taken[key] = taken.get(key, 0) + 1
+        rect = body_rect(part)
+        if rect is not None:
+            corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
+            x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
+            y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
+            pins = set(xy.values())
+            for x in range(max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6)) + 1):
+                for y in ROW_Y.values():
+                    if y0 < y < y1 and (x, y) not in pins:
+                        key = ("top" if y < 8 else "bot", x)
+                        taken[key] = taken.get(key, 0) + 1
+        return taken
 
     def _walls(self, part, rot: int, ax: int, ay: int, xy: dict) -> list:
         """[(half, first column, last column)] for each half of the board the part walls off: its body covers it,
@@ -607,7 +628,13 @@ class _Model:
                     walls = [w for w in lay[5] if lo < w[1] and w[2] < hi]
                     if walls and not any(self.net_of.get(p) == name for p in lay[2]):
                         cost += WALL_COST if len(walls) > 1 else HALF_WALL_COST
-        cost += CROWD_COST * sum(max(0, n - 2) for n in crowd.values())
+        taken: dict = {}
+        for lay in layouts.values():
+            for key, n in lay[6].items():
+                taken[key] = taken.get(key, 0) + n
+        # a signal wire runs past a column in a row of its own: past a part, only in the rows its pins and body
+        # leave (two beside a Pico, four beside a DIP), less one for a wire ending there
+        cost += CROWD_COST * sum(max(0, n - max(1, 4 - taken.get(key, 0))) for key, n in crowd.items())
         for a, b in self.links:
             pa = [where[p] for p in self.nets[a] if p in where]
             pb = [where[p] for p in self.nets[b] if p in where]

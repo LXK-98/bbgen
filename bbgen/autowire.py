@@ -306,6 +306,9 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
         for node in nodes:
             pieces.setdefault(dsu.find(node), []).append(node)
         if len(pieces) < 2:
+            if not flying and not any(p.part.kind == "offboard" for p in net.pins):
+                # all joined, and no lead to come: its strips need no hole kept free for another wire now
+                c._pin_strips -= {n[1:] for n in nodes if n[0] == "strip"}
             return
         groups = list(pieces.values())
         options = [[o for node in group for o in _options(c, node, net, node_pins)] for group in groups]
