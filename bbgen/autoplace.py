@@ -46,6 +46,8 @@ SPACE_COST = 4.0       # per column short of three between two footprint parts
 WALL_COST = 12.0       # a signal net with pins either side of a part no wire can lie across: a jumper over it
 HALF_WALL_COST = 3.0   # ... or across one half of the board only: round by the other half
 KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best off its edge)
+ROOM_REACH = 9         # how far (in columns) from its nets' pins a two-lead part's own strip may be
+ROOMLESS_COST = 20.0   # a two-lead part between two signal nets with no free strip in reach
 ROOM_COST = 2.0        # per free row short of four in the strip of a pin in a net (a wide part a row off
                        # centre gives its busy side more)
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
@@ -67,6 +69,7 @@ CROSS_WEIGHT = 2.0     # per pair of wires crossing: what makes a layout look ta
 KEEP_WEIGHT = 1.5      # per hole of keep-out on the board, as KEEP_COST
 FLEX_WEIGHT = 12.0     # per flexible jumper: better than a warned-about wire (15 and up), worse than a tidy one
 LABEL_COST = 8.0       # per pair of two-lead parts close enough for their labels to collide
+LEG_OVER_COST = 30.0   # per part body a two-lead part lies over: worse than a jumper or two
 
 # legs: (shortest, longest) natural span in holes
 SPAN = {"resistor": (2, 5), "diode": (3, 5), "capacitor": (1, 3), "electrolytic": (1, 2), "led": (1, 3)}
@@ -457,6 +460,8 @@ class _Model:
         self.width = self.boards[-1][1] + self.boards[-1][0].columns
         self.gaps = {x0 + c for board, x0 in self.boards for c in range(1, board.columns + 1) if c not in board.rail_cols}
         self._lo, self._hi = 1, self.board.columns  # the columns of the board a layout is being worked out on
+        self.strips = {(half, x0 + c) for board, x0 in self.boards for c in range(1, board.columns + 1)
+                       for half in ("top", "bot")}
         library = library_for(data)
         self.parts = {str(ref): make_part(str(ref), spec, library) for ref, spec in (data.get("parts") or {}).items()}
         self.nets: dict[str, list] = {}
@@ -724,6 +729,23 @@ class _Model:
                 pins = [where[p] for p in self.nets[x] if p in where]
                 if y in self.plan and x not in self.plan and pins:
                     cost += LINK_COST * min(abs(py - self.rail_y[r]) for _, py in pins for r in self.plan[y])
+        # room for the two-lead parts between two signal nets: each wants a strip nothing is in, near its nets'
+        # pins, for a leg of its own (a wire then joins it to its net); one with nowhere to go ends up lying
+        # across whatever is between its nets' strips, a chip as like as not
+        claimed: set = set()
+        for a, b in self.links:
+            if a in self.plan or b in self.plan:
+                continue  # a leg on a rail's net goes on the rail
+            xs = {x for x, _ in (where[p] for p in self.nets[a] + self.nets[b] if p in where)}
+            if not xs:
+                continue
+            spot = next((key for d in range(ROOM_REACH + 1) for x in sorted(xs) for k in {x - d, x + d}
+                         for key in (("top", k), ("bot", k))
+                         if key in self.strips and key not in claimed and not taken.get(key)), None)
+            if spot is None:
+                cost += ROOMLESS_COST
+            else:
+                claimed.add(spot)
         return cost
 
     def anneal(self, seed: int) -> list[tuple[float, dict]]:
@@ -793,6 +815,8 @@ def _score(c, result) -> float:
         if part.kind in LEAD_KINDS and all(p.xy for p in part.pins):
             a, b = part.pins[0].xy, part.pins[1].xy
             score += LEG_SLANT_COST * (not _aligned(a, b)) + 3.0 * max(0.0, math.dist(a, b) - SPAN[part.kind][1])
+            # lying over a part's body: it has to come out before the part can, and hides its pins
+            score += LEG_OVER_COST * sum(1 for r in c._bodies_crossed(a, b) if r != part.ref and r not in c._keepouts)
             middles.append(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
     for i, (x1, y1) in enumerate(middles):  # two parts this close: their labels collide
         score += LABEL_COST * sum(abs(x1 - x2) < 2.5 and abs(y1 - y2) < 1.5 for x2, y2 in middles[i + 1:])
