@@ -138,9 +138,13 @@ from the row next to the rail, and each off-board pin gets its own flying lead. 
 them by net, rails' nets first.
 
 A wire bbgen lays on the board is always straight, crosses no part, runs along no other wire, and
-lies over no other wire's end or a pin's last free hole. Where no such wire will do, it uses a
-flexible jumper instead: a crowded board gets a few jumpers arching over it rather than bent or
-slanted wires. `flex: false` at the top of the file turns flexible jumpers off, for an all-rigid
+lies over no other wire's end or a pin's last free hole. Where no such wire will do, it goes the
+way you would by hand: along to a strip nothing uses yet and on from another of its holes (or
+across the trench in its column), two or three straight wires in all, like a feedback wire taken
+round the end of a chip. Only when that's no good either does it use a flexible jumper: a crowded
+board gets a few jumpers arching over it rather than bent or slanted wires, and a jumper over a
+part (worse, over a tall one) costs more than one over bare board. The shortest nets are wired
+first, since they have the fewest ways to go; a long one can still go round them. `flex: false` at the top of the file turns flexible jumpers off, for an all-rigid
 build; then bbgen bends wires around parts, and warns about what it couldn't lay straight.
 
 A net that's a supply says `rail: +`, a ground `rail: -`; bbgen picks which rail. Every supply

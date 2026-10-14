@@ -3,7 +3,8 @@
 Footprint parts are placed before the circuit is built. A quick estimate scores a placement: how
 far each net's pins are apart, how far pins on a rail's net (or a two-lead part's trip to a rail)
 are from that rail and whether their column has rail holes at all, how many signal wires would
-run side by side past one column, and how close parts sit. Annealing from a few fixed seeds finds
+run side by side past one column, how close parts sit, and how many signal nets have pins either
+side of a part no wire can lie across (a display whose pins' strips are under its body). Annealing from a few fixed seeds finds
 good placements by that estimate; the best few are built for real, wires and all.
 
 Two-lead parts are placed while the circuit is built, after the footprint parts: each leg goes in
@@ -40,6 +41,8 @@ CROWD_COST = 6.0       # per signal wire past what a column has room for
 LINK_COST = 1.0        # per hole between the nets a two-lead part joins
 OFFBOARD_COST = 0.3    # per column between an off-board pin's net and the board's edge
 SPACE_COST = 4.0       # per column short of three between two footprint parts
+WALL_COST = 12.0       # a signal net with pins either side of a part no wire can lie across: a jumper over it
+HALF_WALL_COST = 3.0   # ... or across one half of the board only: round by the other half
 KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best off its edge)
 ROOM_COST = 2.0        # per free row short of four in the strip of a pin in a net (a wide part a row off
                        # centre gives its busy side more)
@@ -194,11 +197,35 @@ class _Legs:
         self.home_pins = home[1] if home and home[0] is None else None
         self._xy: dict = {}
         self._free: dict = {}
+        self._leg: dict = {}
 
     def xy(self, hole: Hole):
         if hole not in self._xy:
             self._xy[hole] = self.board.xy(hole)
         return self._xy[hole]
+
+    def leg(self, i: int, leg: Hole, xy) -> float:
+        """What a pair's cost owes to one leg alone (the i-th) being in this hole: worked out once per hole."""
+        if (i, leg) in self._leg:
+            return self._leg[i, leg]
+        used = self.c._used  # room around it, so parts and their labels don't pile up
+        cost = CROWD_LEG_COST * sum(_key((xy[0] + dx, xy[1] + dy)) in used for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)))
+        if leg.is_rail and self.main_rail[i] and leg.row != self.main_rail[i]:
+            cost += SECOND_RAIL_COST  # its net's other rail: a wire then has to link the two
+        own = not leg.is_rail and self.board.strip(leg) in self.own[i]
+        if self.lead_x[i] is not None and not own:
+            # near the connector its net comes in by: a lead to a new strip gets shorter; on a rail, which carries it
+            # anyway, only to break ties
+            cost += (0.05 if leg.is_rail else 0.3) * abs(xy[0] - self.lead_x[i])
+        if not (leg.is_rail or own):
+            if self.own_x[i]:  # an empty strip for a net that has strips: it'll need a wire to them
+                cost += JUNCTION_COST + 0.5 * min(abs(xy[0] - x) for x in self.own_x[i])
+            else:  # ... or to its rail or connector: one wire, still better than a slant
+                cost += JUNCTION_COST / 2
+            if self.on_rail[i] and leg.col not in self.board.rail_cols:
+                cost += GAP_COST  # the wire down to its rail would slant
+        self._leg[i, leg] = cost
+        return cost
 
     def free(self, strip) -> list:
         """The strip's free holes that nothing lies over, with their positions' keys."""
@@ -212,24 +239,7 @@ class _Legs:
         span = math.dist(pa, pb)
         cost = 3.0 * max(0.0, lo - span, span - hi) + LEG_SLANT_COST * (not _aligned(pa, pb))
         cost += 8.0 * self.drops.blocked(a, b, pa, pb)  # in the way of pins' own straight drops to their rails
-        for xy in (pa, pb):  # room around each leg, so parts and their labels don't pile up
-            cost += CROWD_LEG_COST * sum(_key((xy[0] + dx, xy[1] + dy)) in self.c._used
-                                         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)))
-        for i, (leg, xy) in enumerate(((a, pa), (b, pb))):
-            if leg.is_rail and self.main_rail[i] and leg.row != self.main_rail[i]:
-                cost += SECOND_RAIL_COST  # its net's other rail: a wire then has to link the two
-            if self.lead_x[i] is not None and (leg.is_rail or self.board.strip(leg) not in self.own[i]):
-                # near the connector its net comes in by: a lead to a new strip gets shorter; on a rail, which
-                # carries it anyway, only to break ties
-                cost += (0.05 if leg.is_rail else 0.3) * abs(xy[0] - self.lead_x[i])
-            if leg.is_rail or self.board.strip(leg) in self.own[i]:
-                continue
-            if self.own_x[i]:  # an empty strip for a net that has strips: it'll need a wire to them
-                cost += JUNCTION_COST + 0.5 * min(abs(xy[0] - x) for x in self.own_x[i])
-            else:  # ... or to its rail or connector: one wire, still better than a slant
-                cost += JUNCTION_COST / 2
-            if self.on_rail[i] and leg.col not in self.board.rail_cols:
-                cost += GAP_COST  # the wire down to its rail would slant
+        cost += self.leg(0, a, pa) + self.leg(1, b, pb)
         x = (pa[0] + pb[0]) / 2
         if self.part.kind in ROUND:  # an LED or a can is about two holes across: never touching another
             mid = (x, (pa[1] + pb[1]) / 2)
@@ -484,7 +494,31 @@ class _Model:
                     elif klo > hi:
                         khi = self.board.columns
                 keep += [(h, klo, khi) for h in sorted(room[2])]
-        return f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep
+        return f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy)
+
+    def _walls(self, part, rot: int, ax: int, ay: int, xy: dict) -> list:
+        """[(half, first column, last column)] for each half of the board the part walls off: its body covers it,
+        or leaves its pins' strips a hole at most, which a wire lying across would take from the wire that pin
+        still needs (a display whose pins' strips are under it). Nets with pins on both sides have to go round by
+        the other half, or jump over."""
+        rect = body_rect(part)
+        if rect is None:
+            return []
+        corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
+        x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
+        y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
+        lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
+        if lo > hi:
+            return []
+        under = {y for y in ROW_Y.values() if y0 < y < y1}
+        pins = {y for _, y in xy.values()}
+        out = []
+        for half, rows in (("top", "abcde"), ("bot", "fghij")):
+            ys = [ROW_Y[r] for r in rows]
+            free = [y for y in ys if y not in under and y not in pins]
+            if any(y in under for y in ys) and (not free or len(free) <= 1 and any(y in pins for y in ys)):
+                out.append((half, lo, hi))
+        return out
 
     def _covered(self, rect, rot: int, ax: int, ay: int):
         """(first column, last column, {halves}) of the holes inside a rect placed with pin 1 at (ax, ay), or
@@ -567,6 +601,12 @@ class _Model:
                             crowd[half, x] = crowd.get((half, x), 0) + 1
             if name in self.offboard:
                 cost += OFFBOARD_COST * (self.board.columns - max(x for x, _ in pts))
+            if name not in self.plan and len(pts) > 1:
+                lo, hi = min(x for x, _ in pts), max(x for x, _ in pts)
+                for ref, lay in layouts.items():
+                    walls = [w for w in lay[5] if lo < w[1] and w[2] < hi]
+                    if walls and not any(self.net_of.get(p) == name for p in lay[2]):
+                        cost += WALL_COST if len(walls) > 1 else HALF_WALL_COST
         cost += CROWD_COST * sum(max(0, n - 2) for n in crowd.values())
         for a, b in self.links:
             pa = [where[p] for p in self.nets[a] if p in where]

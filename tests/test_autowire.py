@@ -72,12 +72,14 @@ class AutowireTest(unittest.TestCase):
         self.assertEqual(codes(r), [])
         self.assertEqual([w.auto for w in c.wires], [False])
 
-    def test_a_wire_across_a_part_arches_over_it(self):
+    def test_a_wire_across_a_part_goes_round_it(self):
         opamp = {"type": "dip", "pins": 6, "at": "e42", "rot": 180, "labels": ["OUT", "V-", "IN+", "IN-", "X", "V+"]}
         c, r = auto({"U1": opamp}, {"FB": ["U1.OUT", "U1.IN-"]})
         self.assertEqual(codes(r) + codes(r, "warning"), [])
-        [w] = c.wires
-        self.assertTrue(w.flex)  # bbgen never bends a wire itself
+        # round the end of the chip, as you'd build it: along to a free column, across the trench, and back, each
+        # wire straight (bbgen never bends a wire itself)
+        self.assertEqual([ends(c, w) for w in c.wires], [("a42", "a39"), ("e39", "f39"), ("g39", "g40")])
+        self.assertFalse(any(w.flex or w.via for w in c.wires))
         # with flexible jumpers turned off, it's bent around the part instead
         c, r = auto({"U1": opamp}, {"FB": ["U1.OUT", "U1.IN-"]}, flex=False)
         [w] = c.wires
@@ -107,8 +109,9 @@ class AutowireTest(unittest.TestCase):
         # R1 stands from b25 up to the rail, over a25; c25 and d25 are still free for the wire
         c, r = auto({"Pico": PICO, "U1": DIP, "R1": {"type": "resistor", "pins": ["b25", "top-25"]}},
                     {"EN": ["Pico.GP21", "U1.EN", "R1.1"], "GND": ["R1.2"]})
-        [en] = [w for w in c.wires if w.group == "EN"]
-        self.assertNotIn("a25", ends(c, en))
+        en = [w for w in c.wires if w.group == "EN"]
+        self.assertTrue(en)
+        self.assertFalse(any("a25" in ends(c, w) for w in en))
         self.assertNotIn("OVER_PART", codes(r, "warning"))
 
     def test_flying_leads_prefer_a_rail(self):

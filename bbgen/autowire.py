@@ -7,24 +7,28 @@ the ones its `rail:` names, for a lone ground any `-` rail no other net uses, an
 
 The pieces on the board are joined one wire at a time, cheapest first: length, plus a penalty for
 slanting, lying along another wire or crossing a part (SHAPE_COST, CROSS_COST), then nearest the
-pins. A wire that can't help crossing a part is bent around it. Where every wire lying on the board
-would cost more than FLEX_COST in trouble, a flexible jumper arches over instead: it may slant and
-cross, but needs a hole at each end like any wire (`flex: false` at the top of the file turns them
-off). A slant that no choice of holes could avoid (between two columns, across the trench) costs
+pins. A wire that can't help crossing a part is bent around it. Where one wire won't do cleanly, a
+route of two or three straight wires through strips nothing uses yet may (_relay: an A* search over
+those strips, RELAY_COST a strip). Where every wire lying on the board would cost more than
+FLEX_COST (and FLEX_OVER_COST a part it arches over) in trouble, a flexible jumper arches over
+instead: it may slant and cross, but needs a hole at each end like any wire (`flex: false` at the
+top of the file turns them off). A slant that no choice of holes could avoid (between two columns, across the trench) costs
 little: a short rigid wire is fine there. Off-board pins come last, each
 with a flying lead to the nearest free hole of its net, so a connector pin is never the junction
 between two parts of the board.
 
-Nets without a rail are routed first: they have the fewest ways to go, and the rails' nets can
-nearly always reach a rail. The checklist still lists the rails' nets first, since they're built
-first.
+Nets without a rail are routed first, the shortest first: they have the fewest ways to go, and the
+rails' nets can nearly always reach a rail. The checklist still lists the rails' nets first, since
+they're built first.
 """
 
 from __future__ import annotations
 
+import bisect
+import heapq
 import math
 
-from .board import RAILS, Hole, parse_hole
+from .board import RAILS, ROW_Y, Hole, parse_hole
 from . import trace
 from .check import _DSU
 from .circuit import Circuit, Issue, Net, Wire, _aligned, _key, _Option
@@ -59,8 +63,9 @@ def autowire(c: Circuit) -> None:
     rails = _rails(c, dsu, node_pins)
     first = len(c.wires)
     trace.step(c, "parts placed: wiring next", wiring=True, seconds=1.5)
+    order = sorted(c.nets.values(), key=lambda n: (bool(rails.get(n.name)), _span(c, n)))
     for flying in (False, True):
-        for net in sorted(c.nets.values(), key=lambda n: bool(rails.get(n.name))):
+        for net in order:
             _wire_net(c, dsu, net, rails.get(net.name, []), node_pins, flying)
     # number them as they'll be built: the rails' nets first, then the rest, each in file order, and the
     # flexible jumpers last
@@ -68,6 +73,17 @@ def autowire(c: Circuit) -> None:
     _renumber(c, built, first)
     groups = list(dict.fromkeys(w.group for w in built))
     c.groups += [g for g in groups if g not in c.groups]
+
+
+def _span(c: Circuit, net: Net) -> float:
+    """How far a net's pins on the board are spread (half its bounding box's perimeter). Short nets are routed
+    first: they have the fewest ways to go, and a long one can still go round them, or over them as a
+    flexible jumper, where a short one lying in its way would have had to."""
+    pts = [p.xy for p in net.pins if p.xy and p.hole is not None]
+    if len(pts) < 2:
+        return 0.0
+    xs, ys = [x for x, _ in pts], [y for _, y in pts]
+    return (max(xs) - min(xs)) + (max(ys) - min(ys))
 
 
 def _renumber(c: Circuit, wires: list[Wire], first: int) -> None:
@@ -234,16 +250,16 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
         pairs.sort(key=lambda t: t[0])
         best, flex = None, None
         if c.flex:  # the best flexible jumper, the price a wire lying on the board has to beat
-            first = None  # pairs are sorted by bound: only those tied with the first that clears a keep-out
             found = []
             for bound, p, q, _ in pairs:
-                if first is not None and bound > first + 1e-9:
-                    break
+                if found and bound + FLEX_COST > found[0][0][0] + 1e-9:
+                    break  # pairs are sorted by bound: none further on can be cheaper
                 if p[1].hole is not None and q[1].hole is not None and not _over_keepout(c, p[1].xy, q[1].xy):
-                    first = bound if first is None else first
-                    found.append(((round(bound + FLEX_COST, 6), round(p[1].near + q[1].near, 6), p[1].xy, q[1].xy),
-                                  p, q))
-            best = flex = min(found, key=lambda t: t[0], default=None)
+                    key = (round(bound + FLEX_COST + _flex_over(c, p[1].xy, q[1].xy), 6),
+                           round(p[1].near + q[1].near, 6), p[1].xy, q[1].xy)
+                    found.append((key, p, q))
+                    found.sort(key=lambda t: t[0])
+            best = flex = found[0] if found else None
         # the full cost of a wire lying on the board (a detour around a part is costly to work out) only while
         # it can still win
         for bound, p, q, unavoidable in pairs:
@@ -252,28 +268,213 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
             key = _cost(c, p[1], q[1], unavoidable)
             if key[0] < math.inf and (best is None or key < best[0]):
                 best, flex = (key, p, q), None
+        # straight wires through empty strips, where one wire would be a jumper or pay for its trouble
+        if not flying and (best is None or flex or best[0][0] > _bound(c, best[1][1], best[2][1]) + RELAY_COST):
+            # from the piece the best wire would leave (any piece, when nothing else will do), to any other
+            limit = best[0][0] if best is not None else RELAY_LIMIT
+            froms = None if best is None else {i for i, g in enumerate(groups) if best[1][2] in g}
+            route = _relay(c, net, options, limit, froms)
+            if route is not None and _lay_route(c, dsu, net, route, nodes):
+                continue
         if best is None:
             return  # no free hole to join them: the check reports the net as open
-        _, (spec_a, pa, na), (spec_b, pb, nb) = best
-        w = Wire(len(c.wires) + 1, net.name, (spec_a, spec_b), None, [], auto=True, flex=bool(flex))
-        w.a, w.b = c._take(pa, f"W{w.num}", spec_a), c._take(pb, f"W{w.num}", spec_b)
-        c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e.hole is not None)
-        if w.flex:
-            c.wires.append(w)  # it arches over the board: nothing lies under it
+        _, end_a, end_b = best
+        _lay(c, dsu, net, end_a, end_b, bool(flex), flying)
+
+
+def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = False, flying: bool = False,
+         quiet: bool = False) -> Wire:
+    """Put in one wire between two (spec, option, node) ends (joining their nodes, unless dsu is None)."""
+    (spec_a, pa, na), (spec_b, pb, nb) = end_a, end_b
+    w = Wire(len(c.wires) + 1, net.name, (spec_a, spec_b), None, [], auto=True, flex=flex)
+    w.a, w.b = c._take(pa, f"W{w.num}", spec_a), c._take(pb, f"W{w.num}", spec_b)
+    c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e.hole is not None)
+    if w.flex:
+        c.wires.append(w)  # it arches over the board: nothing lies under it
+        if dsu is not None:
             dsu.union(na, nb)
-            trace.step(c, f"wiring {net.name}: a flexible jumper", focus=[f"W{w.num}"], wiring=True)
-            continue
-        if w.a.hole and w.b.hole and c._bodies_crossed(c.end_xy(w.a), c.end_xy(w.b)):
-            w.via = c._detour(w.a.hole, w.b.hole, f"W{w.num}") or []  # around the part it would cross
-            w.via_xy = [c._via(v) for v in w.via]
-        pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
-        for p, q in zip(pts, pts[1:]):
-            c._add_segment(p, q, f"W{w.num}")
-        c.wires.append(w)
-        c._lain |= c._lies_over(w)
+        trace.step(c, f"wiring {net.name}: a flexible jumper", focus=[f"W{w.num}"], wiring=True)
+        return w
+    if w.a.hole and w.b.hole and c._bodies_crossed(c.end_xy(w.a), c.end_xy(w.b)):
+        w.via = c._detour(w.a.hole, w.b.hole, f"W{w.num}") or []  # around the part it would cross
+        w.via_xy = [c._via(v) for v in w.via]
+    pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
+    for p, q in zip(pts, pts[1:]):
+        c._add_segment(p, q, f"W{w.num}")
+    c.wires.append(w)
+    c._lain |= c._lies_over(w)
+    if dsu is not None:
         dsu.union(na, nb)
+    if not quiet:
         what = "a flying lead" if flying else "bent around a part" if w.via else "a wire"
         trace.step(c, f"wiring {net.name}: {what}", focus=[f"W{w.num}"], wiring=True)
+    return w
+
+
+RELAY_COST = 3.0  # each empty strip a route passes through: one more wire to build
+RELAY_HOPS = 3    # at most this many wires in a route through empty strips
+RELAY_LIMIT = 80.0  # the most a route may cost when there's nothing else to join two pieces
+
+
+def _relay(c: Circuit, net: Net, options: list, limit: float, froms=None):
+    """The cheapest route of straight, clear wires from one piece of the net to another through strips nothing
+    uses yet, costing less than limit: [(from end, to end), ...] with ends as (spec, option, node), or None.
+
+    It's what a builder does when two strips don't line up or something is in the way: run to a free strip,
+    and on from another of its holes (the strip itself carries the signal across its rows, or the column
+    across the trench)."""
+    target: dict[Hole, tuple] = {}
+    for gi, opts in enumerate(options):
+        for spec, o, node in opts:
+            if o.hole is not None:
+                target.setdefault(o.hole, (gi, (spec, o, node)))
+    if len(target) < 2:
+        return None
+    empty = _empty_strips(c)
+    best = None
+    best_cost = limit - 1e-9
+    cache: dict = {}
+    for gi, opts in enumerate(options):
+        if froms is not None and gi not in froms:
+            continue
+        starts = [(spec, o, node) for spec, o, node in opts if o.hole is not None]
+        xs = sorted(c.boards[h.board].xy(h)[0] for h, (gj, _) in target.items() if gj != gi)
+        if not starts or not xs:
+            continue
+
+        def ahead(xy) -> float:
+            """A floor under what's left to go from here: the columns to the nearest hole of another piece."""
+            i = bisect.bisect_left(xs, xy[0])
+            return min(abs(xs[k] - xy[0]) for k in (i - 1, i) if 0 <= k < len(xs))
+
+        # A*: (cost so far plus the floor, tie, cost so far, wires so far, the ends a next wire may leave from,
+        # the path)
+        floor = min(ahead(o.xy) for _, o, _ in starts) + RELAY_COST
+        heap = [(floor, 0, 0.0, 0, starts, [])]
+        seen: dict = {}
+        tie = 1
+        while heap:
+            f, _, cost, hops, ends, path = heapq.heappop(heap)
+            if f >= best_cost:
+                break
+            for end in ends:
+                o = end[1]
+                for t, length in _reach(c, o.hole, cache):
+                    step = cost + length + COVERED_COST * o.covered
+                    if step >= best_cost:
+                        continue
+                    hit = target.get(t)
+                    if hit is not None:
+                        if hit[0] == gi or not path:
+                            continue  # its own piece, or a single wire (not this search's business)
+                        total = step + COVERED_COST * hit[1][1].covered
+                        if total < best_cost:
+                            route = path + [(end, hit[1])]
+                            total += CROSS_WIRE_COST * sum(_wires_crossed(c, x[1].xy, y[1].xy) for x, y in route)
+                            if total < best_cost:
+                                best, best_cost = route, total
+                        continue
+                    if hops + 1 >= RELAY_HOPS:
+                        continue
+                    board = c.boards[t.board]
+                    strip = board.strip(t)
+                    if strip not in empty:
+                        continue
+                    nxt = step + RELAY_COST
+                    txy = board.xy(t)
+                    if nxt + ahead(txy) >= best_cost or seen.get(strip, math.inf) <= nxt:
+                        continue
+                    seen[strip] = nxt
+                    node = ("strip", *strip)
+                    here = (c.hole_name(t), _Option(t, txy), node)
+                    out = [(c.hole_name(h), _Option(h, board.xy(h)), node) for h in board.strip_holes(strip)
+                           if h != t and h not in c.occupied and _key(board.xy(h)) not in c._lain]
+                    if out:
+                        heapq.heappush(heap, (nxt + ahead(txy), tie, nxt, hops + 1, out, path + [(end, here)]))
+                        tie += 1
+    return best
+
+
+def _reach(c: Circuit, hole: Hole, cache: dict) -> list[tuple[Hole, float]]:
+    """(hole, cost) for each free hole a straight wire from this one could end in, lying clear as _lies_clear
+    has it: along its row, and up and down its column. Each line is walked out from the hole a step at a time,
+    stopping at the first thing in the way, which is in the way of everything further on too."""
+    if hole in cache:
+        return cache[hole]
+    board = c.boards[hole.board]
+    a = board.xy(hole)
+    if "levels" not in cache:
+        cache["levels"] = sorted((board.y(r), r) for r in (*ROW_Y, *RAILS))
+        cache["spare"] = {}
+    lines = [[Hole(board.id, hole.row, col) for col in range(hole.col - 1, 0, -1)],
+             [Hole(board.id, hole.row, col) for col in range(hole.col + 1, board.columns + 1)],
+             [Hole(board.id, r, hole.col) for y, r in reversed(cache["levels"]) if y < a[1]],
+             [Hole(board.id, r, hole.col) for y, r in cache["levels"] if y > a[1]]]
+    spare = cache["spare"]
+    out = []
+    for line in lines:
+        prev, over, covered = a, False, {}
+        for t in line:
+            if not board.has(t.row, t.col):
+                continue  # a rail's gap: no hole to end in, nor to lie over
+            b = board.xy(t)
+            if c._bodies_crossed(prev, b) or c._along_who(prev, b):
+                break
+            if prev is not a:  # the hole stepped past is under the wire now
+                k = _key(prev)
+                if k in c._ends:
+                    break
+                over = over or k in c._used
+                strip = c._strip_at.get(k)
+                if strip in c._pin_strips and k not in c._lain and k not in c._used:
+                    covered[strip] = covered.get(strip, 0) + 1
+                    if strip not in spare:
+                        spare[strip] = _spare(c, strip)
+                    if spare[strip] <= covered[strip]:
+                        break  # a pin's strip's last free hole: a wire still to come must plug in there
+            prev = b
+            if t in c.occupied or _key(b) in c._lain or _key(b) in c._covered:
+                continue
+            out.append((t, math.dist(a, b) + SHAPE_COST[1 if over else 0]))
+    cache[hole] = out
+    return out
+
+
+def _empty_strips(c: Circuit) -> set:
+    """Strips of the terminal area with nothing in them and nothing lying over any of their holes."""
+    out = set()
+    for board in c.boards.values():
+        for col in range(1, board.columns + 1):
+            for half in ("a-e", "f-j"):
+                strip = (board.id, half, col)
+                holes = board.strip_holes(strip)
+                if all(h not in c.occupied and _key(board.xy(h)) not in c._lain and _key(board.xy(h)) not in c._covered
+                       for h in holes):
+                    out.add(strip)
+    return out
+
+
+def _lay_route(c: Circuit, dsu: _DSU, net: Net, route: list, nodes: list) -> bool:
+    """Put in a route's wires one by one, each checked against the ones before; if one no longer lies clear,
+    take them all out again (False)."""
+    laid = []
+    for end_a, end_b in route:
+        pa, pb = end_a[1], end_b[1]
+        if pa.hole in c.occupied or pb.hole in c.occupied or not _lies_clear(c, pa.xy, pb.xy) \
+                or _key(pa.xy) in c._lain or _key(pb.xy) in c._lain:
+            for w in laid:
+                _unwire(c, w)
+            return False
+        laid.append(_lay(c, None, net, end_a, end_b, quiet=True))
+    for (_, _, na), (_, _, nb) in route:  # joined only now it's all in; and the strips it passed through are the
+        dsu.union(na, nb)                 # net's now: later wires may use them
+        for node in (na, nb):
+            if node not in nodes:
+                nodes.append(node)
+                c._pin_strips.add(node[1:])
+    trace.step(c, f"wiring {net.name}: {len(laid)} wires through {'an empty strip' if len(laid) == 2 else 'empty strips'}",
+               focus=[f"W{w.num}" for w in laid], wiring=True)
+    return True
 
 
 def _has_rail(group) -> bool:
@@ -340,6 +541,8 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
     spec = f"{mine[0].part.ref}.{mine[0].num}" if mine else kind
     out = []
     for hole in board.strip_holes(node[1:]):
+        if not mine and kind not in RAILS:
+            spec = c.hole_name(hole)  # a strip a route passed through
         if hole in c.occupied:
             continue
         xy = board.xy(hole)
@@ -358,6 +561,8 @@ BEND_COST = 4.0       # a wire bent around a part, on top of its length
 COVERED_COST = 20.0   # an end in a hole under a two-lead part's body
 OFF_RAIL_COST = 4.0   # a flying lead from a part's strip rather than a rail
 FLEX_COST = 10.0      # a flexible jumper rather than one lying on the board: more than a short bend, less than a slant
+CROSS_WIRE_COST = 1.0  # per wire a wire lying on the board crosses
+FLEX_OVER_COST = 6.0  # per part a flexible jumper arches over: it hides the part's pins, and has to come out first
 
 
 def _bound(c: Circuit, p: _Option, q: _Option) -> float:
@@ -384,6 +589,8 @@ def _cost(c: Circuit, p: _Option, q: _Option, unavoidable: bool = False):
             if level == 2 and unavoidable:
                 level = 1  # no pair of these pieces' holes lines up: a slant is the only way
             length += SHAPE_COST[level] + CROSS_COST * len(c._bodies_crossed(p.xy, q.xy))
+        if p.hole is not None and q.hole is not None:
+            length += CROSS_WIRE_COST * _wires_crossed(c, p.xy, q.xy)  # wires may cross, but a tangle is hard to trace
     else:  # a flying lead: from the board's edge, over as little as can be
         board_end = q if p.pin is not None else p
         length += 0.0 if board_end.hole.is_rail else OFF_RAIL_COST
@@ -415,6 +622,13 @@ def _spare(c: Circuit, strip) -> int:
     """Free holes of a strip that no wire lies over."""
     board = c.boards[strip[0]]
     return sum(1 for h in board.strip_holes(strip) if h not in c.occupied and _key(board.xy(h)) not in c._lain)
+
+
+def _flex_over(c: Circuit, a, b) -> float:
+    """What a flexible jumper from a to b costs for the parts it arches over (a tall one counts double: the
+    jumper sags against it)."""
+    over = [r for r in c._bodies_crossed(a, b) if r not in c._keepouts]
+    return FLEX_OVER_COST * (len(over) + sum(1 for r in over if r in c._tall))
 
 
 def _over_keepout(c: Circuit, a, b) -> bool:
@@ -456,7 +670,7 @@ def _cheapest(c: Circuit, net: Net, node_pins: dict, a: list, b: list) -> float:
         if bound > best:
             break
         if c.flex and not _over_keepout(c, p.xy, q.xy):
-            best = min(best, bound + FLEX_COST)
+            best = min(best, bound + FLEX_COST + _flex_over(c, p.xy, q.xy))
         if c.flex:
             if _lies_clear(c, p.xy, q.xy):
                 best = min(best, bound + SHAPE_COST[c._shape(p.xy, q.xy)[0]])
