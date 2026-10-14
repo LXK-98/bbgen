@@ -34,42 +34,19 @@ from .measure import crossings
 from .board import RAILS, ROW_Y, Board, Hole, parse_hole
 from .circuit import (Circuit, CircuitError, Issue, _aligned, _key, _line, check_rail_count, library_for,
                       net_polarity)
+from .costs import (CROSS_WEIGHT, CROWD_COST, CROWD_LEG_COST, FLEX_WEIGHT, FLYING_WEIGHT, GAP_COST,
+                    HALF_WALL_COST, JUNCTION_COST, KEEP_COST, KEEP_WEIGHT, KEPT_DROP_COST, LABEL_COST,
+                    LEG_LINK_COST, LEG_OVER_COST, LEG_SLANT_COST, OFFBOARD_COST, RAIL_COST, RAIL_LINK_WEIGHT,
+                    ROOMLESS_COST, ROOM_COST, ROUND_COST, SECOND_RAIL_COST, SPACE_COST, WALL_COST)
 from .parts import FOOTPRINT_KINDS, LEAD_KINDS, PartError, body_rect, make_part, rotate
 
-# the estimate, for footprint parts
-GAP_COST = 8.0         # a rail's pin in a column with no rail holes: its drop will slant
-RAIL_COST = 0.5        # per row between a rail's pin and the rail
-CROWD_COST = 4.0       # per signal wire past what a column has room for
-LINK_COST = 1.0        # per hole between the nets a two-lead part joins
-OFFBOARD_COST = 0.3    # per column between an off-board pin's net and the board's edge
-SPACE_COST = 4.0       # per column short of three between two footprint parts
-WALL_COST = 12.0       # a signal net with pins either side of a part no wire can lie across: a jumper over it
-HALF_WALL_COST = 3.0   # ... or across one half of the board only: round by the other half
-KEEP_COST = 1.5        # per hole of keep-out on the board (a USB cable is best off its edge)
+# the estimate, for footprint parts (its weights are in costs.py)
 ROOM_REACH = 9         # how far (in columns) from its nets' pins a two-lead part's own strip may be
-ROOMLESS_COST = 20.0   # a two-lead part between two signal nets with no free strip in reach
-ROOM_COST = 2.0        # per free row short of four in the strip of a pin in a net (a wide part a row off
-                       # centre gives its busy side more)
 SEEDS, STEPS, KEEP = 4, 3000, 4  # annealing runs, steps in each, placements kept from each
 
-# two-lead parts' legs
+# two-lead parts' legs (their weights are in costs.py)
 ROUND = ("led", "electrolytic")  # parts with a round body about two holes across, drawn from above
 ROUND_GAP = 1.9        # their centres closer than this: the bodies touch
-ROUND_COST = 25.0      # per round body it would touch
-LEG_SLANT_COST = 20.0  # a two-lead part slanting: worse than lying straight and needing a wire more
-SECOND_RAIL_COST = 5.0  # a leg on a net's second rail, which then needs linking to the first
-JUNCTION_COST = 6.0    # a leg in an empty strip of its own, which then needs a wire to its net
-KEPT_DROP_COST = 6.0   # a leg whose straight drop to its rail would end in a rail end kept for a supply's lead
-CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
-
-# a built layout's score
-FLYING_WEIGHT = 0.3    # per hole of flying lead
-RAIL_LINK_WEIGHT = 3.0  # a wire joining two rails, whatever its length (as autowire's LINK_COST)
-CROSS_WEIGHT = 2.0     # per pair of wires crossing: what makes a layout look tangled
-KEEP_WEIGHT = 1.5      # per hole of keep-out on the board, as KEEP_COST
-FLEX_WEIGHT = 12.0     # per flexible jumper: better than a warned-about wire (15 and up), worse than a tidy one
-LABEL_COST = 8.0       # per pair of two-lead parts close enough for their labels to collide
-LEG_OVER_COST = 30.0   # per part body a two-lead part lies over: worse than a jumper or two
 
 # legs: (shortest, longest) natural span in holes
 SPAN = {"resistor": (2, 5), "diode": (3, 5), "capacitor": (1, 3), "electrolytic": (1, 2), "led": (1, 3)}
@@ -724,11 +701,11 @@ class _Model:
             pa = [where[p] for p in self.nets[a] if p in where]
             pb = [where[p] for p in self.nets[b] if p in where]
             if pa and pb and a not in self.plan and b not in self.plan:
-                cost += LINK_COST * min(abs(x1 - x2) + abs(y1 - y2) for x1, y1 in pa for x2, y2 in pb)
+                cost += LEG_LINK_COST * min(abs(x1 - x2) + abs(y1 - y2) for x1, y1 in pa for x2, y2 in pb)
             for x, y in ((a, b), (b, a)):  # a part from a net's pins to a rail spans the rows between
                 pins = [where[p] for p in self.nets[x] if p in where]
                 if y in self.plan and x not in self.plan and pins:
-                    cost += LINK_COST * min(abs(py - self.rail_y[r]) for _, py in pins for r in self.plan[y])
+                    cost += LEG_LINK_COST * min(abs(py - self.rail_y[r]) for _, py in pins for r in self.plan[y])
         # room for the two-lead parts between two signal nets: each wants a strip nothing is in, near its nets'
         # pins, for a leg of its own (a wire then joins it to its net); one with nowhere to go ends up lying
         # across whatever is between its nets' strips, a chip as like as not

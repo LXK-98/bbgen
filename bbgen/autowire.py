@@ -6,14 +6,15 @@ the ones its `rail:` names, for a lone ground any `-` rail no other net uses, an
 (`rail: +`, or a name like VSYS, VBUS, 5V) a `+` rail of its own.
 
 The pieces on the board are joined one wire at a time, cheapest first: length, plus a penalty for
-slanting, lying along another wire or crossing a part (SHAPE_COST, CROSS_COST), then nearest the
+slanting, lying along another wire or crossing a part (SHAPE_COST, CROSS_COST: the weights named
+here are in costs.py, with placement's), then nearest the
 pins. A wire that can't help crossing a part is bent around it. Where one wire won't do cleanly, a
 route of two or three straight wires through strips nothing uses yet may (_relay: an A* search over
 those strips, RELAY_COST a strip). Where every wire lying on the board would cost more than
 FLEX_COST (and FLEX_OVER_COST a part it arches over) in trouble, a flexible jumper arches over
 instead: it may slant and cross, but needs a hole at each end like any wire (`flex: false` at the
-top of the file turns them off). A slant that no choice of holes could avoid (between two columns, across the trench) costs
-little: a short rigid wire is fine there. Off-board pins come last, each
+top of the file turns them off). A slant that no choice of holes could avoid (between two columns,
+across the trench) costs little: a short rigid wire is fine there. Off-board pins come last, each
 with a flying lead to the nearest free hole of its net, so a connector pin is never the junction
 between two parts of the board.
 
@@ -43,6 +44,9 @@ import math
 from .board import RAILS, ROW_Y, Hole, parse_hole
 from . import trace
 from .check import _DSU
+from .costs import (BEND_COST, COVERED_COST, CROSS_COST, CROSS_WIRE_COST, FLEX_COST, FLEX_OVER_COST,
+                    KEPT_COST, LEAD_OVER_COST, LEAD_TALL_COST, OFF_RAIL_COST, RAIL_END_COST, RAIL_LINK_COST,
+                    RELAY_COST, SHAPE_COST)
 from .circuit import Circuit, Issue, Net, Wire, _aligned, _key, _Option
 
 
@@ -444,7 +448,6 @@ def _lay(c: Circuit, dsu: _DSU | None, net: Net, end_a, end_b, flex: bool = Fals
     return w
 
 
-RELAY_COST = 3.0  # each empty strip a route passes through: one more wire to build
 RELAY_HOPS = 3    # at most this many wires in a route through empty strips
 RELAY_LIMIT = 80.0  # the most a route may cost when there's nothing else to join two pieces
 
@@ -696,18 +699,6 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
     return out
 
 
-# What a wire's shape is worth in holes of length (see Circuit._shape for the levels): a slant is
-# worth a detour of about twelve holes, lying along another wire much more.
-SHAPE_COST = {0: 0.0, 1: 2.0, 2: 12.0, 3: 20.0}
-CROSS_COST = 12.0     # per part body crossed, before it's bent around
-BEND_COST = 4.0       # a wire bent around a part, on top of its length
-COVERED_COST = 20.0   # an end in a hole under a two-lead part's body
-OFF_RAIL_COST = 4.0   # a flying lead from a part's strip rather than a rail
-RAIL_END_COST = 0.5   # per rail hole between a flying lead's end and the rail's end on the connector's side
-KEPT_COST = 6.0       # a wire on the board ending in a rail end kept for a supply's flying lead
-FLEX_COST = 10.0      # a flexible jumper rather than one lying on the board: more than a short bend, less than a slant
-CROSS_WIRE_COST = 1.0  # per wire a wire lying on the board crosses
-FLEX_OVER_COST = 6.0  # per part a flexible jumper arches over: it hides the part's pins, and has to come out first
 
 
 def _bound(c: Circuit, p: _Option, q: _Option) -> float:
@@ -799,9 +790,6 @@ def _over_keepout(c: Circuit, a, b) -> bool:
     return bool(c._keepouts) and any(z in c._keepouts for z in c._bodies_crossed(a, b))
 
 
-LINK_COST = 3.0  # a wire joining two rails at their ends
-LEAD_OVER_COST = 5.0  # per part or wire a flying lead passes over: more than landing off the rail
-LEAD_TALL_COST = 40.0  # per tall part (a can, an LED, a pot) it would pass over: only if there's no other way
 
 
 def _wires_crossed(c: Circuit, a, b) -> int:
@@ -818,7 +806,7 @@ def _link_cost(c: Circuit, net: Net, node_pins: dict, a: list, b: list) -> float
     pa = _rail_ends(c, [o for node in a for o in _options(c, node, net, node_pins)])
     pb = _rail_ends(c, [o for node in b for o in _options(c, node, net, node_pins)])
     if any(p[1].hole.col == q[1].hole.col and _lies_clear(c, p[1].xy, q[1].xy) for p in pa for q in pb):
-        return LINK_COST
+        return RAIL_LINK_COST
     return _cheapest(c, net, node_pins, a, b)
 
 
