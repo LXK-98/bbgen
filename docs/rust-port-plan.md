@@ -147,6 +147,48 @@ If parity holds and the speed-up is ≥ 20×, port the rest. If it's much less, 
 search steps rather than interpreter overhead. In that case, fix the algorithm (incremental scoring,
 caching `_reach` and the blocked steps between trials) in whichever language you're in.
 
+### Phase 1 results: parity on all 21, 20× faster (done)
+
+The port is in `rust/`, about 5,600 lines: `board`, `kicad`, `parts`, `circuit`, `autowire`, `check`,
+`measure` and the parts of `autoplace` a placed build uses (`lead_room`, the score). It doesn't place
+anything yet; it turns away a file that still needs placing. `python3 benchmarks/rs_check.py` builds it,
+checks every placed benchmark against the golden record, and times it (`--python` times Python too).
+
+**Parity.** All 21 placed benchmarks give the same events as Python, one for one, on 16 that's 395 of
+them. That covers:
+- every pin's hole
+- the rails each net owns and the order nets are wired in
+- every wire's cost key, the wire laid, and every wire taken out, put back or swapped
+- every check message, the score to the last bit, and the layout hash
+
+The diff catches a 1e-9 change in a single cost. The float helpers (`round`, `math.dist`, `hypot`,
+`sum`, `repr`) match Python bit for bit on 500,000 random cases.
+
+**Speed, with Python timed in the same run.** One placed build (load, wire, check, score) is 13× to 30×
+faster per circuit, and 20× over all 21: 998 ms against 51 ms. 16 takes 391 ms in Python and 21 ms in
+Rust, 13 takes 91 ms and 4.9 ms. The faithful translation alone gave 10×. Four changes, none of which
+alters a result, took it to 20×:
+- **Candidate pairs as indices.** They were full copies, and stable-sorting about 10,000 of them per
+  round moved megabytes.
+- **foldhash instead of SipHash, then instead of FxHash.** Positions as keys have mostly zero low bits,
+  and FxHash piled them into the same buckets.
+- **Cheaper `math.dist`.** Dekker's split instead of a software FMA, powers of two built from bits, and
+  an exact shortcut along rows and columns (checked against Python on 2 million cases).
+- **Pairs sorted lazily** from a heap. Both loops stop early, so most pairs are never sorted.
+
+**What's left on the table** (none of it done yet, all of it guarded by the same check):
+- Owner names are still strings (`"W12"`, `"the body of U1"`).
+- `unwire` recomputes every wire's covered holes.
+- `empty_strips` rescans the board after every wire.
+- Many small `Vec`s are allocated for lists Python builds (`between`, `strip_holes`, `bodies_crossed`).
+
+Allocation still costs about 15% of the time. The small circuits gain least (about 15×), since their
+builds are mostly this kind of overhead.
+
+**Verdict: go on to Phase 2.** The faithful port matches exactly, and the 20× bar is met by the build
+alone. What's left to port (placement's search) is the same kind of code. The parallel search should
+gain more on top, since threads remove the rebuilds and the pickling.
+
 ## Phase 2: the rest, in order
 
 Each step ships with its parity check before the next one starts.

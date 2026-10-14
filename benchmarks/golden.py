@@ -72,6 +72,10 @@ def load(path: Path) -> list[dict]:
 
 def diff(a: Path, b: Path) -> int:
     ea, eb = load(a), load(b)
+    # one side built the placed file: compare from the other's last build on (its placement events come first)
+    for x, y in ((ea, eb), (eb, ea)):
+        if any(e["kind"] == "placed" for e in x) and not any(e["kind"] == "placed" for e in y):
+            del x[:next(i for i, e in enumerate(x) if e["kind"] == "placed") + 1]
     for i, (x, y) in enumerate(zip(ea, eb)):
         if x != y:
             print(f"event {i + 1} differs ({x.get('kind')} / {y.get('kind')})")

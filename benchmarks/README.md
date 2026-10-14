@@ -50,6 +50,7 @@ Two more scripts, for [docs/rust-port-plan.md](../docs/rust-port-plan.md):
 python3 benchmarks/hotspots.py         # where the time goes: builds, ms per build, each stage's share
 python3 benchmarks/golden.py           # record the golden corpus into golden/
 python3 benchmarks/golden.py --diff golden/13-ben-eater-register.jsonl.gz other.jsonl
+python3 benchmarks/rs_check.py         # the Rust port (rust/) against the golden records, and its speed
 ```
 
 `hotspots.py` writes `hotspots.md`: each circuit built serially (plain, then under cProfile) and with
@@ -58,4 +59,6 @@ layout's hash. `golden.py` records each circuit's build event by event ([bbgen/d
 the choices placement weighs, every trial and its score, the wires as they go in and the cost each was
 chosen at, the check. It also writes the file as placed (`golden/placed/`), which wires the same layout
 without placing anything. A port writes the same events; `--diff` names the first one where the two
-part ways.
+part ways (from a placed file's build on, when one side built only that). `rs_check.py` builds `rust/`,
+runs it on every placed file, diffs its events with the golden record and times it (`--python` times
+the Python too).

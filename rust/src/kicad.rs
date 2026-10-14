@@ -1,0 +1,462 @@
+//! Reading parts from KiCad's libraries: a symbol's pins, its footprint's pads, outline and keep-outs
+//! (bbgen/kicad.py). Only what bbgen needs is read, and only the symbol or footprint asked for; results are
+//! cached, since a circuit is built many times over.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+pub const MM: f64 = 2.54;
+
+#[derive(Clone, Debug)]
+pub struct SymbolPin {
+    pub number: String,
+    pub name: String,
+    pub kind: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Symbol {
+    pub name: String,
+    pub pins: Vec<SymbolPin>,
+    pub footprint: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Footprint {
+    pub name: String,
+    /// through-hole pad number -> (x, y) in mm, in file order
+    pub pads: Vec<(String, (f64, f64))>,
+    pub smd: bool,
+    pub outline: Option<(f64, f64, f64, f64)>,
+    pub keepouts: Vec<(String, (f64, f64, f64, f64))>,
+}
+
+// ---- finding the library ----
+
+fn glob_dirs(pattern: &str) -> Vec<PathBuf> {
+    // only `*` as a whole path component, which is all the patterns use
+    let mut paths = vec![PathBuf::from("/")];
+    for part in pattern.trim_start_matches('/').split('/') {
+        let mut next = Vec::new();
+        for p in &paths {
+            if part == "*" {
+                if let Ok(rd) = std::fs::read_dir(p) {
+                    let mut names: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+                    names.sort();
+                    next.extend(names);
+                }
+            } else {
+                let q = p.join(part);
+                if q.exists() {
+                    next.push(q);
+                }
+            }
+        }
+        paths = next;
+    }
+    paths
+}
+
+fn expand_user(p: &str) -> PathBuf {
+    if let Some(rest) = p.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return Path::new(&home).join(rest);
+        }
+    }
+    PathBuf::from(p)
+}
+
+/// Folders holding KiCad's `symbols/` and `footprints/`, most specific first.
+pub fn library_roots(extra: Option<&str>) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    let env_kicad = std::env::var("BBGEN_KICAD").ok();
+    for base in [extra.map(String::from), env_kicad].into_iter().flatten() {
+        if !base.is_empty() {
+            found.push(expand_user(&base));
+        }
+    }
+    let mut vars: Vec<(String, String)> = std::env::vars().collect();
+    vars.sort();
+    for (var, value) in vars {
+        if let Some(rest) = var.strip_prefix("KICAD") {
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            let tail = &rest[digits.len()..];
+            if tail == "_SYMBOL_DIR" || tail == "_FOOTPRINT_DIR" {
+                if let Some(parent) = Path::new(&value).parent() {
+                    found.push(parent.to_path_buf());
+                }
+            }
+        }
+    }
+    let home_flatpak = expand_user("~/.local/share/flatpak/runtime/org.kicad.kicad.Library/*/stable/*/files");
+    let patterns = [
+        "/var/lib/flatpak/runtime/org.kicad.kicad.Library/*/stable/*/files".to_string(),
+        home_flatpak.to_string_lossy().into_owned(),
+        "/usr/share/kicad".into(), "/usr/local/share/kicad".into(),
+        "/Applications/KiCad/KiCad.app/Contents/SharedSupport".into(),
+    ];
+    for pattern in patterns {
+        let mut hits = glob_dirs(&pattern);
+        hits.reverse();
+        found.extend(hits);
+    }
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for root in found {
+        if root.join("symbols").is_dir() || root.join("footprints").is_dir() {
+            let root = std::fs::canonicalize(&root).unwrap_or(root);
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+    }
+    roots
+}
+
+/// A KiCad pin name without its markup: ~{RST} (an overbar) is /RST, V_{IN} is VIN.
+pub fn clean_name(name: &str) -> String {
+    fn sub(s: &str, lead: &[char], with_slash: bool) -> String {
+        let chars: Vec<char> = s.chars().collect();
+        let mut out = String::new();
+        let mut i = 0;
+        while i < chars.len() {
+            if lead.contains(&chars[i]) && i + 1 < chars.len() && chars[i + 1] == '{' {
+                if let Some(end) = chars[i + 2..].iter().position(|&c| c == '}') {
+                    let inner: String = chars[i + 2..i + 2 + end].iter().collect();
+                    if with_slash {
+                        out.push('/');
+                    }
+                    out.push_str(&inner);
+                    i += end + 3;
+                    continue;
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+    let s = sub(name, &['~'], true);
+    sub(&s, &['_', '^'], false).trim().to_string()
+}
+
+fn find(roots: &[PathBuf], kind: &str, lib: &str) -> Result<PathBuf, String> {
+    let suffix = if kind == "symbols" { ".kicad_sym" } else { ".pretty" };
+    for root in roots {
+        let path = root.join(kind).join(format!("{}{}", lib, suffix));
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    let where_ = if roots.is_empty() {
+        "nowhere: no KiCad library found (set BBGEN_KICAD)".to_string()
+    } else {
+        roots.iter().map(|r| r.display().to_string()).collect::<Vec<_>>().join(", ")
+    };
+    Err(format!("no KiCad {} library '{}' (looked in {})", &kind[..kind.len() - 1], lib, where_))
+}
+
+fn split<'a>(r: &'a str, what: &str) -> Result<(&'a str, &'a str), String> {
+    match r.split_once(':') {
+        Some((lib, name)) if !lib.is_empty() && !name.is_empty() => Ok((lib, name)),
+        _ => Err(format!("a KiCad {} is named Library:Name, like Timer:NE555P, not '{}'", what, r)),
+    }
+}
+
+// ---- S-expressions ----
+
+#[derive(Clone, Debug)]
+pub enum Sx {
+    Atom(String),
+    List(Vec<Sx>),
+}
+
+impl Sx {
+    fn atom(&self) -> Option<&str> {
+        match self {
+            Sx::Atom(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    fn list(&self) -> Option<&Vec<Sx>> {
+        match self {
+            Sx::List(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    fn head(&self) -> Option<&str> {
+        self.list().and_then(|l| l.first()).and_then(Sx::atom)
+    }
+
+    fn children(&self, head: &str) -> Vec<&Sx> {
+        self.list().map(|l| l.iter().filter(|c| c.head() == Some(head)).collect()).unwrap_or_default()
+    }
+
+    fn child(&self, head: &str) -> Option<&Sx> {
+        self.list().and_then(|l| l.iter().find(|c| c.head() == Some(head)))
+    }
+
+    /// The i-th element, as a string (an atom).
+    fn s(&self, i: usize) -> Option<&str> {
+        self.list().and_then(|l| l.get(i)).and_then(Sx::atom)
+    }
+
+    fn len(&self) -> usize {
+        self.list().map(Vec::len).unwrap_or(0)
+    }
+}
+
+/// The one S-expression starting at text[start] (an opening parenthesis), as nested lists.
+fn parse(text: &str, start: usize) -> Result<Sx, String> {
+    let b = text.as_bytes();
+    let mut stack: Vec<Vec<Sx>> = Vec::new();
+    let mut i = start;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'(' {
+            stack.push(Vec::new());
+            i += 1;
+        } else if c == b')' {
+            let done = stack.pop().ok_or("unbalanced parentheses in a KiCad file")?;
+            match stack.last_mut() {
+                None => return Ok(Sx::List(done)),
+                Some(top) => top.push(Sx::List(done)),
+            }
+            i += 1;
+        } else if c == b'"' {
+            // "(?:\\.|[^"\\])*"
+            let mut j = i + 1;
+            let mut closed = false;
+            while j < b.len() {
+                if b[j] == b'\\' && j + 1 < b.len() {
+                    j += 2;
+                    continue;
+                }
+                if b[j] == b'"' {
+                    closed = true;
+                    break;
+                }
+                j += 1;
+            }
+            if !closed {
+                i += 1; // a lone quote matches nothing: skipped
+                continue;
+            }
+            let raw = &text[i + 1..j];
+            let tok = raw.replace("\\\"", "\"").replace("\\\\", "\\");
+            if let Some(top) = stack.last_mut() {
+                top.push(Sx::Atom(tok));
+            }
+            i = j + 1;
+        } else if c.is_ascii_whitespace() {
+            i += 1;
+        } else {
+            let mut j = i;
+            while j < b.len() && !b[j].is_ascii_whitespace() && b[j] != b'(' && b[j] != b')' && b[j] != b'"' {
+                j += 1;
+            }
+            if let Some(top) = stack.last_mut() {
+                top.push(Sx::Atom(text[i..j].to_string()));
+            }
+            i = j;
+        }
+    }
+    Err("unbalanced parentheses in a KiCad file".into())
+}
+
+// ---- symbols ----
+
+fn cache<T: Clone>(map: &'static OnceLock<Mutex<HashMap<String, T>>>, key: &str, make: impl FnOnce() -> T) -> T {
+    let m = map.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(v) = m.lock().unwrap().get(key) {
+        return v.clone();
+    }
+    let v = make();
+    m.lock().unwrap().insert(key.to_string(), v.clone());
+    v
+}
+
+static TEXTS: OnceLock<Mutex<HashMap<String, std::sync::Arc<String>>>> = OnceLock::new();
+static SYMBOLS: OnceLock<Mutex<HashMap<String, Result<Symbol, String>>>> = OnceLock::new();
+static FOOTPRINTS: OnceLock<Mutex<HashMap<String, Result<Footprint, String>>>> = OnceLock::new();
+
+fn symbol_text(path: &Path) -> Result<std::sync::Arc<String>, String> {
+    let key = path.display().to_string();
+    let text = cache(&TEXTS, &key, || std::sync::Arc::new(std::fs::read_to_string(path).unwrap_or_default()));
+    Ok(text)
+}
+
+fn symbol_node(text: &str, name: &str) -> Result<Option<Sx>, String> {
+    // ^\t?\(symbol "NAME"  (multiline)
+    let needle = format!("(symbol \"{}\"", name);
+    let mut line_start = 0;
+    for line in text.split_inclusive('\n') {
+        let rest = line.strip_prefix('\t').unwrap_or(line);
+        if rest.starts_with(&needle) {
+            let at = line_start + (line.len() - rest.len());
+            return parse(text, at).map(Some);
+        }
+        line_start += line.len();
+    }
+    Ok(None)
+}
+
+fn props_of(node: &Sx) -> Vec<(String, String)> {
+    node.children("property").into_iter().filter(|p| p.len() > 2)
+        .filter_map(|p| Some((p.s(1)?.to_string(), p.s(2)?.to_string()))).collect()
+}
+
+pub fn symbol(r: &str, roots: &[PathBuf]) -> Result<Symbol, String> {
+    let key = format!("{}|{:?}", r, roots);
+    cache(&SYMBOLS, &key, || symbol_uncached(r, roots))
+}
+
+fn symbol_uncached(r: &str, roots: &[PathBuf]) -> Result<Symbol, String> {
+    let (lib, name) = split(r, "symbol")?;
+    let text = symbol_text(&find(roots, "symbols", lib)?)?;
+    let node = symbol_node(&text, name)?.ok_or(format!("no symbol '{}' in KiCad's {} library", name, lib))?;
+    let mut props: Vec<(String, String)> = Vec::new();
+    let merge = |props: &mut Vec<(String, String)>, new: Vec<(String, String)>| {
+        for (k, v) in new {
+            if let Some(slot) = props.iter_mut().find(|(k2, _)| *k2 == k) {
+                slot.1 = v;
+            } else {
+                props.push((k, v));
+            }
+        }
+    };
+    merge(&mut props, props_of(&node));
+    let mut base = node;
+    let mut seen = vec![name.to_string()];
+    while let Some(ext) = base.child("extends") {
+        let parent = ext.s(1).unwrap_or("").to_string();
+        if seen.contains(&parent) {
+            return Err(format!("symbol '{}' extends itself", name));
+        }
+        seen.push(parent.clone());
+        let next = symbol_node(&text, &parent)?
+            .ok_or(format!("symbol '{}' extends '{}', which isn't in {}", name, parent, lib))?;
+        // the base's properties first, the derived symbol's over them
+        let mut merged = props_of(&next);
+        merge(&mut merged, props.clone());
+        props = merged;
+        base = next;
+    }
+    let mut pins: Vec<SymbolPin> = Vec::new();
+    let mut units = vec![&base];
+    units.extend(base.children("symbol"));
+    for unit in units {
+        for pin in unit.children("pin") {
+            let number = match pin.child("number") {
+                Some(n) => n.s(1).unwrap_or("").to_string(),
+                None => continue,
+            };
+            let label = pin.child("name").and_then(|n| n.s(1)).unwrap_or("").to_string();
+            if !pins.iter().any(|p| p.number == number) {
+                pins.push(SymbolPin { number, name: if label == "~" { String::new() } else { label },
+                                      kind: pin.s(1).unwrap_or("").to_string() });
+            }
+        }
+    }
+    let get = |k: &str| props.iter().find(|(k2, _)| k2 == k).map(|(_, v)| v.clone()).unwrap_or_default();
+    Ok(Symbol { name: name.to_string(), pins, footprint: get("Footprint"), description: get("Description") })
+}
+
+// ---- footprints ----
+
+fn bbox(points: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
+    if points.is_empty() {
+        return None;
+    }
+    let mut b = (points[0].0, points[0].1, points[0].0, points[0].1);
+    for &(x, y) in &points[1..] {
+        // Python's min()/max(): the first of equal values (only -0.0 against 0.0 could tell)
+        if x < b.0 { b.0 = x; }
+        if y < b.1 { b.1 = y; }
+        if x > b.2 { b.2 = x; }
+        if y > b.3 { b.3 = y; }
+    }
+    Some(b)
+}
+
+fn num(s: Option<&str>) -> f64 {
+    s.and_then(|s| s.parse().ok()).unwrap_or(f64::NAN)
+}
+
+fn layer_points(node: &Sx, layer: &str) -> Vec<(f64, f64)> {
+    let mut points = Vec::new();
+    for item in node.list().map(|l| l.as_slice()).unwrap_or(&[]) {
+        if !item.head().map(|h| h.starts_with("fp_")).unwrap_or(false) {
+            continue;
+        }
+        match item.child("layer") {
+            Some(lay) if lay.s(1) == Some(layer) => {}
+            _ => continue,
+        }
+        for key in ["start", "end", "center", "mid"] {
+            if let Some(p) = item.child(key) {
+                points.push((num(p.s(1)), num(p.s(2))));
+            }
+        }
+        if let Some(pts) = item.child("pts") {
+            for xy in pts.children("xy") {
+                points.push((num(xy.s(1)), num(xy.s(2))));
+            }
+        }
+    }
+    points
+}
+
+pub fn footprint(r: &str, roots: &[PathBuf]) -> Result<Footprint, String> {
+    let key = format!("{}|{:?}", r, roots);
+    cache(&FOOTPRINTS, &key, || footprint_uncached(r, roots))
+}
+
+fn footprint_uncached(r: &str, roots: &[PathBuf]) -> Result<Footprint, String> {
+    let (lib, name) = split(r, "footprint")?;
+    let path = find(roots, "footprints", lib)?.join(format!("{}.kicad_mod", name));
+    if !path.exists() {
+        return Err(format!("no footprint '{}' in KiCad's {} library", name, lib));
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let node = parse(&text, text.find('(').ok_or("not a KiCad footprint")?)?;
+    let mut pads: Vec<(String, (f64, f64))> = Vec::new();
+    let mut smd = 0;
+    for pad in node.children("pad") {
+        let number = pad.s(1).unwrap_or("").to_string();
+        let kind = pad.s(2).unwrap_or("");
+        let at = pad.child("at");
+        if kind == "smd" {
+            smd += 1;
+        } else if kind == "thru_hole" && !number.is_empty() {
+            if let Some(at) = at {
+                if !pads.iter().any(|(n, _)| *n == number) {
+                    pads.push((number, (num(at.s(1)), num(at.s(2)))));
+                }
+            }
+        }
+    }
+    let outline = bbox(&layer_points(&node, "F.Fab")).or_else(|| bbox(&layer_points(&node, "F.CrtYd")));
+    let mut keepouts = Vec::new();
+    for zone in node.children("zone") {
+        let mut layers: Vec<Option<&Sx>> = vec![zone.child("layer")];
+        layers.extend(zone.children("layers").into_iter().map(Some));
+        let named = zone.child("name");
+        let crtyd = layers.iter().flatten().any(|lay| {
+            let words: Vec<&str> = lay.list().unwrap()[1..].iter().filter_map(Sx::atom).collect();
+            words.join(" ").contains("CrtYd")
+        });
+        if let (Some(named), true) = (named, crtyd) {
+            let pts = zone.child("polygon").and_then(|p| p.child("pts"));
+            let b = pts.and_then(|pts| bbox(&pts.children("xy").iter().map(|xy| (num(xy.s(1)), num(xy.s(2)))).collect::<Vec<_>>()));
+            if let Some(b) = b {
+                keepouts.push((named.s(1).unwrap_or("").to_string(), b));
+            }
+        }
+    }
+    let has_pads = !pads.is_empty();
+    Ok(Footprint { name: name.to_string(), pads, smd: smd > 0 && !has_pads, outline, keepouts })
+}
