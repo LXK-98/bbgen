@@ -63,6 +63,7 @@ def autowire(c: Circuit) -> None:
     for flying in (False, True):
         for net in order:
             _wire_net(c, dsu, net, rails.get(net.name, []), node_pins, flying)
+    _settle_leads(c, node_pins, first)
     # number them as they'll be built: the rails' nets first, then the rest, each in file order, and the
     # flexible jumpers last
     built = sorted(c.wires[first:], key=lambda w: (w.flex, not rails.get(w.group), list(c.nets).index(w.group), w.num))
@@ -101,6 +102,72 @@ def _joined(c: Circuit) -> tuple[_DSU, dict]:
         if w.a and w.b:
             dsu.union(_end_node(c, w.a), _end_node(c, w.b))
     return dsu, node_pins
+
+
+LEAD_PASSES = 3  # rounds of laying each crossed flying lead again, at most
+
+
+def _settle_leads(c: Circuit, node_pins: dict, first: int) -> None:
+    """Lay each flying lead that crosses another again, now that every lead is in, keeping the new one only if
+    it costs less. Leads go in net by net, so the first ones never paid for crossing the ones after them:
+    a supply's lead from the connector's far end up to its rail, laid first, crosses every ground lead
+    laid after it, each of which paid for that crossing when it may have been the one that should move."""
+    from .measure import _cross
+    for _ in range(LEAD_PASSES):
+        moved = False
+        leads = [w for w in c.wires[first:] if w.auto and w.a and w.b and (w.a.pin is not None) != (w.b.pin is not None)]
+
+        def crossed(w) -> int:
+            a, b = c.end_xy(w.a), c.end_xy(w.b)
+            return sum(_cross((a, b), (c.end_xy(x.a), c.end_xy(x.b))) for x in leads if x is not w)
+        for w in sorted(leads, key=lambda w: (-crossed(w), w.num)):
+            if not crossed(w):
+                continue
+            net = c.nets[w.group]
+            pin_end, hole_end = (w.a, w.b) if w.a.pin is not None else (w.b, w.a)
+            _unwire(c, w)
+            hxy = c.end_xy(hole_end)
+            old = _cost(c, _Option(None, pin_end.pin.xy, pin=pin_end.pin),
+                        _Option(hole_end.hole, hxy, covered=_key(hxy) in c._covered))[0]
+            dsu, _ = _joined(c)
+            mine = {dsu.find(n) for n in (_pin_node(c, p) for p in net.pins) if n and n[0] == "strip"}
+            board = [n for n in dsu.parent if n[0] == "strip" and dsu.find(n) in mine and n[2] in RAILS]
+            with trace.placing():
+                _join(c, dsu, net, board, node_pins, True)
+            new = [x for x in c.wires if x not in leads and x.group == net.name and x.auto and x.a and x.b
+                   and (x.a.pin is pin_end.pin or x.b.pin is pin_end.pin)]
+            if new:
+                x = new[0]
+                xp, xh = (x.a, x.b) if x.a.pin is not None else (x.b, x.a)
+                xxy = c.end_xy(xh)
+                cost = _cost(c, _Option(None, xp.pin.xy, pin=xp.pin),
+                             _Option(xh.hole, xxy, covered=_key(xxy) in c._covered))[0]
+                if cost < old - 1e-9:
+                    leads[leads.index(w)] = x
+                    moved = True
+                    trace.step(c, f"the lead to {pin_end.pin} again, crossing less", focus=[f"W{x.num}"],
+                               wiring=True)
+                    continue
+                _unwire(c, x)
+            _put_back(c, w)
+        if not moved:
+            return
+
+
+def _put_back(c: Circuit, w: Wire) -> None:
+    """Put a wire taken out back exactly as it was, under a number of its own."""
+    w.num = max((x.num for x in c.wires), default=0) + 1
+    who = f"W{w.num}"
+    for end in (w.a, w.b):
+        if end and end.hole is not None:
+            c._occupy(end.hole, who)
+    c._ends.update(_key(c.end_xy(e)) for e in (w.a, w.b) if e and e.hole is not None)
+    if not w.flex and w.a.hole is not None and w.b.hole is not None:
+        pts = [c.end_xy(w.a), *w.via_xy, c.end_xy(w.b)]
+        for p, q in zip(pts, pts[1:]):
+            c._add_segment(p, q, who)
+        c._lain |= c._lies_over(w)
+    c.wires.append(w)
 
 
 def _renumber(c: Circuit, wires: list[Wire], first: int) -> None:
