@@ -49,6 +49,18 @@ class AutoplaceTest(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "1 in DIP"):
             build(data)
 
+    def test_parts_spread_over_two_boards(self):
+        # four 16-pin chips don't fit on one half-size board: they go on both, each on one board only
+        chip = {"type": "dip", "pins": 16}
+        parts = {f"U{i}": dict(chip) for i in range(1, 5)}
+        nets = {"GND": [f"U{i}.8" for i in range(1, 5)], "VCC": [f"U{i}.16" for i in range(1, 5)],
+                **{f"S{i}": [f"U{i}.1", f"U{i + 1}.9"] for i in range(1, 4)}}
+        c, r = build({"boards": ["half", "half"], "parts": parts, "nets": nets})
+        self.assertEqual(codes(r), [])
+        for ref in parts:
+            self.assertEqual(len({p.hole.board for p in c.parts[ref].pins}), 1, ref)
+        self.assertEqual({c.parts[ref].pins[0].hole.board for ref in parts}, {"1", "2"})
+
     def test_the_same_file_gets_the_same_layout(self):
         first, second = build(SMALL)[0], build(SMALL)[0]
         def holes(c):

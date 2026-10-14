@@ -5,9 +5,10 @@ notes:
     M2 adds 3c-3e: three SN74LVC8T245 level-shift the 18 data lanes, D/C, /WR and /CS from 3V3 to VDDIO,
     an SN74LVC1T45 shifts TE up to GP27, and P30/P32 get 10k pull-ups to VDDIO."
   - "ASSUMED: the TSSOP-24 parts sit on 0.6 in wide DIP-24 adapters, pad n on pin n. The circuit is
-    big for one board; bbgen can't spread it over two yet."
+    too big for one board, so it takes two."
 boards:
   - {type: full, split_rails: true}  # three supplies: VSYS, 3V0 and 3V3 each need a + rail
+  - {type: full, split_rails: true}
 parts:
   Pico: {symbol: MCU_Module:RaspberryPi_Pico, footprint: Module:RaspberryPi_Pico_Common_THT}
   U12: {symbol: Regulator_Linear:ME6211C30M5, adapter: {pins: 6, map: {5: 6}}}

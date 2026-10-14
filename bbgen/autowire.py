@@ -299,6 +299,7 @@ def _wire_net(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: di
 
 def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, flying: bool) -> None:
     nodes = list(dict.fromkeys([n for n in (_pin_node(c, p) for p in net.pins) if n] + rails))
+    offboard = any(p.part.kind == "offboard" for p in net.pins)
     if not flying:
         nodes = [n for n in nodes if n[0] != "off"]
     while True:
@@ -332,8 +333,14 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
                 # a slant is let off lightly only when no pair of these pieces' holes could be straight
                 unavoidable = not any(_could_be_straight(c, a, b) for a in _strip_holes(c, oi)
                                       for b in _strip_holes(c, oj))
+                # the piece this wire makes must keep a hole free while the net still needs one there: for a piece
+                # still to join, or a lead still to come (two pins whose strips each have a hole left, joined by a
+                # wire between those holes, could never reach the rest)
+                short = (not flying and (len(groups) > 2 or offboard) and not _has_rail(groups[i] + groups[j])
+                         and len(options[i]) + len(options[j]) <= 2)
                 pairs += [(_bound(c, p[1], q[1]), p, q, unavoidable) for p in oi for q in oj
-                          if p[1].pin is None or q[1].pin is None]  # two off-board pins: not a board wire
+                          if (p[1].pin is None or q[1].pin is None)  # two off-board pins: not a board wire
+                          and not short]
         pairs.sort(key=lambda t: t[0])
         best, flex = None, None
         if c.flex:  # the best flexible jumper, the price a wire lying on the board has to beat

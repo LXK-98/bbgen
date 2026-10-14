@@ -199,6 +199,8 @@ nets: ...
   would cover one side's strips whole, so give it `at:` (or use two boards, as builders do).
 - A decoupling cap (both nets on rails) goes next to a pin of its supply that has none yet;
   `near:` overrides that.
+- With several boards (`boards: [full, full]`), bbgen places parts on any of them, each part on
+  one board; a net's rails run on every board, linked across at their ends.
 - The same file always gives the same layout. The checklist says where everything went.
 
 A part wider than the trench (a Pico) may sit a row off centre, when its busy side needs the

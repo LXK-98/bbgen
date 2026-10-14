@@ -109,13 +109,43 @@ def _leg_rails(parts: dict, pin_net) -> dict[str, list[str]]:
 
 # ---- two-lead parts ----
 
+class _Boards:
+    """Every board as one, for placing legs: each hole and strip is looked up on its own board."""
+
+    def __init__(self, c):
+        self.by = c.boards
+        self.first = c.boards[c.default_board]
+        self.id = self.first.id
+        self.columns = sum(b.columns for b in self.by.values())
+
+    def strip(self, hole: Hole) -> tuple:
+        return self.by[hole.board].strip(hole)
+
+    def strip_holes(self, strip: tuple) -> list[Hole]:
+        return self.by[strip[0]].strip_holes(strip)
+
+    def xy(self, hole: Hole):
+        return self.by[hole.board].xy(hole)
+
+    def holes(self):
+        for b in self.by.values():
+            yield from b.holes()
+
+    def rail_y(self, rail: str) -> int:
+        return self.first.rail_y(rail)
+
+    def under_rail(self, hole: Hole) -> bool:
+        """The hole's column has rail holes, so a drop from it to a rail can run straight."""
+        return hole.col in self.by[hole.board].rail_cols
+
+
 def place_legs(c, parts: list) -> None:
     """Choose holes for each two-lead part that has no `pins`, then place it as if they were written."""
     net_of = {pin: net.name for net in c.nets.values() for pin in net.pins}
     plan = rail_plan({n: net.polarity for n, net in c.nets.items()},
                      {n: [r.split(":")[-1] for r in net.rails] for n, net in c.nets.items()},
                      _leg_rails(c.parts, net_of.get), c.rail_order)
-    board = c.boards[c.default_board]
+    board = _Boards(c)
     c._rounds = [((p.pins[0].xy[0] + p.pins[1].xy[0]) / 2, (p.pins[0].xy[1] + p.pins[1].xy[1]) / 2)
                  for p in c.parts.values() if p.kind in ROUND and all(x.xy for x in p.pins)]
     extra: dict[str, set] = {}   # strips a net gained from legs placed here
@@ -160,7 +190,7 @@ def place_legs(c, parts: list) -> None:
             c._rounds.append(((xy(a)[0] + xy(b)[0]) / 2, (xy(a)[1] + xy(b)[1]) / 2))
 
 
-def _pairs(board: Board, options: list[list[Hole]], reach: float) -> list[tuple]:
+def _pairs(board: "_Boards", options: list[list[Hole]], reach: float) -> list[tuple]:
     """(a, b, a's position, b's position) for leg holes in different strips, at most reach apart (or any
     distance, if no pair is that close)."""
     first = [(h, board.xy(h), board.strip(h)) for h in options[0]]
@@ -183,7 +213,7 @@ class _Legs:
     part (what it lies along or over, strips it fills up); both are never negative, so pairs can be taken
     cheapest first and the costly part skipped once a pair can't win."""
 
-    def __init__(self, c, board: Board, part, nets: list, own: list, home, drops, plan: dict):
+    def __init__(self, c, board: "_Boards", part, nets: list, own: list, home, drops, plan: dict):
         self.c, self.board, self.part, self.drops = c, board, part, drops
         self.own = own
         self.own_x = [[board.xy(board.strip_holes(s)[0])[0] for s in mine] for mine in own]
@@ -222,7 +252,7 @@ class _Legs:
                 cost += JUNCTION_COST + 0.5 * min(abs(xy[0] - x) for x in self.own_x[i])
             else:  # ... or to its rail or connector: one wire, still better than a slant
                 cost += JUNCTION_COST / 2
-            if self.on_rail[i] and leg.col not in self.board.rail_cols:
+            if self.on_rail[i] and not self.board.under_rail(leg):
                 cost += GAP_COST  # the wire down to its rail would slant
         self._leg[i, leg] = cost
         return cost
@@ -275,7 +305,7 @@ class _Legs:
         return top[min(rank, len(top) - 1)][2:] if top else None
 
 
-def _drops(c, board: Board, plan: dict, net_of: dict) -> list[tuple[Hole, Hole]]:
+def _drops(c, board: "_Boards", plan: dict, net_of: dict) -> list[tuple[Hole, Hole]]:
     """(strip hole nearest the rail, rail hole) for each footprint pin's straight drop to its net's rail."""
     out = []
     for part in c.parts.values():
@@ -286,12 +316,13 @@ def _drops(c, board: Board, plan: dict, net_of: dict) -> list[tuple[Hole, Hole]]
                 continue
             top = pin.hole.row in "abcde"
             rails = [r for r in plan.get(net_of.get(pin), []) if r.startswith("top" if top else "bot")]
-            if rails and board.has(rails[0], pin.hole.col):
-                out.append((Hole(board.id, "a" if top else "j", pin.hole.col), Hole(board.id, rails[0], pin.hole.col)))
+            own = c.boards[pin.hole.board]
+            if rails and own.has(rails[0], pin.hole.col):
+                out.append((Hole(own.id, "a" if top else "j", pin.hole.col), Hole(own.id, rails[0], pin.hole.col)))
     return out
 
 
-def _strips(c, board: Board, net: str, extra: dict) -> set:
+def _strips(c, board: "_Boards", net: str, extra: dict) -> set:
     """The strips a net has on the board so far."""
     return {board.strip(p.hole) for p in c.nets[net].pins if p.hole is not None and not p.hole.is_rail} | \
         extra.get(net, set())
@@ -300,7 +331,7 @@ def _strips(c, board: Board, net: str, extra: dict) -> set:
 class _Drops:
     """Pins' straight drops to their rails, indexed for quick lookups."""
 
-    def __init__(self, board: Board, drops: list[tuple[Hole, Hole]]):
+    def __init__(self, board: "_Boards", drops: list[tuple[Hole, Hole]]):
         self.ends: dict[Hole, int] = {}
         self.lines: dict[tuple, list] = {}
         for start, rail in drops:
@@ -318,7 +349,7 @@ class _Drops:
         return n
 
 
-def _leg_options(c, board: Board, net: str, plan: dict, extra: dict) -> list[Hole]:
+def _leg_options(c, board: "_Boards", net: str, plan: dict, extra: dict) -> list[Hole]:
     """Free holes a leg on this net could go in: its strips and its rails (not the end kept for a supply's
     leads)."""
     strips = sorted({board.strip(p.hole) for p in c.nets[net].pins if p.hole is not None} | extra.get(net, set()))
@@ -334,10 +365,10 @@ def lead_room(c) -> set:
     plan = rail_plan({n: net.polarity for n, net in c.nets.items()},
                      {n: [r.split(":")[-1] for r in net.rails] for n, net in c.nets.items()},
                      _leg_rails(c.parts, net_of.get), c.rail_order)
-    return _lead_room(c, c.boards[c.default_board], plan, net_of)
+    return _lead_room(c, _Boards(c), plan, net_of)
 
 
-def _lead_room(c, board: Board, plan: dict, net_of: dict) -> set:
+def _lead_room(c, board: "_Boards", plan: dict, net_of: dict) -> set:
     """The rail holes a supply's flying leads should land in: the two at the rail's end nearest the connector,
     on the rail of its net nearest the pin. Parts keep out of them, so a lead comes in from the board's edge
     rather than reaching past them."""
@@ -355,19 +386,20 @@ def _lead_room(c, board: Board, plan: dict, net_of: dict) -> set:
     return out
 
 
-def _empty_near(c, board: Board, mine: list[Hole], others: list[Hole], reach: float) -> list[Hole]:
+def _empty_near(c, board: "_Boards", mine: list[Hole], others: list[Hole], reach: float) -> list[Hole]:
     """Free holes in empty strips: within reach of the other leg's strips, or anywhere if the net has nothing
     on the board yet. A leg there is joined to its net later by a wire. For a net on a rail, only right
     beside the other leg (an LED lying flat beside its resistor, a wire then dropping to the rail) rather
     than slanting to the rail."""
     if any(h.is_rail for h in mine):
         reach = min(reach, 3)
-    cols = {h.col for h in others if not h.is_rail}
-    if mine and not cols:
+    xs = {board.xy(h)[0] for h in others if not h.is_rail}
+    if mine and not xs:
         return []
     out = []
     for strip in sorted({board.strip(h) for h in board.holes() if not h.is_rail}):
-        if cols and not any(abs(strip[2] - col) <= reach for col in cols):
+        x = board.xy(board.strip_holes(strip)[0])[0]
+        if xs and not any(abs(x - other) <= reach for other in xs):
             continue
         holes = board.strip_holes(strip)
         if not any(h in c.occupied for h in holes):
@@ -398,10 +430,20 @@ class _Model:
     """Just enough of a circuit to score placements quickly."""
 
     def __init__(self, data: dict):
-        board_spec = (data.get("boards") or [{"type": "full"}])[0]
-        board_spec = {"type": board_spec} if isinstance(board_spec, str) else board_spec
-        self.board = Board(1, board_spec.get("type", "full"), board_spec.get("rails"), board_spec.get("split_rails", False))
-        self.gaps = {c for c in range(1, self.board.columns + 1) if c not in self.board.rail_cols}
+        # the boards side by side, as one row of columns: x is a column's place along it (the first board's
+        # columns are 1, 2, ...; each further board's follow on after a gap)
+        self.boards: list[tuple[Board, int]] = []  # (board, x of its column 0)
+        x0 = 0
+        for i, spec in enumerate(data.get("boards") or [{"type": "full"}]):
+            spec = {"type": spec} if isinstance(spec, str) else spec
+            board = Board(spec.get("id", i + 1), spec.get("type", "full"), spec.get("rails"), spec.get("split_rails", False))
+            self.boards.append((board, x0))
+            x0 += board.columns + 6  # as Circuit lays them out: a gap of five holes and a bit
+        self.board = self.boards[0][0]
+        self.offset = {board.id: x0 for board, x0 in self.boards}
+        self.width = self.boards[-1][1] + self.boards[-1][0].columns
+        self.gaps = {x0 + c for board, x0 in self.boards for c in range(1, board.columns + 1) if c not in board.rail_cols}
+        self._lo, self._hi = 1, self.board.columns  # the columns of the board a layout is being worked out on
         library = library_for(data)
         self.parts = {str(ref): make_part(str(ref), spec, library) for ref, spec in (data.get("parts") or {}).items()}
         self.nets: dict[str, list] = {}
@@ -421,7 +463,7 @@ class _Model:
             if guessed:
                 self.guessed.add(str(name))
             explicit[str(name)] = [r.split(":")[-1] for r in physical]
-        check_rail_count(polarity, self.guessed, [self.board])
+        check_rail_count(polarity, self.guessed, [b for b, _ in self.boards])
         self.net_of = {pin: name for name, pins in self.nets.items() for pin in pins}
         legs = _leg_rails(self.parts, self.net_of.get)
         self.free_supplies = _free_supplies(polarity, explicit, legs)
@@ -449,17 +491,22 @@ class _Model:
             if part.kind in FOOTPRINT_KINDS and part.at:
                 parsed = parse_hole(str(part.at))
                 if parsed and parsed[2] is not None and parsed[1] in ROW_Y:
-                    self.fixed[ref] = self._layout(part, parsed[1], parsed[2], part.rot)
+                    board = next((b for b, _ in self.boards if b.id == str(parsed[0])), self.board)
+                    self.fixed[ref] = self._layout(part, parsed[1], parsed[2], part.rot, board)
 
-    def _layout(self, part, row: str, col: int, rot: int):
-        """(at, rot, {pin: (x, y)}, body [(half, lo, hi)], keep-out [(half, lo, hi)]) for pin 1 in row/col, or
-        None if a pin misses the holes."""
-        ax, ay = col, ROW_Y[row]
+    def _layout(self, part, row: str, col: int, rot: int, board: Board | None = None):
+        """(at, rot, {pin: (x, y)}, body [(half, lo, hi)], keep-out [(half, lo, hi)], walls, rows taken) for pin
+        1 in row/col of a board (the first by default), or None if a pin misses the holes. A part sits on one
+        board: never across the gap between two."""
+        board = board or self.board
+        off = self.offset[board.id]
+        self._lo, self._hi = off + 1, off + board.columns
+        ax, ay = off + col, ROW_Y[row]
         xy = {}
         for pin in part.pins:
             dx, dy = rotate(pin.offset, rot)
             x, y = ax + dx, ay + dy
-            if not (1 <= x <= self.board.columns) or y not in ROW_Y.values():
+            if not (self._lo <= x <= self._hi) or y not in ROW_Y.values():
                 return None
             xy[pin] = (x, y)
         if part.kind in ("sip", "kicad"):  # no two of its pins in one strip, unless joined inside it anyway
@@ -475,7 +522,7 @@ class _Model:
         if body_rect(part):  # the whole body on the board, not hanging off its edge
             corners = [rotate((x, y), rot) for x, y in ((body_rect(part)[0], body_rect(part)[1]),
                                                         (body_rect(part)[2], body_rect(part)[3]))]
-            if min(ax + x for x, _ in corners) < 0.4 or max(ax + x for x, _ in corners) > self.board.columns + 0.6:
+            if min(ax + x for x, _ in corners) < self._lo - 0.6 or max(ax + x for x, _ in corners) > self._hi + 0.6:
                 return None
         body = self._covered(body_rect(part), rot, ax, ay)
         if body:
@@ -490,11 +537,12 @@ class _Model:
                 klo, khi = room[0], room[1]
                 if "cable" in what.lower():  # the cable runs on past the plug, off the board's nearest edge
                     if khi < lo:
-                        klo = 1
+                        klo = self._lo
                     elif klo > hi:
-                        khi = self.board.columns
+                        khi = self._hi
                 keep += [(h, klo, khi) for h in sorted(room[2])]
-        return (f"{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy),
+        prefix = "" if board is self.board else f"{board.id}:"
+        return (f"{prefix}{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy),
                 self._taken(part, rot, ax, ay, xy))
 
     def _taken(self, part, rot: int, ax: int, ay: int, xy: dict) -> dict:
@@ -510,7 +558,7 @@ class _Model:
             x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
             y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
             pins = set(xy.values())
-            for x in range(max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6)) + 1):
+            for x in range(max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6)) + 1):
                 for y in ROW_Y.values():
                     if y0 < y < y1 and (x, y) not in pins:
                         key = ("top" if y < 8 else "bot", x)
@@ -528,7 +576,7 @@ class _Model:
         corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
         x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
         y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
-        lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
+        lo, hi = max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6))
         if lo > hi:
             return []
         under = {y for y in ROW_Y.values() if y0 < y < y1}
@@ -549,14 +597,17 @@ class _Model:
         corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
         x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
         y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
-        lo, hi = max(1, math.ceil(x0 + 1e-6)), min(self.board.columns, math.floor(x1 - 1e-6))
+        lo, hi = max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6))
         rows = [y for y in ROW_Y.values() if y0 < y < y1]
         if lo > hi or not rows:
             return None
         return lo, hi, {"top" if y < 8 else "bot" for y in rows}
 
     def _choices(self, part) -> list:
-        cols = range(1, self.board.columns + 1)
+        return [o for board, _ in self.boards for o in self._choices_on(part, board)]
+
+    def _choices_on(self, part, board: Board) -> list:
+        cols = range(1, board.columns + 1)
         if part.kind == "pico":
             # centred on the trench, or a row off it either way: more room on one side, if that's where it's needed
             spots = [(r, c, 0) for r in "ghi" for c in cols] + [(r, c, 180) for r in "bcd" for c in cols]
@@ -568,7 +619,7 @@ class _Model:
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 90, 180, 270)]
         else:  # sip
             spots = [(r, c, rot) for r in ROW_Y for c in cols for rot in (0, 180)]
-        out = [o for o in (self._layout(part, *s) for s in spots) if o]
+        out = [o for o in (self._layout(part, *s, board) for s in spots) if o]
         if part.kind == "dip" and part.width != 3:
             # straddling the trench (one row each side, or opposite pins would share a strip), and with a hole
             # free in every pin's strip for its wire: a 1.0 in part covers one side's strips whole on one board
@@ -587,6 +638,11 @@ class _Model:
             out = [o for o in out if len({y < 8 for _, y in o[2].values()}) == 1
                    or room(o) >= best[o[1], True] - 1]
         return out
+
+    def x_of(self, at: str) -> int:
+        """Where along the boards a layout's pin 1 is ("2:f10" is column 10 of board 2)."""
+        board, _, col = parse_hole(at)
+        return self.offset.get(str(board) if board else self.board.id, 0) + col
 
     def cost(self, state: dict) -> float:
         layouts = {**self.fixed, **state}
@@ -629,7 +685,7 @@ class _Model:
                         for x in range(min(hx), max(hx) + 1):
                             crowd[half, x] = crowd.get((half, x), 0) + 1
             if name in self.offboard:
-                cost += OFFBOARD_COST * (self.board.columns - max(x for x, _ in pts))
+                cost += OFFBOARD_COST * (self.width - max(x for x, _ in pts))
             if name not in self.plan and len(pts) > 1:
                 lo, hi = min(x for x, _ in pts), max(x for x, _ in pts)
                 for ref, lay in layouts.items():
@@ -677,13 +733,13 @@ class _Model:
             choices = self.choices[ref]
             if rng.random() < 0.7:  # nudge it along the board
                 at, rot = state[ref][0], state[ref][1]
-                near = [ch for ch in choices if abs(int(ch[0][1:]) - int(at[1:])) <= 6]
+                near = [ch for ch in choices if abs(self.x_of(ch[0]) - self.x_of(at)) <= 6]
                 new = {**state, ref: rng.choice(near or choices)}
             elif len(self.auto) > 1 and rng.random() < 0.5:  # swap two parts' columns
                 other = rng.choice([r for r in self.auto if r != ref])
                 new = dict(state)
-                new[ref] = min(choices, key=lambda ch: abs(int(ch[0][1:]) - int(state[other][0][1:])))
-                new[other] = min(self.choices[other], key=lambda ch: abs(int(ch[0][1:]) - int(state[ref][0][1:])))
+                new[ref] = min(choices, key=lambda ch: abs(self.x_of(ch[0]) - self.x_of(state[other][0])))
+                new[other] = min(self.choices[other], key=lambda ch: abs(self.x_of(ch[0]) - self.x_of(state[ref][0])))
             else:
                 new = {**state, ref: rng.choice(choices)}
             c2 = self.cost(new)
@@ -886,11 +942,12 @@ def _moves(model: _Model, leads: list[str], c, result, data: dict):
             yield {**{r: ch for r, ch in pinned.items() if r != ref}, ref: {"pins": None}}, {ref: k}
     for ref in chips:
         spec = data["parts"][ref]
-        row, col = spec["at"][0], int(spec["at"][1:])
+        _, row, _ = parse_hole(spec["at"])
+        col = model.x_of(spec["at"])
         layouts = [ch for ch in model.choices[ref] if ch is not state[ref] and ch is not flipped.get(ref)]
 
         def near(ch):
-            return abs(int(ch[0][1:]) - col) + (ch[0][0] != row) * 2 + (ch[1] != spec["rot"]) * 3
+            return abs(model.x_of(ch[0]) - col) + (parse_hole(ch[0])[1] != row) * 2 + (ch[1] != spec["rot"]) * 3
         # a few nudges, then the places the estimate likes best with everything else where it is
         scored = sorted(layouts, key=lambda ch: model.cost({**state, ref: ch}))
         tries = sorted(layouts, key=near)[:4]
@@ -922,8 +979,9 @@ def _shifted(model, data: dict, state: dict) -> list[dict]:
     for dr in (1, -1):
         change = {}
         for ref, now in state.items():
-            row = chr(ord(now[0][0]) + dr)
-            ch = next((c for c in model.choices[ref] if (c[0], c[1]) == (row + now[0][1:], now[1])), None)
+            board, row, col = parse_hole(now[0])
+            at = f"{board}:" * bool(board) + chr(ord(row) + dr) + str(col)
+            ch = next((c for c in model.choices[ref] if (c[0], c[1]) == (at, now[1])), None)
             if ch is None:
                 break
             change[ref] = {"at": ch[0], "rot": ch[1]}

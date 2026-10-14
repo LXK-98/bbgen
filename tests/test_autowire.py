@@ -114,6 +114,13 @@ class AutowireTest(unittest.TestCase):
         self.assertFalse(any("a25" in ends(c, w) for w in en))
         self.assertNotIn("OVER_PART", codes(r, "warning"))
 
+    def test_two_pins_with_a_hole_each_are_not_joined_to_each_other_first(self):
+        # a 0.6 in adapter: its top pins' strips have one hole each (a), the rest under its body. Joining pins 7 and
+        # 8 by those two holes would leave them no way to the rest of their net
+        adapter = {"type": "dip", "pins": 8, "width": 6, "at": "f10"}
+        c, r = auto({"U1": adapter, "U2": {**DIP, "at": "e40"}}, {"V": ["U1.7", "U1.8", "U2.VIN"]})
+        self.assertEqual(codes(r), [])
+
     def test_flying_leads_prefer_a_rail(self):
         u1 = {"type": "dip", "pins": 6, "at": "e58", "rot": 180, "labels": ["A", "GND", "B", "C", "D", "E"]}
         c, r = auto({"U1": u1, "J1": {"type": "offboard", "labels": ["GND"]}}, {"GND": ["U1.GND", "J1.1"]})

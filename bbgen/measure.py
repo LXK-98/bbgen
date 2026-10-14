@@ -67,17 +67,20 @@ def slanted(c: Circuit) -> int:
 
 
 def rail_links_inside(c: Circuit) -> int:
-    """Wires joining a top rail to a bottom one anywhere but at the rails' ends (their first or last five holes),
-    where they'd be out of the way."""
+    """Wires joining a top rail to a bottom one anywhere but at the rails' ends (their first or last five holes;
+    a rail split in the middle has ends there too), where they'd be out of the way."""
     n = 0
     for w in c.wires:
         if not (w.a and w.b and w.a.hole and w.b.hole and w.a.hole.is_rail and w.b.hole.is_rail):
             continue
         if w.a.hole.row[:3] == w.b.hole.row[:3]:
             continue  # + to - on one side would be a short, which the check reports
-        cols = sorted(c.boards[w.a.hole.board].rail_cols)
-        ends = {*cols[:5], *cols[-5:]}  # its first or last five holes
-        n += not ({w.a.hole.col, w.b.hole.col} <= ends)
+        at_end = True
+        for h in (w.a.hole, w.b.hole):
+            board = c.boards[h.board]
+            cols = sorted(x.col for x in board.strip_holes(board.strip(h)))
+            at_end = at_end and h.col in {*cols[:5], *cols[-5:]}
+        n += not at_end
     return n
 
 
