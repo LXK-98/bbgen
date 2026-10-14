@@ -121,6 +121,21 @@ class AutowireTest(unittest.TestCase):
         c, r = auto({"U1": adapter, "U2": {**DIP, "at": "e40"}}, {"V": ["U1.7", "U1.8", "U2.VIN"]})
         self.assertEqual(codes(r), [])
 
+    def test_a_lead_of_a_net_on_a_rail_lands_on_the_rail(self):
+        # the LED's cathode strip is nearer the connector than the ground rail's free holes, but a supply's or a
+        # ground's lead goes on its rail, by the rail's end nearest the connector, not into a strip in the middle
+        parts = {"J1": {"type": "offboard", "labels": ["5V", "GND"]},
+                 "R1": {"type": "resistor", "pins": ["top+59", "a59"]}, "D1": {"type": "led", "pins": ["c59", "c61"]}}
+        nets = {"5V": {"pins": ["J1.1", "R1.1"], "rail": "+"}, "LED": ["R1.2", "D1.A"],
+                "GND": {"pins": ["J1.2", "D1.K"], "rail": "-"}}
+        c, r = auto(parts, nets)
+        self.assertEqual(codes(r), [])
+        leads = [w for w in c.wires if w.a.pin is not None or w.b.pin is not None]
+        for lead in leads:
+            end = lead.b if lead.a.pin is not None else lead.a
+            self.assertTrue(end.hole.is_rail, ends(c, lead))
+            self.assertGreaterEqual(end.hole.col, 60, ends(c, lead))  # at the end by the connector
+
     def test_flying_leads_prefer_a_rail(self):
         u1 = {"type": "dip", "pins": 6, "at": "e58", "rot": 180, "labels": ["A", "GND", "B", "C", "D", "E"]}
         c, r = auto({"U1": u1, "J1": {"type": "offboard", "labels": ["GND"]}}, {"GND": ["U1.GND", "J1.1"]})

@@ -320,6 +320,9 @@ def _join(c: Circuit, dsu: _DSU, net: Net, rails: list[tuple], node_pins: dict, 
                 if flying and (i in lone) == (j in lone):
                     continue  # each lead joins one off-board pin to the board
                 oi, oj = options[i], options[j]
+                if flying:  # a lead of a net on a rail lands on the rail, never in a strip in the middle
+                    oi = [o for o in oi if o[1].hole is not None and o[1].hole.is_rail] or oi
+                    oj = [o for o in oj if o[1].hole is not None and o[1].hole.is_rail] or oj
                 if not flying and _has_rail(groups[i]) and _has_rail(groups[j]):  # rail to rail: at their ends
                     ei, ej = _rail_ends(c, oi), _rail_ends(c, oj)
                     if ei and ej:
@@ -644,7 +647,7 @@ def _options(c: Circuit, node, net: Net, node_pins: dict) -> list[tuple[str, _Op
         if _key(xy) in c._lain:
             continue  # under a wire lying on the board: an end can't be plugged in there
         near = min((math.dist(xy, p.xy) for p in mine if p.xy), default=0.0)
-        out.append((spec, _Option(hole, xy, near, covered=_key(xy) in c._covered), node))
+        out.append((spec, _Option(hole, xy, near, covered=_key(xy) in c._covered, kept=hole in c._lead_room), node))
     return out
 
 
@@ -655,6 +658,8 @@ CROSS_COST = 12.0     # per part body crossed, before it's bent around
 BEND_COST = 4.0       # a wire bent around a part, on top of its length
 COVERED_COST = 20.0   # an end in a hole under a two-lead part's body
 OFF_RAIL_COST = 4.0   # a flying lead from a part's strip rather than a rail
+RAIL_END_COST = 0.5   # per rail hole between a flying lead's end and the rail's end on the connector's side
+KEPT_COST = 6.0       # a wire on the board ending in a rail end kept for a supply's flying lead
 FLEX_COST = 10.0      # a flexible jumper rather than one lying on the board: more than a short bend, less than a slant
 CROSS_WIRE_COST = 1.0  # per wire a wire lying on the board crosses
 FLEX_OVER_COST = 6.0  # per part a flexible jumper arches over: it hides the part's pins, and has to come out first
@@ -665,6 +670,8 @@ def _bound(c: Circuit, p: _Option, q: _Option) -> float:
     length = math.dist(p.xy, q.xy)
     if p.pin is not None or q.pin is not None:
         length += 0.0 if (q if p.pin is not None else p).hole.is_rail else OFF_RAIL_COST
+    else:
+        length += KEPT_COST * (p.kept + q.kept)
     return length + COVERED_COST * (p.covered + q.covered)
 
 
@@ -687,13 +694,29 @@ def _cost(c: Circuit, p: _Option, q: _Option, unavoidable: bool = False):
         if p.hole is not None and q.hole is not None:
             length += CROSS_WIRE_COST * _wires_crossed(c, p.xy, q.xy)  # wires may cross, but a tangle is hard to trace
     else:  # a flying lead: from the board's edge, over as little as can be
-        board_end = q if p.pin is not None else p
+        board_end, pin_end = (q, p) if p.pin is not None else (p, q)
         length += 0.0 if board_end.hole.is_rail else OFF_RAIL_COST
+        length += RAIL_END_COST * _from_end(c, board_end.hole, pin_end.xy)
         over = [b for b in c._bodies_crossed(p.xy, q.xy) if b not in c._keepouts]
         length += LEAD_OVER_COST * (len(over) + _wires_crossed(c, p.xy, q.xy))
         length += LEAD_TALL_COST * sum(1 for b in over if b in c._tall)  # it would hang right against it
+    if p.pin is None and q.pin is None:
+        length += KEPT_COST * (p.kept + q.kept)
     length += COVERED_COST * (p.covered + q.covered)
     return round(length, 6), round(p.near + q.near, 6), p.xy, q.xy
+
+
+def _from_end(c: Circuit, hole: Hole, toward) -> int:
+    """For a rail hole: how many of its rail's holes lie between it and the rail's end nearer a point (the
+    connector a lead comes from); 0 for any other hole."""
+    if not hole.is_rail:
+        return 0
+    board = c.boards[hole.board]
+    cols = sorted(h.col for h in board.strip_holes(board.strip(hole)))
+    left = board.xy(Hole(board.id, hole.row, cols[0]))[0]
+    right = board.xy(Hole(board.id, hole.row, cols[-1]))[0]
+    i = cols.index(hole.col)
+    return i if abs(toward[0] - left) < abs(toward[0] - right) else len(cols) - 1 - i
 
 
 def _lies_clear(c: Circuit, a, b) -> bool:

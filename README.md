@@ -168,9 +168,11 @@ Which rail a net runs on comes from, in order:
 
 A rail nothing on the board uses isn't wired. Two rails of one net are joined at their ends (the
 outermost column where a straight link fits), out of the circuit's way: that's setting up the
-board, not the circuit. The rail ends nearest a supply connector are kept free of parts, so its
-leads come in from the board's edge, and a flying lead avoids passing over parts and wires (never
-over a tall one: a pot, a can, an LED, a transistor).
+board, not the circuit. A flying lead from a supply or ground pin always lands on its net's rail,
+never in a strip in the middle of the board, and as far out along the rail as it can: at the end
+nearest the connector. Those rail ends are kept free of parts, and wires avoid them, so the leads
+come in from the board's edge; a flying lead avoids passing over parts and wires (never over a
+tall one: a pot, a can, an LED, a transistor).
 
 Anything that ends up slanted or crossing still gets its warning: then the fix is to move a part.
 Many flexible jumpers say the same: parts that talk to each other are far apart or crowded.

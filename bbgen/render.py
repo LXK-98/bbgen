@@ -314,6 +314,25 @@ def _shade(hex_color: str, k: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+LEG = "#c9cdd2"       # a part's tinned leg
+LEG_EDGE = "#4d5257"  # and its outline, so it shows on the board and on a wire
+
+
+def _legs(cv: _Canvas, a, b, mid) -> None:
+    """The legs of a part seen from above, from its holes in under its body (drawn over them), so each meets
+    the body wherever its edge is: an LED's flat is cut back from the round."""
+    cx, cy = mid
+    for x, y in (a, b):
+        cv.line(x, y, cx, cy, LEG_EDGE, 0.17)
+        cv.line(x, y, cx, cy, LEG, 0.09)
+
+
+def _leg_ends(cv: _Canvas, a, b) -> None:
+    """Where the legs go into the board: plain to see, so it's clear which strip each is in."""
+    for x, y in (a, b):
+        cv.circle(x, y, 0.14, LEG, LEG_EDGE, 1)
+
+
 def _led(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
     """An LED seen from above: its round lens inside the wider flange, with the flat cut into the flange on
     the cathode side (leg 2)."""
@@ -321,9 +340,7 @@ def _led(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
     color = part.color or "red"
     lens, flange = LED_COLORS.get(color) or (_shade(color, 1.25), _shade(color, 0.7))
     cx, cy, r = (ax + bx) / 2, (ay + by) / 2, 0.75
-    if length > 2 * r:  # legs reach past the LED
-        cv.line(ax, ay, cx - ux * r, cy - uy * r, "#8d8d8d", 0.1)
-        cv.line(bx, by, cx + ux * r, cy + uy * r, "#8d8d8d", 0.1)
+    _legs(cv, a, b, (cx, cy))
     d = r * 0.78  # the flat: a chord across the flange, toward the cathode
     h = math.sqrt(r * r - d * d)
     p1 = (cx + ux * d + nx * h, cy + uy * d + ny * h)
@@ -333,8 +350,7 @@ def _led(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
            f'{cv.Y(p2[1]):.1f} Z" fill="{flange}" stroke="{_shade(flange, 0.6)}" stroke-width="1"/>')
     cv.circle(cx, cy, r * 0.72, lens, _shade(flange, 0.8), 0.8)
     cv.circle(cx - r * 0.25, cy - r * 0.25, r * 0.18, "#ffffff", "none", 0)  # the lens's shine
-    for x, y in (a, b):  # where the legs go, under the LED
-        cv.circle(x, y, 0.12, "none", "#6b6b6b", 1)
+    _leg_ends(cv, a, b)
     _part_label(cv, part, (cx, cy), (ux, uy), (nx, ny), r + 0.45, r)
 
 
@@ -343,9 +359,7 @@ def _can(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
     white stripe on the side of the - leg (leg 2)."""
     (ax, ay), (bx, by), (ux, uy), (nx, ny) = a, b, u, n
     cx, cy, r = (ax + bx) / 2, (ay + by) / 2, 0.75
-    if length > 2 * r:  # legs reach past the can
-        cv.line(ax, ay, cx - ux * r, cy - uy * r, "#8d8d8d", 0.1)
-        cv.line(bx, by, cx + ux * r, cy + uy * r, "#8d8d8d", 0.1)
+    _legs(cv, a, b, (cx, cy))
     cv.circle(cx, cy, r, part.color or "#1c1c1c", "#000000", 1)
     ang, spread = math.atan2(uy, ux), math.radians(40)
     x1, y1 = cx + r * math.cos(ang - spread), cy + r * math.sin(ang - spread)
@@ -358,8 +372,7 @@ def _can(cv: _Canvas, part: Part, a, b, u, n, length: float) -> None:
     for dx, dy in ((1, 1), (1, -1)):
         k = arm / math.sqrt(2)
         cv.line(cx - dx * k, cy - dy * k, cx + dx * k, cy + dy * k, "#8e959c", 0.05)
-    for x, y in (a, b):  # where the legs go, under the can
-        cv.circle(x, y, 0.12, "none", "#6b6b6b", 1)
+    _leg_ends(cv, a, b)
     _part_label(cv, part, (cx, cy), (ux, uy), (nx, ny), r + 0.45, r)
 
 

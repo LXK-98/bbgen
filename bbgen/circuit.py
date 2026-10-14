@@ -94,6 +94,7 @@ class _Option:
     pin: Pin | None = None        # an off-board pin
     fixed: bool = False           # a hole written out, claimed already
     covered: bool = False         # under a two-lead part's body (set by autowire)
+    kept: bool = False            # a rail end kept for a supply's flying lead (set by autowire)
 
 
 EPS = 1e-6

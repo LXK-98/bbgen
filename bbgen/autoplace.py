@@ -55,6 +55,7 @@ ROUND_COST = 25.0      # per round body it would touch
 LEG_SLANT_COST = 20.0  # a two-lead part slanting: worse than lying straight and needing a wire more
 SECOND_RAIL_COST = 5.0  # a leg on a net's second rail, which then needs linking to the first
 JUNCTION_COST = 6.0    # a leg in an empty strip of its own, which then needs a wire to its net
+KEPT_DROP_COST = 6.0   # a leg whose straight drop to its rail would end in a rail end kept for a supply's lead
 CROWD_LEG_COST = 1.5   # per hole in use right next to a leg
 
 # a built layout's score
@@ -133,6 +134,12 @@ class _Boards:
 
     def rail_y(self, rail: str) -> int:
         return self.first.rail_y(rail)
+
+    def drop_kept(self, hole: Hole, rails: list, room: set) -> bool:
+        """A straight drop from the hole to its net's rail on its side of the trench would end in a hole kept
+        for a supply's lead."""
+        side = "top" if hole.row in "abcde" else "bot"
+        return any(Hole(hole.board, r, hole.col) in room for r in rails if r.startswith(side))
 
     def under_rail(self, hole: Hole) -> bool:
         """The hole's column has rail holes, so a drop from it to a rail can run straight."""
@@ -223,6 +230,8 @@ class _Legs:
             self.lead_x.append(lead[0].xy[0] if lead else None)
         self.on_rail = [n in plan for n in nets]
         self.main_rail = [plan[n][0] if plan.get(n) else None for n in nets]
+        self.rails = [plan.get(n, []) for n in nets]
+        self.room = getattr(c, "_lead_room", set())
         self.home_x = home[0] if home and home[0] is not None else None
         self.home_pins = home[1] if home and home[0] is None else None
         self._xy: dict = {}
@@ -254,6 +263,8 @@ class _Legs:
                 cost += JUNCTION_COST / 2
             if self.on_rail[i] and not self.board.under_rail(leg):
                 cost += GAP_COST  # the wire down to its rail would slant
+            elif self.on_rail[i] and self.board.drop_kept(leg, self.rails[i], self.room):
+                cost += KEPT_DROP_COST  # its drop would take the rail's end, kept for the supply's lead
         self._leg[i, leg] = cost
         return cost
 
