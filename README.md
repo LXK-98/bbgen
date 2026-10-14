@@ -52,6 +52,7 @@ boards:                       # optional; default is one full-size board
   - type: full                # full (63 columns) or half (30)
     rails: {top: "+-", bottom: "+-"}   # rail order top to bottom, as printed on yours
     split_rails: false        # true if your rails break in the middle
+                              # below: 1 snaps this board on under board 1
 
 parts:
   Pico: {type: pico, at: h3}  # pin 1 in h3, USB to the left
@@ -100,6 +101,10 @@ nets:                         # what should be connected; the check holds the bo
   A pin that goes to a rail wants a column with rail holes, or its wire can't run straight.
 - With several boards (placed left to right), prefix the board id: `2:a12`. Board ids default to
   1, 2, ...
+- A board with `below: 1` is snapped on under board 1 instead, long side to long side, on the same
+  0.1 in grid: its row `a` is 1.0 in under board 1's row `i`, so a 1.0 in wide module (an ESP32
+  DevKit) sits across the two with a row of pins in each. A wire from one board to another is
+  always a flexible jumper.
 
 ### Wire ends and legs
 

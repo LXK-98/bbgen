@@ -539,13 +539,12 @@ def _reach(c: Circuit, hole: Hole, cache: dict) -> list[tuple[Hole, float]]:
         return cache[hole]
     board = c.boards[hole.board]
     a = board.xy(hole)
-    if "levels" not in cache:
-        cache["levels"] = sorted((board.y(r), r) for r in (*ROW_Y, *RAILS))
-        cache["spare"] = {}
+    levels = cache.setdefault(("levels", board.id), sorted((board.y(r), r) for r in (*ROW_Y, *RAILS)))
+    cache.setdefault("spare", {})
     lines = [[Hole(board.id, hole.row, col) for col in range(hole.col - 1, 0, -1)],
              [Hole(board.id, hole.row, col) for col in range(hole.col + 1, board.columns + 1)],
-             [Hole(board.id, r, hole.col) for y, r in reversed(cache["levels"]) if y < a[1]],
-             [Hole(board.id, r, hole.col) for y, r in cache["levels"] if y > a[1]]]
+             [Hole(board.id, r, hole.col) for y, r in reversed(levels) if y < a[1]],
+             [Hole(board.id, r, hole.col) for y, r in levels if y > a[1]]]
     spare = cache["spare"]
     blocked = c.__dict__.setdefault("_step_blocked", {})
     out = []
@@ -757,8 +756,12 @@ def _from_end(c: Circuit, hole: Hole, toward) -> int:
 
 def _lies_clear(c: Circuit, a, b) -> bool:
     """A wire lying on the board from a to b would be straight, clear of every part, along no other wire, and
-    over no wire's end: the only kind bbgen lays down itself when it may use flexible jumpers."""
+    over no wire's end: the only kind bbgen lays down itself when it may use flexible jumpers. Never from one
+    board to another: a wire between boards is a flexible jumper."""
     if not _aligned(a, b) or c._bodies_crossed(a, b) or c._shape(a, b)[0] == 3:
+        return False
+    sa, sb = c._strip_at.get(_key(a)), c._strip_at.get(_key(b))
+    if sa and sb and sa[0] != sb[0]:
         return False
     between = c._between(a, b)
     if any(k in c._ends for k in between):

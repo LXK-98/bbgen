@@ -148,14 +148,15 @@ class _Canvas:
 
 
 def _board(cv: _Canvas, c: Circuit, result: Result, b: Board) -> None:
-    cv.rect(b.left, OUTLINE_Y[0], b.right, OUTLINE_Y[1], BOARD, "#d5cdbb", 1.5, rx=0.5)
+    top = b.y0  # every height on the board is from its own top (a board stacked under another is lower)
+    cv.rect(b.left, b.top, b.right, b.bottom, BOARD, "#d5cdbb", 1.5, rx=0.5)
     last = b.x0 + b.columns - 1
-    cv.rect(b.x0 - 0.9, TRENCH_Y[0], last + 0.9, TRENCH_Y[1], "#e7e1d3", rx=0.2)
+    cv.rect(b.x0 - 0.9, top + TRENCH_Y[0], last + 0.9, top + TRENCH_Y[1], "#e7e1d3", rx=0.2)
     if len(c.boards) > 1:
-        cv.text(b.left + 0.4, OUTLINE_Y[0] + 0.5, f"board {b.id}", 6.5, "start", MUTED, "bold")
+        cv.text(b.left + 0.4, b.top + 0.5, f"board {b.id}", 6.5, "start", MUTED, "bold")
     for rail in RAILS:
-        y = b.rail_y(rail)
-        upper = y == RAIL_PAIR_Y[rail[:3]][0]
+        y = top + b.rail_y(rail)
+        upper = b.rail_y(rail) == RAIL_PAIR_Y[rail[:3]][0]
         color = "#d33a2c" if rail[3] == "+" else "#2a5db0"
         xa, xb = b.x0 + b.rail_cols[0] - 1.7, b.x0 + b.rail_cols[-1] - 0.3
         cv.line(xa, y + (-0.55 if upper else 0.55), xb, y + (-0.55 if upper else 0.55), color, 0.06)
@@ -174,12 +175,12 @@ def _board(cv: _Canvas, c: Circuit, result: Result, b: Board) -> None:
     for hole in b.holes():
         x, y = b.xy(hole)
         cv.rect(x - 0.17, y - 0.17, x + 0.17, y + 0.17, "#4b4b4b", rx=0.06)
-    for row, y in ROW_Y.items():
-        cv.text(b.x0 - 1.1, y, row, 6.5, fill=MUTED)
-        cv.text(last + 1.1, y, row, 6.5, fill=MUTED)
+    for row in ROW_Y:
+        cv.text(b.x0 - 1.1, b.y(row), row, 6.5, fill=MUTED)
+        cv.text(last + 1.1, b.y(row), row, 6.5, fill=MUTED)
     for col in [1, *range(5, b.columns + 1, 5)]:
-        cv.text(b.x0 + col - 1, 2.05, str(col), 5.5, fill=MUTED)
-        cv.text(b.x0 + col - 1, 14.95, str(col), 5.5, fill=MUTED)
+        cv.text(b.x0 + col - 1, top + 2.05, str(col), 5.5, fill=MUTED)
+        cv.text(b.x0 + col - 1, top + 14.95, str(col), 5.5, fill=MUTED)
 
 
 def _keepouts(cv: _Canvas, c: Circuit, part: Part) -> None:
@@ -190,7 +191,7 @@ def _keepouts(cv: _Canvas, c: Circuit, part: Part) -> None:
     for what, rect in part.keepouts:
         x0, y0, x1, y1 = placed_box(part, rect)
         x0, x1 = max(x0, board.left + 0.3), min(x1, board.right - 0.3)
-        y0, y1 = max(y0, OUTLINE_Y[0] + 0.3), min(y1, OUTLINE_Y[1] - 0.3)
+        y0, y1 = max(y0, board.top + 0.3), min(y1, board.bottom - 0.3)
         if x1 - x0 < 0.3 or y1 - y0 < 0.3:
             continue
         cv.rect(x0, y0, x1, y1, "url(#keepout)", "#b0a58c", 1, rx=0.15, extra=' stroke-dasharray="4 3"')
@@ -528,7 +529,7 @@ def render(c: Circuit, result: Result, highlight: str | None = None, caption: st
 def draw(c: Circuit, result: Result, highlight: str | None = None, caption: str | None = None, focus=()):
     """The drawing's SVG, and the canvas it was drawn on (whose labels the measures look at)."""
     xs = [x for b in c.boards.values() for x in (b.left, b.right)]
-    ys = list(OUTLINE_Y)
+    ys = [y for b in c.boards.values() for y in (b.top, b.bottom)]
     for part in c.parts.values():
         if part.extent:
             xs += [part.extent[0], part.extent[2]]

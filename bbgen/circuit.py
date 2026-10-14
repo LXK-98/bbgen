@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, Board, Hole, parse_hole
+from .board import OUTLINE_Y, RAIL_PAIR_Y, RAILS, ROW_Y, STACK, Board, Hole, parse_hole
 from .parts import (FOOTPRINT_KINDS, LEAD_KINDS, Part, PartError, Pin, body_rect, make_part, placed_box,
                     rotate, slant_reason)
 
@@ -101,8 +101,6 @@ EPS = 1e-6
 CLEARANCE = 0.25  # room a wire lying on the board keeps from a part's body
 ROUND_BODY = {"led": 0.9, "electrolytic": 0.9}  # half the width of a 5 mm LED or can, in holes
 DETOUR_REACH = 12  # how many columns past its ends a wire may go to get around a part
-# every height a hole sits at, rails included
-_LEVELS = sorted({*ROW_Y.values(), *(y for pair in RAIL_PAIR_Y.values() for y in pair)})
 
 
 def net_polarity(name: str, spec) -> tuple[str | None, list[str], bool]:
@@ -282,10 +280,20 @@ class Circuit:
                 raise CircuitError(f"boards[{i}]: {e}") from None
             if board.id in self.boards:
                 raise CircuitError(f"boards[{i}]: duplicate id {board.id!r}")
-            board.x0 = left + 2
-            left = board.right + 3
+            if spec.get("below") is not None:  # snapped on under another, long sides together
+                above = self.boards.get(str(spec["below"]))
+                if above is None:
+                    raise CircuitError(f"boards[{i}]: below {spec['below']!r} names no board before it")
+                if any(b.y0 == above.y0 + STACK and b.x0 == above.x0 for b in self.boards.values()):
+                    raise CircuitError(f"boards[{i}]: board {above.id} already has a board below it")
+                board.x0, board.y0 = above.x0, above.y0 + STACK
+            else:
+                board.x0 = left + 2
+                left = board.right + 3
             self.boards[board.id] = board
         self.default_board = next(iter(self.boards))
+        # every height a hole sits at, rails included, on every board
+        self._levels = sorted({b.y(r) for b in self.boards.values() for r in (*ROW_Y, *RAILS)})
 
     def _load_parts(self, specs: dict) -> None:
         self.parts: dict[str, Part] = {}
@@ -409,7 +417,8 @@ class Circuit:
         for pin in part.pins:
             dx, dy = rotate(pin.offset, part.rot)
             pin.xy = (ax + dx, ay + dy)
-            pin.hole = board.hole_at(*pin.xy)
+            pin.hole = board.hole_at(*pin.xy) or next(
+                (h for b in self.boards.values() if b is not board for h in [b.hole_at(*pin.xy)] if h), None)
             if pin.hole is None:
                 self.issues.append(Issue("error", "OFF_HOLES", f"{pin} lands in the trench or off the board",
                                          pins=[pin]))
@@ -426,10 +435,11 @@ class Circuit:
         if not flat:
             self._tall.add(part.ref)
         own = {p.hole for p in part.pins}
-        for hole in board.holes():
-            x, y = board.xy(hole)
-            if x0 < x < x1 and y0 < y < y1 and hole not in own:
-                self._occupy(hole, f"the body of {part.ref}")
+        for other in self.boards.values():  # a part across two boards stacked covers holes on both
+            for hole in other.holes():
+                x, y = other.xy(hole)
+                if x0 < x < x1 and y0 < y < y1 and hole not in own:
+                    self._occupy(hole, f"the body of {part.ref}")
         for what, rect in part.keepouts:  # room it needs beyond its body, like a USB cable's plug
             box = placed_box(part, rect)
             self._bodies.append((box, f"{part.ref}'s {what}"))
@@ -476,7 +486,7 @@ class Circuit:
                 ox, oy = right + pad_l, 1.0
                 right = ox + ncols - 1 + pad_r + 2
             else:
-                ox, oy = below_x + pad_l, OUTLINE_Y[1] + 1.5 + pad_t
+                ox, oy = below_x + pad_l, max(b.bottom for b in self.boards.values()) + 1.5 + pad_t
                 below_x = ox + ncols - 1 + pad_r + 2
             for pin, (c, r) in zip(part.pins, grid):
                 pin.xy = (ox + c, oy + r)
@@ -590,7 +600,7 @@ class Circuit:
             lo, hi = sorted((a[0], b[0]))
             return [_key((x, a[1])) for x in range(math.floor(lo + EPS) + 1, math.ceil(hi - EPS))]
         lo, hi = sorted((a[1], b[1]))
-        return [_key((a[0], y)) for y in _LEVELS if lo + EPS < y < hi - EPS]
+        return [_key((a[0], y)) for y in self._levels if lo + EPS < y < hi - EPS]
 
     def _bodies_crossed(self, a, b) -> list[str]:
         x0, x1, y0, y1 = min(a[0], b[0]), max(a[0], b[0]), min(a[1], b[1]), max(a[1], b[1])

@@ -15,6 +15,9 @@ RAILS = ("top+", "top-", "bot+", "bot-")
 RAIL_PAIR_Y = {"top": (0, 1), "bot": (16, 17)}
 OUTLINE_Y = (-1.2, 18.2)
 TRENCH_Y = (7.6, 9.4)
+# a board stacked under another (`below:`) sits this many holes lower, on the same 0.1 in grid: the boards'
+# long sides snapped together, its row a 1.0 in below the upper board's row i
+STACK = 20
 # type: (columns, first rail column, rail groups of five)
 PRESETS = {"full": (63, 3, 10), "half": (30, 2, 5)}
 
@@ -56,6 +59,7 @@ class Board:
             if sorted(order) != ["+", "-"]:
                 raise ValueError(f"rails.{side} must be '+-' or '-+' (top to bottom), not {order!r}")
         self.x0 = 0.0  # x of column 1, set when boards are laid out side by side
+        self.y0 = 0.0  # how far below the first boards' row it sits (STACK for one stacked under another)
 
     @property
     def left(self) -> float:
@@ -65,15 +69,24 @@ class Board:
     def right(self) -> float:
         return self.x0 + self.columns + 1
 
+    @property
+    def top(self) -> float:
+        return self.y0 + OUTLINE_Y[0]
+
+    @property
+    def bottom(self) -> float:
+        return self.y0 + OUTLINE_Y[1]
+
     def rail_y(self, rail: str) -> int:
         side, pol = rail[:3], rail[3]
         return RAIL_PAIR_Y[side][self.rail_order[side].index(pol)]
 
-    def y(self, row: str) -> int:
+    def y(self, row: str) -> float:
+        """Where a row of holes is, down the drawing (rail_y and ROW_Y are a board's own, from its top)."""
         try:
             return self._y[row]
         except (AttributeError, KeyError):
-            self._y = {**ROW_Y, **{r: self.rail_y(r) for r in RAILS}}
+            self._y = {**{r: self.y0 + y for r, y in ROW_Y.items()}, **{r: self.y0 + self.rail_y(r) for r in RAILS}}
             return self._y[row]
 
     def has(self, row: str, col: int) -> bool:

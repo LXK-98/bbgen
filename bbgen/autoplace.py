@@ -31,7 +31,7 @@ import random
 
 from . import trace
 from .measure import crossings
-from .board import RAILS, ROW_Y, Board, Hole, parse_hole
+from .board import RAILS, ROW_Y, STACK, Board, Hole, parse_hole
 from .circuit import (Circuit, CircuitError, Issue, _aligned, _key, _line, check_rail_count, library_for,
                       net_polarity)
 from .costs import (CROSS_WEIGHT, CROWD_COST, CROWD_LEG_COST, FLEX_WEIGHT, FLYING_WEIGHT, GAP_COST,
@@ -426,12 +426,18 @@ class _Model:
         # the boards side by side, as one row of columns: x is a column's place along it (the first board's
         # columns are 1, 2, ...; each further board's follow on after a gap)
         self.boards: list[tuple[Board, int]] = []  # (board, x of its column 0)
+        self.below: dict[str, Board] = {}  # a board's id -> the board snapped on under it
+        self.above: dict[str, Board] = {}
         x0 = 0
         for i, spec in enumerate(data.get("boards") or [{"type": "full"}]):
             spec = {"type": spec} if isinstance(spec, str) else spec
             board = Board(spec.get("id", i + 1), spec.get("type", "full"), spec.get("rails"), spec.get("split_rails", False))
+            if spec.get("below") is not None:
+                up = next((b for b, _ in self.boards if b.id == str(spec["below"])), None)
+                if up is not None:
+                    self.below[up.id], self.above[board.id] = board, up
             self.boards.append((board, x0))
-            x0 += board.columns + 6  # as Circuit lays them out: a gap of five holes and a bit
+            x0 += board.columns + 6  # each board's columns along a row of its own: one under another too
         self.board = self.boards[0][0]
         self.offset = {board.id: x0 for board, x0 in self.boards}
         self.width = self.boards[-1][1] + self.boards[-1][0].columns
@@ -489,45 +495,69 @@ class _Model:
                     board = next((b for b, _ in self.boards if b.id == str(parsed[0])), self.board)
                     self.fixed[ref] = self._layout(part, parsed[1], parsed[2], part.rot, board)
 
+    def _views(self, board: Board) -> list:
+        """(shift, dx, lo, hi) for the board a part is placed on and any board snapped on right below or above
+        it: a height on the placed board's scale less shift is a height on that board, a column plus dx its
+        column along the model's row of boards, and lo-hi its columns there. A part may reach across onto a board
+        stacked next to it (an ESP32 across two), never onto one beside it."""
+        off = self.offset[board.id]
+        out = [(0, 0, off + 1, off + board.columns)]
+        for other, shift in ((self.below.get(board.id), STACK), (self.above.get(board.id), -STACK)):
+            if other is not None:
+                o = self.offset[other.id]
+                out.append((shift, o - off, o + 1, o + other.columns))
+        return out
+
     def _layout(self, part, row: str, col: int, rot: int, board: Board | None = None):
         """(at, rot, {pin: (x, y)}, body [(half, lo, hi)], keep-out [(half, lo, hi)], walls, rows taken) for pin
-        1 in row/col of a board (the first by default), or None if a pin misses the holes. A part sits on one
-        board: never across the gap between two."""
+        1 in row/col of a board (the first by default), or None if a pin misses the holes. A pin's x is its
+        column along the model's row of boards, its y its row's height on its own board."""
         board = board or self.board
         off = self.offset[board.id]
         self._lo, self._hi = off + 1, off + board.columns
+        views = self._views(board)
         ax, ay = off + col, ROW_Y[row]
-        xy = {}
+        xy, view_of = {}, {}
         for pin in part.pins:
             dx, dy = rotate(pin.offset, rot)
             x, y = ax + dx, ay + dy
-            if not (self._lo <= x <= self._hi) or y not in ROW_Y.values():
+            for v in views:  # on the board it's placed on, else on one stacked next to it
+                shift, vdx, lo, hi = v
+                if y - shift in ROW_Y.values() and lo <= x + vdx <= hi:
+                    xy[pin], view_of[pin] = (x + vdx, y - shift), v
+                    break
+            else:
                 return None
-            xy[pin] = (x, y)
         if part.kind in ("sip", "kicad"):  # no two of its pins in one strip, unless joined inside it anyway
             strips: dict = {}
             for pin, (x, y) in xy.items():
                 other = strips.setdefault((x, y < 8), pin)
                 if other is not pin and (part.bus_of(pin) is None or part.bus_of(pin) is not part.bus_of(other)):
                     return None
-        # what it takes up: its pins and the holes under its body, half by half (sorted: compared, and summed)
-        xs = [x for x, _ in xy.values()]
-        halves = {"top" if y < 8 else "bot" for _, y in xy.values()}
-        lo, hi = min(xs), max(xs)
-        if body_rect(part):  # the whole body on the board, not hanging off its edge
+        if body_rect(part):  # the whole body on the boards, not hanging off an edge
             corners = [rotate((x, y), rot) for x, y in ((body_rect(part)[0], body_rect(part)[1]),
                                                         (body_rect(part)[2], body_rect(part)[3]))]
             if min(ax + x for x, _ in corners) < self._lo - 0.6 or max(ax + x for x, _ in corners) > self._hi + 0.6:
                 return None
-        body = self._covered(body_rect(part), rot, ax, ay)
-        if body:
-            lo, hi = min(lo, body[0]), max(hi, body[1])
-            halves |= body[2]
-        if part.kind in ("pico", "dip"):
-            halves = {"bot", "top"}  # a DIP or Pico straddles the trench
+        across = len(set(view_of.values())) > 1
+        # what it takes up, board by board: its pins and the holes under its body, half by half (sorted: compared,
+        # and summed)
+        spans = []
+        for v in views:
+            mine = [xy[p] for p in part.pins if view_of[p] == v]
+            body = self._covered(body_rect(part), rot, ax, ay, v)
+            if not mine and not body:
+                continue
+            xs = [x for x, _ in mine] + ([body[0], body[1]] if body else [])
+            halves = {"top" if y < 8 else "bot" for _, y in mine} | (body[2] if body else set())
+            if part.kind in ("pico", "dip") and not across:
+                halves = {"bot", "top"}  # a DIP or Pico straddles the trench
+            spans += [(h, min(xs), max(xs)) for h in sorted(halves)]
+        spans.sort(key=lambda sp: (sp[1], sp[0]))
+        lo, hi = min(sp[1] for sp in spans), max(sp[2] for sp in spans)
         keep = []
         for what, rect in part.keepouts:
-            room = self._covered(rect, rot, ax, ay)
+            room = self._covered(rect, rot, ax, ay, views[0])
             if room:
                 klo, khi = room[0], room[1]
                 if "cable" in what.lower():  # the cable runs on past the plug, off the board's nearest edge
@@ -537,10 +567,16 @@ class _Model:
                         khi = self._hi
                 keep += [(h, klo, khi) for h in sorted(room[2])]
         prefix = "" if board is self.board else f"{board.id}:"
-        return (f"{prefix}{row}{col}", rot, xy, [(h, lo, hi) for h in sorted(halves)], keep, self._walls(part, rot, ax, ay, xy),
-                self._taken(part, rot, ax, ay, xy))
+        walls = [w for v in views for w in self._walls(part, rot, ax, ay, xy, v)]
+        return (f"{prefix}{row}{col}", rot, xy, spans, keep, walls, self._taken(part, rot, ax, ay, xy, views))
 
-    def _taken(self, part, rot: int, ax: int, ay: int, xy: dict) -> dict:
+    @staticmethod
+    def _box(rect, rot: int, ax: float, ay: float):
+        corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
+        return (ax + min(x for x, _ in corners), ay + min(y for _, y in corners),
+                ax + max(x for x, _ in corners), ay + max(y for _, y in corners))
+
+    def _taken(self, part, rot: int, ax: int, ay: int, xy: dict, views: list) -> dict:
         """{(half, column): rows} the part takes in each strip it's in: its pins, and the holes under its body.
         What's left is the room wires have to run past it along the board."""
         taken: dict = {}
@@ -549,33 +585,31 @@ class _Model:
             taken[key] = taken.get(key, 0) + 1
         rect = body_rect(part)
         if rect is not None:
-            corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
-            x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
-            y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
+            x0, y0, x1, y1 = self._box(rect, rot, ax, ay)
             pins = set(xy.values())
-            for x in range(max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6)) + 1):
-                for y in ROW_Y.values():
-                    if y0 < y < y1 and (x, y) not in pins:
-                        key = ("top" if y < 8 else "bot", x)
-                        taken[key] = taken.get(key, 0) + 1
+            for shift, dx, lo, hi in views:
+                for x in range(max(lo, math.ceil(x0 + dx + 1e-6)), min(hi, math.floor(x1 + dx - 1e-6)) + 1):
+                    for y in ROW_Y.values():
+                        if y0 < y + shift < y1 and (x, y) not in pins:
+                            key = ("top" if y < 8 else "bot", x)
+                            taken[key] = taken.get(key, 0) + 1
         return taken
 
-    def _walls(self, part, rot: int, ax: int, ay: int, xy: dict) -> list:
-        """[(half, first column, last column)] for each half of the board the part walls off: its body covers it,
+    def _walls(self, part, rot: int, ax: int, ay: int, xy: dict, view) -> list:
+        """[(half, first column, last column)] for each half of a board the part walls off: its body covers it,
         or leaves its pins' strips a hole at most, which a wire lying across would take from the wire that pin
         still needs (a display whose pins' strips are under it). Nets with pins on both sides have to go round by
         the other half, or jump over."""
         rect = body_rect(part)
         if rect is None:
             return []
-        corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
-        x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
-        y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
-        lo, hi = max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6))
+        shift, dx, vlo, vhi = view
+        x0, y0, x1, y1 = self._box(rect, rot, ax, ay)
+        lo, hi = max(vlo, math.ceil(x0 + dx + 1e-6)), min(vhi, math.floor(x1 + dx - 1e-6))
         if lo > hi:
             return []
-        under = {y for y in ROW_Y.values() if y0 < y < y1}
-        pins = {y for _, y in xy.values()}
+        under = {y for y in ROW_Y.values() if y0 < y + shift < y1}
+        pins = {y for x, y in xy.values() if vlo <= x <= vhi}
         out = []
         for half, rows in (("top", "abcde"), ("bot", "fghij")):
             ys = [ROW_Y[r] for r in rows]
@@ -584,16 +618,15 @@ class _Model:
                 out.append((half, lo, hi))
         return out
 
-    def _covered(self, rect, rot: int, ax: int, ay: int):
-        """(first column, last column, {halves}) of the holes inside a rect placed with pin 1 at (ax, ay), or
-        None if no hole on the board is."""
+    def _covered(self, rect, rot: int, ax: int, ay: int, view=None):
+        """(first column, last column, {halves}) of the holes inside a rect placed with pin 1 at (ax, ay), on the
+        board a view is of (the one placed on, by default), or None if no hole there is."""
         if rect is None:
             return None
-        corners = [rotate((x, y), rot) for x in (rect[0], rect[2]) for y in (rect[1], rect[3])]
-        x0, x1 = ax + min(x for x, _ in corners), ax + max(x for x, _ in corners)
-        y0, y1 = ay + min(y for _, y in corners), ay + max(y for _, y in corners)
-        lo, hi = max(self._lo, math.ceil(x0 + 1e-6)), min(self._hi, math.floor(x1 - 1e-6))
-        rows = [y for y in ROW_Y.values() if y0 < y < y1]
+        shift, dx, vlo, vhi = view or (0, 0, self._lo, self._hi)
+        x0, y0, x1, y1 = self._box(rect, rot, ax, ay)
+        lo, hi = max(vlo, math.ceil(x0 + dx + 1e-6)), min(vhi, math.floor(x1 + dx - 1e-6))
+        rows = [y for y in ROW_Y.values() if y0 < y + shift < y1]
         if lo > hi or not rows:
             return None
         return lo, hi, {"top" if y < 8 else "bot" for y in rows}
