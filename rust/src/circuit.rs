@@ -287,6 +287,10 @@ pub struct Circuit {
     pub step_blocked: HashMap<(u64, u64, u64, u64), bool>,
     pub straight_strips: HashMap<(Strip, Strip), bool>,
     pub next_id: u64,
+    /// placement's repair search: take the k-th best leg pair for these parts
+    pub leg_rank: HashMap<String, i64>,
+    /// the middles of round parts (LEDs, cans) placed so far, for leg placement
+    pub rounds: Vec<Xy>,
 }
 
 fn bits(p: Xy) -> (u64, u64) {
@@ -305,7 +309,11 @@ impl Circuit {
             return Err("the file must be a mapping with title, boards, parts, wires and nets".into());
         }
         if needs_placing(data) {
-            return Err("this port can't place parts yet: give it a file as placement left it".into());
+            let placed = crate::dump::placing(|| crate::search::autoplace(data, source))?;
+            if crate::dump::active() {
+                crate::dump::event("placed", vec![("data", placed.to_json())]);
+            }
+            return Circuit::new(&placed, source);
         }
         let stem = std::path::Path::new(source).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let mut c = Circuit {
@@ -320,7 +328,13 @@ impl Circuit {
             wires: vec![], groups: vec![], nets: IndexMap::default(), lead_room: HashSet::default(), autowire: false,
             ends: HashSet::default(), lain: HashSet::default(), pin_strips: HashSet::default(), strip_at: HashMap::default(), wired: 0,
             empty: None, step_blocked: HashMap::default(), straight_strips: HashMap::default(), next_id: 0,
+            leg_rank: HashMap::default(), rounds: vec![],
         };
+        if let Some(m) = data.at("_leg_rank").as_map() {
+            for (k, v) in m {
+                c.leg_rank.insert(k.py_str(), v.py_int().unwrap_or(0));
+            }
+        }
         let boards = if data.at("boards").truthy() { data.at("boards").clone() } else {
             Val::List(vec![Val::Map(vec![(Val::Str("type".into()), Val::Str("full".into()))])])
         };
@@ -338,7 +352,7 @@ impl Circuit {
         c.load_wires(data.at("wires"))?;
         c.load_nets(data.at("nets"))?;
         c.place();
-        if crate::dump::active() {
+        if crate::dump::building() {
             let mut pins = serde_json::Map::new();
             for part in &c.parts {
                 pins.insert(part.r#ref.clone(), serde_json::Value::Array(part.pins.iter()
@@ -542,30 +556,9 @@ impl Circuit {
     }
 
     fn check_rail_count(&self) -> Result<(), String> {
-        for (sign, what) in [('+', "positive supplies"), ('-', "grounds")] {
-            let nets: Vec<&str> = self.nets.values().filter(|n| n.polarity == Some(sign)).map(|n| n.name.as_str()).collect();
-            let mut strips: HashSet<(Strip, u8)> = HashSet::default();
-            for b in &self.boards {
-                for h in b.holes() {
-                    if h.row.is_rail() && h.row.sign() == sign {
-                        strips.insert((b.strip(h), b.index));
-                    }
-                }
-            }
-            if nets.len() > strips.len() {
-                let guesses: Vec<&str> = nets.iter().copied().filter(|n| self.nets[*n].guessed).collect();
-                let note = if guesses.is_empty() { String::new() } else {
-                    format!(" ({} {} taken as {} from the name: say rail: none if not)", guesses.join(", "),
-                            if guesses.len() == 1 { "is" } else { "are" }, if sign == '+' { "a supply" } else { "a ground" })
-                };
-                let many = self.boards.len() > 1;
-                return Err(format!("nets: {} {} ({}) but the board{} {} {} {} rail{}: each needs its own. Split the rails \
-                                    (split_rails: true) or add a board{}", nets.len(), what, nets.join(", "),
-                                   if many { "s" } else { "" }, if many { "have" } else { "has" }, strips.len(), sign,
-                                   if strips.len() != 1 { "s" } else { "" }, note));
-            }
-        }
-        Ok(())
+        let polarity: IndexMap<String, Option<char>> = self.nets.iter().map(|(n, net)| (n.clone(), net.polarity)).collect();
+        let guessed: HashSet<String> = self.nets.values().filter(|n| n.guessed).map(|n| n.name.clone()).collect();
+        check_rail_count_for(&polarity, &guessed, &self.boards)
     }
 
     // ---- placement ----
@@ -590,15 +583,17 @@ impl Circuit {
             self.reserve(&a, &who);
             self.reserve(&b, &who);
         }
-        let auto: Vec<usize> = (0..self.parts.len()).filter(|&i| self.parts[i].kind.is_lead() && self.parts[i].legs.is_empty()).collect();
+        // two-lead parts with their legs written first, so the ones bbgen places see them
+        let mut auto: Vec<usize> = (0..self.parts.len()).filter(|&i| self.parts[i].kind.is_lead() && self.parts[i].legs.is_empty()).collect();
         let mut pending: Vec<usize> = (0..self.parts.len()).filter(|&i| self.parts[i].kind.is_lead() && !auto.contains(&i)).collect();
-        if !auto.is_empty() {
-            // the port can't place legs yet; needs_placing() turned such files away
-            unreachable!("two-lead parts without legs");
-        }
-        while !pending.is_empty() {
+        while !pending.is_empty() || !auto.is_empty() {
             let ready: Vec<usize> = pending.iter().copied()
                 .filter(|&i| !self.parts[i].legs.iter().any(|l| self.waits_on_leads(l))).collect();
+            if ready.is_empty() && !auto.is_empty() {
+                let parts = std::mem::take(&mut auto);
+                crate::legs::place_legs(self, &parts);
+                continue;
+            }
             if ready.is_empty() {
                 for &i in &pending {
                     let r = self.parts[i].r#ref.clone();
@@ -768,6 +763,10 @@ impl Circuit {
             part.r#box = Some((ox - 0.6, oy - 0.6, ox + ncols as f64 - 0.4, oy + nrows as f64 - 0.4));
             part.extent = Some((ox - pad_l, oy - pymax(pad_t, 1.6), ox + ncols as f64 - 1.0 + pad_r, oy + nrows as f64 - 1.0 + pad_b));
         }
+    }
+
+    pub fn place_leads_pub(&mut self, pi: usize) {
+        self.place_leads(pi)
     }
 
     fn place_leads(&mut self, pi: usize) {
@@ -1612,6 +1611,34 @@ fn strip_leg_suffix(w: &str) -> String {
         return w[..w.len() - 6].to_string();
     }
     w.to_string()
+}
+
+/// Every supply needs a + rail of its own, every ground a - rail: an error when there are more than the boards have.
+pub fn check_rail_count_for(polarity: &IndexMap<String, Option<char>>, guessed: &HashSet<String>, boards: &[Board]) -> Result<(), String> {
+    for (sign, what) in [('+', "positive supplies"), ('-', "grounds")] {
+        let nets: Vec<&str> = polarity.iter().filter(|(_, p)| **p == Some(sign)).map(|(n, _)| n.as_str()).collect();
+        let mut strips: HashSet<(Strip, u8)> = HashSet::default();
+        for b in boards {
+            for h in b.holes() {
+                if h.row.is_rail() && h.row.sign() == sign {
+                    strips.insert((b.strip(h), b.index));
+                }
+            }
+        }
+        if nets.len() > strips.len() {
+            let guesses: Vec<&str> = nets.iter().copied().filter(|n| guessed.contains(*n)).collect();
+            let note = if guesses.is_empty() { String::new() } else {
+                format!(" ({} {} taken as {} from the name: say rail: none if not)", guesses.join(", "),
+                        if guesses.len() == 1 { "is" } else { "are" }, if sign == '+' { "a supply" } else { "a ground" })
+            };
+            let many = boards.len() > 1;
+            return Err(format!("nets: {} {} ({}) but the board{} {} {} {} rail{}: each needs its own. Split the rails \
+                                (split_rails: true) or add a board{}", nets.len(), what, nets.join(", "),
+                               if many { "s" } else { "" }, if many { "have" } else { "has" }, strips.len(), sign,
+                               if strips.len() != 1 { "s" } else { "" }, note));
+        }
+    }
+    Ok(())
 }
 
 pub fn library_for(data: &Val) -> Option<Vec<PathBuf>> {

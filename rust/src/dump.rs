@@ -6,10 +6,24 @@ use std::cell::RefCell;
 
 thread_local! {
     static EVENTS: RefCell<Option<Vec<Value>>> = const { RefCell::new(None) };
+    static PLACING: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 pub fn active() -> bool {
     EVENTS.with(|e| e.borrow().is_some())
+}
+
+/// A build's own events are recorded only outside placement's trial builds (dump.py's build=True).
+pub fn building() -> bool {
+    active() && PLACING.with(|p| p.get()) == 0
+}
+
+/// Run f as placement: the trial builds it makes record no build events.
+pub fn placing<T>(f: impl FnOnce() -> T) -> T {
+    PLACING.with(|p| p.set(p.get() + 1));
+    let out = f();
+    PLACING.with(|p| p.set(p.get() - 1));
+    out
 }
 
 pub fn event(kind: &str, fields: Vec<(&str, Value)>) {

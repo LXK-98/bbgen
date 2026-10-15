@@ -1,8 +1,6 @@
 //! A circuit file's values as Python sees them after `yaml.safe_load`: what bbgen's code tests for truth,
 //! turns into strings with `str()`, and looks up by key.
 
-use yaml_rust2::{Yaml, YamlLoader};
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Val {
     Null,
@@ -15,22 +13,9 @@ pub enum Val {
 }
 
 impl Val {
-    pub fn from_yaml(y: &Yaml) -> Val {
-        match y {
-            Yaml::Real(s) => Val::Float(parse_real(s)),
-            Yaml::Integer(i) => Val::Int(*i),
-            Yaml::String(s) => Val::Str(s.clone()),
-            Yaml::Boolean(b) => Val::Bool(*b),
-            Yaml::Array(a) => Val::List(a.iter().map(Val::from_yaml).collect()),
-            Yaml::Hash(h) => Val::Map(h.iter().map(|(k, v)| (Val::from_yaml(k), Val::from_yaml(v))).collect()),
-            Yaml::Null | Yaml::BadValue => Val::Null,
-            Yaml::Alias(_) => Val::Null,
-        }
-    }
-
+    /// A circuit file's text, read as `yaml.safe_load` would.
     pub fn load(text: &str) -> Result<Val, String> {
-        let docs = YamlLoader::load_from_str(text).map_err(|e| e.to_string())?;
-        Ok(docs.first().map(Val::from_yaml).unwrap_or(Val::Null))
+        crate::yaml::load(text)
     }
 
     /// `spec.get(key)` on a mapping (None when not a mapping or not there).
@@ -124,6 +109,65 @@ impl Val {
         }
     }
 
+    /// A mapping's value for a string key, to change in place.
+    pub fn map_get_mut(&mut self, key: &str) -> Option<&mut Val> {
+        match self {
+            Val::Map(items) => items.iter_mut().find(|(k, _)| matches!(k, Val::Str(s) if s == key)).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// `d[key] = v`: in place if it's there, else at the end.
+    pub fn map_set(&mut self, key: &str, v: Val) {
+        if let Some(slot) = self.map_get_mut(key) {
+            *slot = v;
+        } else if let Val::Map(items) = self {
+            items.push((Val::Str(key.into()), v));
+        }
+    }
+
+    pub fn map_remove(&mut self, key: &str) {
+        if let Val::Map(items) = self {
+            items.retain(|(k, _)| !matches!(k, Val::Str(s) if s == key));
+        }
+    }
+
+    pub fn map_retain(&mut self, keep: impl Fn(&Val, &Val) -> bool) {
+        if let Val::Map(items) = self {
+            items.retain(|(k, v)| keep(k, v));
+        }
+    }
+
+    /// From JSON (a trial's file, as a script hands it over).
+    pub fn from_json(j: &serde_json::Value) -> Val {
+        use serde_json::Value as J;
+        match j {
+            J::Null => Val::Null,
+            J::Bool(b) => Val::Bool(*b),
+            J::Number(n) => match n.as_i64() {
+                Some(i) => Val::Int(i),
+                None => Val::Float(n.as_f64().unwrap()),
+            },
+            J::String(s) => Val::Str(s.clone()),
+            J::Array(a) => Val::List(a.iter().map(Val::from_json).collect()),
+            J::Object(o) => Val::Map(o.iter().map(|(k, v)| (Val::Str(k.clone()), Val::from_json(v))).collect()),
+        }
+    }
+
+    /// To JSON with each value's Python type spelled out, for comparing what was read: ["int", 3], ["str", "a"].
+    pub fn to_json_typed(&self) -> serde_json::Value {
+        use serde_json::json;
+        match self {
+            Val::Null => json!(["None"]),
+            Val::Bool(b) => json!(["bool", b]),
+            Val::Int(i) => json!(["int", i]),
+            Val::Float(f) => json!(["float", crate::pyf::repr(*f)]),
+            Val::Str(s) => json!(["str", s]),
+            Val::List(l) => json!(["list", l.iter().map(Val::to_json_typed).collect::<Vec<_>>()]),
+            Val::Map(m) => json!(["dict", m.iter().map(|(k, v)| json!([k.to_json_typed(), v.to_json_typed()])).collect::<Vec<_>>()]),
+        }
+    }
+
     /// To JSON, as `json.dumps` would write the value (for the dump of the placed file).
     pub fn to_json(&self) -> serde_json::Value {
         use serde_json::Value as J;
@@ -136,16 +180,6 @@ impl Val {
             Val::List(l) => J::Array(l.iter().map(Val::to_json).collect()),
             Val::Map(m) => J::Object(m.iter().map(|(k, v)| (k.py_str(), v.to_json())).collect()),
         }
-    }
-}
-
-fn parse_real(s: &str) -> f64 {
-    let t = s.trim().to_ascii_lowercase().replace('_', "");
-    match t.as_str() {
-        ".inf" | "+.inf" => f64::INFINITY,
-        "-.inf" => f64::NEG_INFINITY,
-        ".nan" => f64::NAN,
-        _ => t.parse().unwrap_or(f64::NAN),
     }
 }
 

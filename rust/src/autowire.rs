@@ -131,7 +131,7 @@ pub fn autowire(c: &mut Circuit) {
     let spans: HashMap<String, f64> = order.iter().map(|n| (n.clone(), span(c, &c.nets[n]))).collect();
     let has = |n: &String| rails.get(n).map(|r| !r.is_empty()).unwrap_or(false);
     order.sort_by(|a, b| (has(a), spans[a]).partial_cmp(&(has(b), spans[b])).unwrap());
-    if dump::active() {
+    if dump::building() {
         let r: serde_json::Map<String, Value> = rails.iter().map(|(n, s)| (n.clone(), Value::Array(s.iter().map(|x| node_json(c, x)).collect()))).collect();
         dump::event("rails", vec![("rails", Value::Object(r)), ("order", json!(order))]);
     }
@@ -147,7 +147,7 @@ pub fn autowire(c: &mut Circuit) {
     let mut built: Vec<Wire> = c.wires[first..].to_vec();
     built.sort_by_key(|w| (w.flex, !has(&w.group), net_pos[&w.group], w.num));
     renumber(c, built, first);
-    if dump::active() {
+    if dump::building() {
         let ws: Vec<Value> = c.wires[first..].iter().map(|w| dumped(c, w)).collect();
         dump::event("wires", vec![("wires", Value::Array(ws))]);
     }
@@ -230,6 +230,19 @@ fn wire_index(c: &Circuit, id: u64) -> Option<usize> {
     c.wires.iter().position(|w| w.id == id)
 }
 
+/// Python's `==` on two Wire dataclasses: every field (a pin by identity), not which wire it is. autowire.py's
+/// `x not in leads` and `c.wires.remove(w)` compare this way, and a lead laid again exactly as it was, under
+/// the same number, equals the one it replaces (see settle_leads).
+fn wire_eq(a: &Wire, b: &Wire) -> bool {
+    let end_eq = |x: &Option<End>, y: &Option<End>| match (x, y) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.spec == y.spec && x.hole == y.hole && x.pin == y.pin,
+        _ => false,
+    };
+    a.num == b.num && a.group == b.group && a.spec == b.spec && a.color == b.color && a.via == b.via && a.slant == b.slant
+        && a.auto == b.auto && a.flex == b.flex && end_eq(&a.a, &b.a) && end_eq(&a.b, &b.b) && a.via_xy == b.via_xy
+}
+
 /// Lay each flying lead that crosses another again, now that every lead is in, keeping the new one only if it
 /// costs less; then let two leads of one net that cross swap holes.
 fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
@@ -290,8 +303,11 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                 }
             }
             join(c, &mut dsu, &net, &board_rails, node_pins, true);
+            // `x not in leads` compares by value: a lead laid again exactly as it was (same number, same holes)
+            // counts as the old one, so it's not found as new (and the old one is put back beside it)
+            let lead_wires: Vec<Wire> = leads.iter().map(|&l| get(c, &out, l)).collect();
             let new: Vec<u64> = c.wires.iter().filter(|x| {
-                !leads.contains(&x.id) && x.group == net.name && x.auto && x.a.is_some() && x.b.is_some()
+                !lead_wires.iter().any(|l| wire_eq(l, x)) && x.group == net.name && x.auto && x.a.is_some() && x.b.is_some()
                     && (x.a.as_ref().unwrap().pin == Some(pp) || x.b.as_ref().unwrap().pin == Some(pp))
             }).map(|x| x.id).collect();
             if let Some(&xid) = new.first() {
@@ -304,7 +320,7 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                 ho.covered = c.covered.contains_key(&pyf::key(xxy));
                 let k = cost(c, &po, &ho, false).0;
                 if k < old - 1e-9 {
-                    let i = leads.iter().position(|&l| l == wid).unwrap();
+                    let i = lead_wires.iter().position(|l| wire_eq(l, &w)).unwrap();
                     leads[i] = xid;
                     moved = true;
                     continue;
@@ -339,7 +355,7 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
 /// Two flying leads trade the holes their board ends are in.
 fn swap_holes(c: &mut Circuit, wid: u64, xid: u64) {
     let (wi, xi) = (wire_index(c, wid).unwrap(), wire_index(c, xid).unwrap());
-    if dump::active() {
+    if dump::building() {
         dump::event("swap", vec![("nums", json!([c.wires[wi].num, c.wires[xi].num]))]);
     }
     let board_end = |w: &Wire| if w.a.as_ref().unwrap().pin.is_some() { 1 } else { 0 };
@@ -361,7 +377,7 @@ fn swap_holes(c: &mut Circuit, wid: u64, xid: u64) {
 /// Put a wire taken out back exactly as it was, under a number of its own.
 fn put_back(c: &mut Circuit, mut w: Wire) {
     w.num = c.wires.iter().map(|x| x.num).max().unwrap_or(0) + 1;
-    if dump::active() {
+    if dump::building() {
         dump::event("put back", dumped_fields(c, &w));
     }
     let who = format!("W{}", w.num);
@@ -801,7 +817,7 @@ fn join(c: &mut Circuit, dsu: &mut Dsu<Node>, net: &Net, rails: &[Node], node_pi
             None => return,
             Some(b) => b,
         };
-        if dump::active() {
+        if dump::building() {
             dump::event("cost", vec![("net", json!(net.name)), ("key", key.json()), ("flex", json!(flex))]);
         }
         lay(c, Some(dsu), net, &end_a, &end_b, flex, flying, false);
@@ -827,7 +843,7 @@ fn lay(c: &mut Circuit, dsu: Option<&mut Dsu<Node>>, net: &Net, end_a: &Cand, en
     }
     let id = w.id;
     if flex {
-        if dump::active() {
+        if dump::building() {
             dump::event("wire", dumped_fields(c, &w));
         }
         c.wires.push(w);
@@ -850,7 +866,7 @@ fn lay(c: &mut Circuit, dsu: Option<&mut Dsu<Node>>, net: &Net, end_a: &Cand, en
     for s in pts.windows(2) {
         c.add_segment(s[0], s[1], &who);
     }
-    if dump::active() {
+    if dump::building() {
         dump::event("wire", dumped_fields(c, &w));
     }
     let over = c.lies_over(&w);
@@ -1137,7 +1153,7 @@ fn lay_route(c: &mut Circuit, dsu: &mut Dsu<Node>, net: &Net, route: &[(Cand, Ca
             }
         }
     }
-    if dump::active() {
+    if dump::building() {
         let nums: Vec<i64> = laid.iter().map(|&id| c.wires[wire_index(c, id).unwrap()].num).collect();
         dump::event("relay", vec![("net", json!(net.name)), ("nums", json!(nums))]);
     }
@@ -1226,10 +1242,12 @@ fn prune(c: &mut Circuit, net: &str, rails: &[Node], node_pins: &NodePins) {
 
 fn unwire(c: &mut Circuit, wid: u64) {
     let wi = wire_index(c, wid).unwrap();
-    if dump::active() {
+    if dump::building() {
         dump::event("unwire", vec![("num", json!(c.wires[wi].num))]);
     }
-    let w = c.wires.remove(wi);
+    // list.remove takes out the first wire equal to it
+    let first = c.wires.iter().position(|x| wire_eq(x, &c.wires[wi])).unwrap();
+    let w = c.wires.remove(first);
     c.wired += 1;
     let who = format!("W{}", w.num);
     for e in [&w.a, &w.b].into_iter().flatten() {

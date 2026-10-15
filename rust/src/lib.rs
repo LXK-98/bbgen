@@ -7,10 +7,14 @@ pub mod circuit;
 pub mod costs;
 pub mod dump;
 pub mod kicad;
+pub mod legs;
 pub mod measure;
 pub mod parts;
 pub mod pyf;
+pub mod pyrand;
+pub mod search;
 pub mod val;
+pub mod yaml;
 
 use circuit::Circuit;
 

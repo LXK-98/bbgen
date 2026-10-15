@@ -3,6 +3,8 @@
     python3 benchmarks/rs_check.py           every placed benchmark: parity, then Rust's time per build
     python3 benchmarks/rs_check.py 13 16     only circuits whose file name holds one of these
     python3 benchmarks/rs_check.py --python  ... and time the Python build of each too (slow)
+    python3 benchmarks/rs_check.py --full    the benchmarks themselves, placement and all, against the whole
+                                             record; and the time for each against Python's (hotspots.json)
 
 Builds rust/ first (cargo build --release). Each placed file (golden/placed/) is built by bbgen-rs with its
 events dumped, and compared with the golden record (golden.py --diff); then built again many times for its
@@ -40,9 +42,47 @@ def python_ms(path: Path) -> float:
     return (time.perf_counter() - t0) / n * 1000
 
 
+def full(argv: list[str]) -> int:
+    """Place, wire and check each benchmark in Rust, diff the whole record, and time it."""
+    import contextlib
+    import io
+    import json
+    from golden import diff
+    hot = HERE / "out" / "hotspots.json"
+    py = json.loads(hot.read_text()) if hot.exists() else {}
+    paths = sorted(p for p in HERE.glob("[0-9]*.yaml") if not argv or any(a in p.stem for a in argv))
+    bad = 0
+    total_rs = total_py = 0.0
+    print(f"{'circuit':26} {'parity':>8} {'Rust s':>8} {'Python s (1 core)':>18} {'speed-up':>9}")
+    with tempfile.TemporaryDirectory() as tmp:
+        for p in paths:
+            out = Path(tmp) / f"{p.stem}.jsonl"
+            t0 = time.perf_counter()
+            subprocess.run([str(BIN), "build", str(p), "--dump", str(out)], capture_output=True)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                same = out.exists() and diff(HERE / "golden" / f"{p.stem}.jsonl.gz", out) == 0
+            # timed again without the record
+            t0 = time.perf_counter()
+            subprocess.run([str(BIN), "build", str(p)], capture_output=True)
+            rs = time.perf_counter() - t0
+            ps = py.get(p.stem, {}).get("serial", {}).get("seconds")
+            bad += not same
+            total_rs += rs
+            total_py += ps or 0
+            print(f"{p.stem:26} {'same' if same else 'DIFFERS':>8} {rs:8.2f} {ps or 0:18.1f} {(ps or 0) / rs:8.0f}×", flush=True)
+            if not same:
+                print("   " + buf.getvalue().strip().replace("\n", "\n   ")[:2000])
+    print(f"{'all':26} {len(paths) - bad}/{len(paths):<6} {total_rs:8.2f} {total_py:18.1f} {total_py / total_rs:8.0f}×")
+    return 1 if bad else 0
+
+
 def main(argv: list[str]) -> int:
     with_python = "--python" in argv
     argv = [a for a in argv if a != "--python"]
+    if "--full" in argv:
+        subprocess.run(["cargo", "build", "--release", "--quiet"], cwd=ROOT / "rust", check=True)
+        return full([a for a in argv if a != "--full"])
     subprocess.run(["cargo", "build", "--release", "--quiet"], cwd=ROOT / "rust", check=True)
     from golden import diff
     import contextlib

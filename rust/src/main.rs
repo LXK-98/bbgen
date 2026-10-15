@@ -15,6 +15,15 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("build") => std::process::exit(build(&args[2..])),
         Some("pyf-check") => pyf_check(),
+        Some("score-lines") => score_lines(),
+        Some("yaml-json") => {
+            // a YAML file as JSON, the way the port reads it (for checking against yaml.safe_load)
+            let text = std::fs::read_to_string(&args[2]).unwrap();
+            match Val::load(&text) {
+                Ok(v) => println!("{}", serde_json::to_string(&v.to_json_typed()).unwrap()),
+                Err(e) => println!("{}", serde_json::json!({"error": e})),
+            }
+        }
         _ => {
             eprintln!("usage: bbgen-rs build placed.yaml [--dump out.jsonl] [--repeat N]");
             std::process::exit(2);
@@ -84,5 +93,22 @@ fn pyf_check() {
         let v: Vec<f64> = line.unwrap().split_whitespace().map(|s| s.parse().unwrap()).collect();
         println!("{} {} {} {} {} {}", pyf::repr(pyf::dist((v[0], v[1]), (v[2], v[3]))), pyf::repr(pyf::hypot(v[0] - v[2], v[1] - v[3])),
                  pyf::repr(pyf::round(v[0], 3)), pyf::repr(pyf::round(v[0], 6)), pyf::repr(pyf::fsum(v.iter().copied())), pyf::repr(v[0] * v[1]));
+    }
+}
+
+/// Lines of {"data": a circuit file as JSON, "source": path}: print each one's score and hash (for checking
+/// trial builds against placement's record).
+fn score_lines() {
+    let stdin = std::io::stdin();
+    for line in stdin.lock().lines() {
+        let j: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        let data = Val::from_json(&j["data"]);
+        match Circuit::new(&data, j["source"].as_str().unwrap_or("circuit.yaml")) {
+            Ok(c) => {
+                let r = bbgen::check::check(&c);
+                println!("{} {}", bbgen::pyf::repr(bbgen::autoplace::score(&c, &r)), bbgen::layout_hash(&c));
+            }
+            Err(e) => println!("error {}", e),
+        }
     }
 }

@@ -14,7 +14,7 @@ foldhash = "0.2"
 indexmap = "2"
 md-5 = "0.10"
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
-yaml-rust2 = "0.10"
+unsafe-libyaml = "0.2"
 
 [profile.release]
 debug = 1

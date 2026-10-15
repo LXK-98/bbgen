@@ -39,7 +39,7 @@ pub fn rail_plan(polarity: &IndexMap<String, Option<char>>, explicit: &IndexMap<
     plan.into_iter().filter(|(_, r)| !r.is_empty()).collect()
 }
 
-fn net_of(c: &Circuit) -> HashMap<PinId, String> {
+pub fn net_of(c: &Circuit) -> HashMap<PinId, String> {
     let mut out = HashMap::default();
     for net in c.nets.values() {
         for &p in &net.pins {
@@ -65,7 +65,7 @@ fn leg_rails(c: &Circuit, net_of: &HashMap<PinId, String>) -> IndexMap<String, V
     out
 }
 
-fn plan_of(c: &Circuit, net_of: &HashMap<PinId, String>) -> IndexMap<String, Vec<String>> {
+pub fn plan_for(c: &Circuit, net_of: &HashMap<PinId, String>) -> IndexMap<String, Vec<String>> {
     let polarity: IndexMap<String, Option<char>> = c.nets.iter().map(|(n, net)| (n.clone(), net.polarity)).collect();
     let explicit: IndexMap<String, Vec<String>> = c.nets.iter()
         .map(|(n, net)| (n.clone(), net.rails.iter().map(|r| r.rsplit(':').next().unwrap().to_string()).collect())).collect();
@@ -76,7 +76,7 @@ fn plan_of(c: &Circuit, net_of: &HashMap<PinId, String>) -> IndexMap<String, Vec
 /// the rail of its net nearest the pin.
 pub fn lead_room(c: &Circuit) -> HashSet<Hole> {
     let net_of = net_of(c);
-    let plan = plan_of(c, &net_of);
+    let plan = plan_for(c, &net_of);
     let first = &c.boards[c.default_board as usize];
     let all: Vec<Hole> = c.boards.iter().flat_map(|b| b.holes()).collect();
     let mut out = HashSet::default();
