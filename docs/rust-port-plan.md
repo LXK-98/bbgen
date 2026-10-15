@@ -190,7 +190,7 @@ alters a result, took it to 20×:
 - Many small `Vec`s are allocated for lists Python builds (`between`, `strip_holes`, `bodies_crossed`).
 
 Allocation still costs about 15% of the time. The small circuits gain least (about 15×), since their
-builds are mostly this kind of overhead.
+builds are mostly this kind of overhead. These are in [open-points.md](open-points.md), point 11.
 
 **Verdict: go on to Phase 2.** The faithful port matches exactly, and the 20× bar is met by the build
 alone. What's left to port (placement's search) is the same kind of code. The parallel search should
@@ -270,15 +270,12 @@ video's frames match byte for byte too, every try included.
 A second Python bug is copied for now: the adapter-pin error's second half isn't an f-string, so it
 prints `{{{pad}: {n}}}` as it stands.
 
-**Not done yet:**
-- **The benchmarks' own measures** (`slanted`, `bent`, `rail_links_inside`, `label_clashes`,
-  `flying_length`), so `benchmarks/run.py` can run on the Rust binary.
-- **PNG without ImageMagick** (`resvg`).
-- **Porting the unit tests.** Today the Rust is held to the Python by the golden records and the output
-  comparison instead.
-- **Removing the Python** (2.7).
-- **Fixing the two Python bugs on both sides.** That changes layouts, so the corpus is recorded again
-  then.
+**Not done at this stage, since then:**
+- **The benchmarks' measures:** done in 2.5–2.7 (`bbgen dev measure`).
+- **Removing the Python:** done in 2.5–2.7.
+- **The unit tests:** replaced by the golden records and expected outputs in `cargo test` (2.5–2.7).
+- **PNG without ImageMagick, and fixing the two Python bugs:** still open, with the rest of what's
+  left, in [open-points.md](open-points.md), point 11.
 
 ## How to keep the layouts identical
 

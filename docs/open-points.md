@@ -211,3 +211,59 @@ first, would lie straight without pushing another net off the board.
 - **Two-board benchmarks are slow to place** (17: 31 s, against 7 s for 21, the same circuit on one
   board). Not looked into; likely suspects are the bigger search space (the model gives each board its
   own run of columns) and the jumpers between boards, each of which runs the relay search first.
+
+## 11. Left over from the Rust rewrite
+
+Each of these is known and not yet done. The ones that move wires need `benchmarks/record.py` afterwards,
+and `run.py` to judge them.
+
+**Bugs kept so that the layouts stayed the same as the Python's:**
+- **A re-laid lead taken for the old one** (`settle_leads` in src/autowire.rs, `wire_eq`). Wires are
+  compared field by field, not by identity. A flying lead laid again exactly as it was, under the same
+  number, equals the old one, so it isn't found as new, and the old one is put back beside it. Two wires
+  then claim one hole: a `HOLE_TAKEN` error that costs that trial 1000 points. It hits 35 of the ~3,000
+  recorded trials, and can change which layout wins. The fix is comparing wires by `id`. It moves wires,
+  so record again.
+- **The adapter-pin error prints its placeholders.** It says `map: {{{pad}: {n}}}` instead of the pad
+  and pin (src/parts.rs, `adapter`). Fixing it changes one expected output (golden/cases/t062).
+- **The video leaves out repair moves that improve the layout.** The repair frame is only recorded
+  inside the polish branch (src/search.rs, `repair`). That branch runs only for a move that scored no
+  better, so a move that improves directly is kept but never shown, although the README says each
+  improving move is. The fix: record a frame for every move, as starts and turns do. Video only; no
+  layout changes.
+
+**Behaviour that depends on the machine:**
+- **The golden records hold for this platform's maths library.** Annealing's `exp`, the drawing's
+  `atan2`, `cos`, `sin`, `log10` and `powf` come from the C library (glibc here), as they did in the
+  Python. Another libm may differ in the last bit and pick another layout or move a label. If
+  `cargo test` fails on macOS or Windows, look there first.
+- **KiCad's Windows install isn't searched.** src/kicad.rs, `library_roots`, lost the Python's
+  `C:/Program Files/KiCad/*/share/kicad` (the glob only handles paths from `/`). On Windows, set
+  `BBGEN_KICAD` until it's added.
+- **The KiCad library's version is part of the records** (`golden/index.json`). After updating KiCad,
+  record again and look at what changed.
+
+**Speed** (beyond point 6). All of these leave results the same, which `cargo test` checks:
+- Owner names (`"W12"`, `"the body of U1"`) are strings that get compared and formatted in hot paths.
+- `unwire` recomputes every wire's covered holes, and `empty_strips` rescans the board after each wire.
+- Many small `Vec`s are allocated per call (`between`, `strip_holes`, `bodies_crossed`, `options`). Profiles
+  put allocation at 10–15 %.
+- The parallel search builds a batch of trials (one per core) and throws away what comes after the one
+  it keeps. On 8 cores it gets only 2–2.5× over one.
+
+**What could go once records are re-made anyway.** src/pyf.rs, src/pyrand.rs and src/yaml.rs copy
+Python's rounding, `math.dist`, `sum()`, random numbers, set order and PyYAML exactly. They exist only
+so that the same file still gets the same layout as before. Plain Rust arithmetic and a seeded PRNG
+would be simpler and a little faster, at the cost of one big re-record. YAML 1.1 reading (`yes`/`on`,
+octal) is a user-facing behaviour, though: keep it unless the file format changes on purpose.
+
+**Smaller things:**
+- **PNGs need ImageMagick or `rsvg-convert`.** The `resvg` crate could draw them in-process.
+- **Error texts for broken YAML are libyaml's, not PyYAML's.** It's the same problem in different words.
+- **The unit tests are end to end.** They are the golden records and the expected outputs, plus a few
+  unit tests for the float, random and combination helpers. A change that's meant to move wires gives a
+  test nothing smaller to lean on than the whole benchmark; unit tests per module (board, parts, check)
+  would help.
+- **`flying` is written as `0.0` where the Python wrote `0`** in `benchmarks/baseline.json`. They compare
+  equal.
+
