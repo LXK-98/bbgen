@@ -251,6 +251,28 @@ Each step ships with its parity check before the next one starts.
 Suggested layout: a cargo workspace with `bbgen-core` (library, no I/O beyond parsing), `bbgen-cli`
 (binary) and, later, `bbgen-wasm` / a Tauri app on top of the same core.
 
+### Phase 2.2–2.4 results: outputs, video and command line (done)
+
+`bbgen-rs build/check/find` does what `bbgen` does: the same SVG (and step drawings), checklist,
+printed report and exit status, the same `find` results, and the same video (`--video`,
+`--video-all`). `benchmarks/rs_outputs.py` builds files with both and compares everything written.
+All 138 come out byte for byte the same: the 21 placed benchmarks, the 4 examples, and the 113
+circuits the unit tests build (`benchmarks/golden/cases/`, many of them deliberately broken). The
+video's frames match byte for byte too, every try included.
+
+A second Python bug is copied for now: the adapter-pin error's second half isn't an f-string, so it
+prints `{{{pad}: {n}}}` as it stands.
+
+**Not done yet:**
+- **The benchmarks' own measures** (`slanted`, `bent`, `rail_links_inside`, `label_clashes`,
+  `flying_length`), so `benchmarks/run.py` can run on the Rust binary.
+- **PNG without ImageMagick** (`resvg`).
+- **Porting the unit tests.** Today the Rust is held to the Python by the golden records and the output
+  comparison instead.
+- **Removing the Python** (2.7).
+- **Fixing the two Python bugs on both sides.** That changes layouts, so the corpus is recorded again
+  then.
+
 ## How to keep the layouts identical
 
 **Port faithfully first, optimise second.** Get the hashes to match with a near-literal translation, then
