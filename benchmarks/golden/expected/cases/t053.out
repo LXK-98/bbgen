@@ -1,0 +1,7 @@
+warning OVER_PART    W1 runs over Pico's USB cable (d15 → g15): bend it around with via: [d12, g12]
+warning DANGLING     W1 ends in d15, where nothing else is connected
+warning DANGLING     W1 ends in g15, where nothing else is connected
+check: 0 errors, 3 warnings
+wrote OUT/t053.svg
+wrote OUT/t053.md
+exit 0

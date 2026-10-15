@@ -1,0 +1,6 @@
+error   STRAY        Pico.27 GP21 is connected to U1.3 CE but isn't in any net
+error   STRAY        U1.3 CE is connected to Pico.27 GP21 but isn't in any net
+check: 2 errors, 0 warnings
+wrote OUT/t104.svg
+wrote OUT/t104.md
+exit 1

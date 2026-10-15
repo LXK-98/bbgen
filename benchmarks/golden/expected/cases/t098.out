@@ -1,0 +1,9 @@
+error   STRAY        U1.2 V- is connected to R1.1 but isn't in any net
+error   STRAY        R1.1 is connected to U1.2 V- but isn't in any net
+error   STRAY        U1.5 X is connected to R1.2 but isn't in any net
+error   STRAY        R1.2 is connected to U1.5 X but isn't in any net
+warning OVER_PART    R1 lies over U1 (d41 → g41): put its legs where it clears the part
+check: 4 errors, 1 warning
+wrote OUT/t098.svg
+wrote OUT/t098.md
+exit 1

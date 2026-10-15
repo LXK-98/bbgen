@@ -1,0 +1,2 @@
+bbgen: boards[0]: below 2 names no board before it
+exit 2

@@ -1,0 +1,2 @@
+bbgen: parts.D1: an LED's color is red, green, yellow, blue, white, orange or #rrggbb
+exit 2

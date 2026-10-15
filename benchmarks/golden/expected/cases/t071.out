@@ -1,0 +1,6 @@
+error   OFF_HOLES    U1.3 lands in the trench or off the board
+error   OFF_HOLES    U1.4 lands in the trench or off the board
+check: 2 errors, 0 warnings
+wrote OUT/t071.svg
+wrote OUT/t071.md
+exit 1

@@ -1,0 +1,9 @@
+error   END_COVERED  W2 ends in a15, under W1, which goes in first: the jumper can't be plugged in. Move one of them
+warning DANGLING     W1 ends in a10, where nothing else is connected
+warning DANGLING     W1 ends in a20, where nothing else is connected
+warning DANGLING     W2 ends in a15, where nothing else is connected
+warning DANGLING     W2 ends in c40, where nothing else is connected
+check: 1 error, 4 warnings
+wrote OUT/t096.svg
+wrote OUT/t096.md
+exit 1

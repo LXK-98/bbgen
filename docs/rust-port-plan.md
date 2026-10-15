@@ -1,5 +1,12 @@
 # Porting bbgen to Rust
 
+**Done: bbgen is Rust now, and the Python is gone.** This page is how it got there. The scripts it
+names (`hotspots.py`, `golden.py`, `rs_check.py`, `rs_trials.py`, `rs_outputs.py`) compared the two
+versions; they went with the Python and are in git history, last in commit `a2b3fae`. What
+holds bbgen to the same results now is `cargo test` (see Phase 2.5–2.7 at the end).
+
+![Python and Rust, side by side](img/python-vs-rust.png)
+
 A plan for deciding what to port, and for porting it so that it ends up faster and still produces the
 same layouts. It's written for this codebase as of October 2026 (about 4,800 lines in `bbgen/`, 115
 tests, 21 benchmarks).
@@ -78,7 +85,7 @@ target.
 Done on the `rust-port` branch with two new scripts, described in `benchmarks/README.md`:
 
 - `benchmarks/hotspots.py` profiles every benchmark three ways (serial, serial under cProfile, and with
-  the parallel search) and writes [benchmarks/hotspots.md](../benchmarks/hotspots.md).
+  the parallel search) and writes `benchmarks/hotspots.md` (now [python-hotspots.md](python-hotspots.md)).
 - `benchmarks/golden.py` records the golden corpus (below) into `benchmarks/golden/` (276 KB). The
   recording hooks are in [bbgen/dump.py](../bbgen/dump.py).
 
@@ -353,3 +360,27 @@ steps, a larger `REPAIR_BUILDS`, or rip-up-and-reroute that was too slow in Pyth
 
 Most of the time goes into tracking down parity mismatches, not writing Rust. That's why the stage dumps
 come before any Rust is written.
+
+## Phase 2.5–2.7 results: the Python removed (done)
+
+- **Layout.** The crate lives at the repository's root (`Cargo.toml`, `src/`), and the binary is `bbgen`.
+  `bin/bbgen` is a shell launcher that builds it when the sources change, so a symlink to it on the
+  PATH keeps working. `cargo install --path .` installs it instead.
+- **The tests replace the comparisons with the Python.**
+  - `tests/golden.rs` holds all 21 benchmarks to their recorded events.
+  - `tests/trials.rs` rebuilds all 2,985 recorded trials and requires the same scores.
+  - `tests/outputs.rs` holds `bbgen build`'s report, exit status, checklist and drawing (as SHA-256) to
+    what the Python gave for 138 files. Those expected outputs (`benchmarks/golden/expected/`) were
+    taken from the Python just before it was removed.
+
+  A deliberate one-weight change (`FLEX_COST` 10 → 10.5) makes them fail, as it should.
+  `benchmarks/record.py` records new behaviour once a change is meant.
+- **The benchmarks run on the binary.** `bbgen dev measure` gives what `benchmarks/run.py` tabulates.
+  All 21 benchmarks match the baseline the Python saved in every one of the 17 measured fields; only the
+  time changed (8.4 s against 215 s). `run.py` needs nothing but Python's standard library now.
+- **Documentation.** The module docs carry the explanations the Python docstrings had, and
+  `src/costs.rs` keeps every weight's comment.
+- **Kept as the Python did it, to keep the layouts:** the two bugs above (a re-laid lead equal to the
+  old one, and the adapter-pin message), Python's float rounding, CPython's random numbers and set
+  order, and PyYAML's reading of files. Fixing the bugs moves wires: record the corpus again when you
+  do.

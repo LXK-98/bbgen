@@ -1,0 +1,10 @@
+error   STRAY        U1.1 is connected to U1.2, U1.3 but isn't in any net
+error   STRAY        U1.2 is connected to U1.1, U1.3 but isn't in any net
+error   STRAY        U1.3 is connected to U1.1, U1.2 but isn't in any net
+error   STRAY        U1.4 is connected to U1.5, U1.6 but isn't in any net
+error   STRAY        U1.5 is connected to U1.4, U1.6 but isn't in any net
+error   STRAY        U1.6 is connected to U1.4, U1.5 but isn't in any net
+check: 6 errors, 0 warnings
+wrote OUT/t067.svg
+wrote OUT/t067.md
+exit 1

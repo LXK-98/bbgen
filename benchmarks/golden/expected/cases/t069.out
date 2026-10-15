@@ -1,0 +1,7 @@
+error   HOLE_TAKEN   e10: W1 and the body of Pico both want this hole
+warning OVER_PART    W1 runs over Pico (e10 → top+10): move a part to make room
+warning DANGLING     W1 ends in top+10, where nothing else is connected
+check: 1 error, 2 warnings
+wrote OUT/t069.svg
+wrote OUT/t069.md
+exit 1

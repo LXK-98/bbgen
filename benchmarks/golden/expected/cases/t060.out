@@ -1,0 +1,2 @@
+bbgen: parts.U1: KiCad's Memory_EEPROM:24LC256 names no footprint (it comes in several packages); give one, like footprint: Package_DIP:DIP-8_W7.62mm
+exit 2

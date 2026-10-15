@@ -1,0 +1,6 @@
+error   SHORT        nets X, Y are connected together (C1.1, C1.2)
+error   SHORTED_PART both legs of C1 are in the same connection
+check: 2 errors, 0 warnings
+wrote OUT/t036.svg
+wrote OUT/t036.md
+exit 1

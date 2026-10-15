@@ -1,0 +1,8 @@
+error   END_COVERED  W3 ends in a45, under W2, which goes in first: W3 can't be plugged in. Move one of them
+warning NO_EFFECT    W3 has both ends in the same strip
+warning DANGLING     W2 ends in a40, where nothing else is connected
+warning DANGLING     W2 ends in a50, where nothing else is connected
+check: 1 error, 3 warnings
+wrote OUT/t032.svg
+wrote OUT/t032.md
+exit 1

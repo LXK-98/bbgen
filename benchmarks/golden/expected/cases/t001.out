@@ -1,0 +1,2 @@
+bbgen: parts.U1: a 1 in DIP can't straddle the trench with a free hole by each pin; give it at:
+exit 2

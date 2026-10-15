@@ -1,0 +1,4 @@
+check: 0 errors, 0 warnings
+wrote OUT/12-pico-i2c.svg
+wrote OUT/12-pico-i2c.md
+exit 0

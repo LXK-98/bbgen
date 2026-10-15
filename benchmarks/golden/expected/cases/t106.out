@@ -1,0 +1,8 @@
+error   STRAY        Pico.27 GP21 is connected to U1.3 CE but isn't in any net
+error   STRAY        U1.3 CE is connected to Pico.27 GP21 but isn't in any net
+error   STRAY        Pico.29 GP22 is connected to U1.1 VIN but isn't in any net
+error   STRAY        U1.1 VIN is connected to Pico.29 GP22 but isn't in any net
+check: 4 errors, 0 warnings
+wrote OUT/t106.svg
+wrote OUT/t106.md
+exit 1

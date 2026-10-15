@@ -1,0 +1,6 @@
+warning DANGLING     W1 ends in top+4, where nothing else is connected
+warning DANGLING     W2 ends in bot-5, where nothing else is connected
+check: 0 errors, 2 warnings
+wrote OUT/t064.svg
+wrote OUT/t064.md
+exit 0

@@ -1,0 +1,5 @@
+error   OPEN         net GND is in 2 unconnected pieces: {Pico.3 GND, Pico.8 GND, Pico.13 GND, Pico.18 GND and 3 more} | {D1.2 K}
+check: 1 error, 0 warnings
+wrote OUT/t034.svg
+wrote OUT/t034.md
+exit 1

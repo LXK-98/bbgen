@@ -1,0 +1,2 @@
+bbgen: nets: 3 positive supplies (5V, 3V3, 12V) but the board has 2 + rails: each needs its own. Split the rails (split_rails: true) or add a board
+exit 2

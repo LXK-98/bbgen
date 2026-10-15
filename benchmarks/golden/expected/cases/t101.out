@@ -1,0 +1,7 @@
+error   STRAY        U1.1 OUT is connected to U1.4 IN- but isn't in any net
+error   STRAY        U1.4 IN- is connected to U1.1 OUT but isn't in any net
+warning OVER_PART    W1 runs over U1 (d42 → g40): bend it around with via: [d39, g39]
+check: 2 errors, 1 warning
+wrote OUT/t101.svg
+wrote OUT/t101.md
+exit 1

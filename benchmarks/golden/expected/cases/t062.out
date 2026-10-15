@@ -1,0 +1,2 @@
+bbgen: parts.U1: chip pad 5 has no adapter pin 5 (the adapter has 4); map it, like map: {{{pad}: {n}}}
+exit 2

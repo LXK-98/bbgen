@@ -1,0 +1,5 @@
+warning DIAGONAL     W9 slants (c25 → d8): every straight route is blocked (by W1, W2, W3, W4). Move parts to make room
+check: 0 errors, 1 warning
+wrote OUT/t048.svg
+wrote OUT/t048.md
+exit 0

@@ -1,0 +1,2 @@
+bbgen: parts.U1: Package_TO_SOT_SMD:SOT-23-5 is surface-mount; put it on an SMD-to-DIP adapter, like adapter: {pins: 6}
+exit 2

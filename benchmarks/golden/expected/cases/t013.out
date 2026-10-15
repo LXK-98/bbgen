@@ -1,0 +1,6 @@
+error   BAD_RAIL     nets.B: top+ already carries A
+error   BAD_RAIL     nets.B is a supply but is on the top- rail
+check: 2 errors, 0 warnings
+wrote OUT/t013.svg
+wrote OUT/t013.md
+exit 1

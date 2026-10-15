@@ -1,0 +1,6 @@
+error   STRAY        U1.3 CE is connected to R1.1 but isn't in any net
+error   STRAY        R1.1 is connected to U1.3 CE but isn't in any net
+check: 2 errors, 0 warnings
+wrote OUT/t105.svg
+wrote OUT/t105.md
+exit 1

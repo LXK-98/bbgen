@@ -1,0 +1,5 @@
+warning DANGLING     W1 ends in top-25, where nothing else is connected
+check: 0 errors, 1 warning
+wrote OUT/t090.svg
+wrote OUT/t090.md
+exit 0

@@ -1,0 +1,4 @@
+check: 0 errors, 0 warnings
+wrote OUT/555-kicad.svg
+wrote OUT/555-kicad.md
+exit 0

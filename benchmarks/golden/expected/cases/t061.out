@@ -1,0 +1,2 @@
+bbgen: parts.U1: Package_TO_SOT_THT:TO-92_Inline's pads aren't on the 0.1 in grid of a breadboard (pad 2); pick a footprint whose pads are, like TO-92_Inline_Wide for a TO-92
+exit 2

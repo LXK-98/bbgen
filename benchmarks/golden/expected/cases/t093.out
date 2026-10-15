@@ -1,0 +1,6 @@
+warning DIAGONAL     W1 slants (d26 → top-25): column 26 has no top- hole (the rails have none in columns 1, 2, 8, 14, 20, 26, 32, 38, 44, 50, 56, 62, 63). Move U1, or accept it with slant: <reason> on W1
+warning DANGLING     W1 ends in top-25, where nothing else is connected
+check: 0 errors, 2 warnings
+wrote OUT/t093.svg
+wrote OUT/t093.md
+exit 0

@@ -1,0 +1,2 @@
+bbgen: parts.U1: no symbol 'NE555X' in KiCad's Timer library
+exit 2

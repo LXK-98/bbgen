@@ -8,7 +8,7 @@ bbgen does all of it, so the run measures bbgen alone.
 python3 benchmarks/run.py              # build them all, compare with baseline.json
 python3 benchmarks/run.py 05 m2        # just these
 python3 benchmarks/run.py --save       # make this run the baseline
-python3 benchmarks/run.py --no-png     # faster
+python3 benchmarks/run.py --no-png     # faster (no ImageMagick needed)
 python3 benchmarks/run.py --check      # exit 1 on a missed expectation or a regression
 ```
 
@@ -42,26 +42,34 @@ which on one board covers one side's strips whole: 17 puts it across two boards 
 
 What the benchmarks still show (13's bus, 14's crowding, leads crossing, 16's size), what was tried
 for each and where to start: [docs/open-points.md](../docs/open-points.md).
-## For the Rust port
+## The golden records
 
-Two more scripts, for [docs/rust-port-plan.md](../docs/rust-port-plan.md):
+`cargo test` holds bbgen to what's recorded in `golden/`:
+
+- **`golden/<name>.jsonl.gz`**: each benchmark's build, event by event. It runs from the choices
+  placement weighs and every trial with its score, through every wire and the cost it was chosen at,
+  to the check. `bbgen dev build FILE --dump OUT.jsonl` writes the same events.
+- **`golden/placed/`**: each benchmark as placement left it.
+- **`golden/cases/`**: 113 small circuits, many broken on purpose. They were captured from the unit
+  tests of the Python bbgen that came before.
+- **`golden/expected/`**: what `bbgen build` prints and writes for the placed benchmarks, the
+  examples and the cases.
+
+The records were made with the Python bbgen this replaced, and the Rust one matched them before the
+Python was removed. That history is in [docs/rust-port-plan.md](../docs/rust-port-plan.md).
+
+A change that moves a wire fails the tests on purpose. First judge it with `run.py`, circuit by
+circuit, then record it and commit the records with the change:
 
 ```bash
-python3 benchmarks/hotspots.py         # where the time goes: builds, ms per build, each stage's share
-python3 benchmarks/golden.py           # record the golden corpus into golden/
-python3 benchmarks/golden.py --diff golden/13-ben-eater-register.jsonl.gz other.jsonl
-python3 benchmarks/rs_check.py         # the Rust port (rust/) against the golden records, and its speed
-python3 benchmarks/rs_check.py --full  # ... placing from scratch: the whole record, on one core and on all
-python3 benchmarks/rs_trials.py        # every trial placement built, rebuilt in Rust: the same score?
-python3 benchmarks/rs_outputs.py       # bbgen and bbgen-rs on the same files: the same SVG, checklist, report
+python3 benchmarks/run.py --check      # better or worse?
+python3 benchmarks/record.py           # accept it: record everything again
+cargo test --release
 ```
 
-`hotspots.py` writes `hotspots.md`: each circuit built serially (plain, then under cProfile) and with
-the parallel search, the trial builds it needed and the ones workers started for nothing, and the
-layout's hash. `golden.py` records each circuit's build event by event ([bbgen/dump.py](../bbgen/dump.py)):
-the choices placement weighs, every trial and its score, the wires as they go in and the cost each was
-chosen at, the check. It also writes the file as placed (`golden/placed/`), which wires the same layout
-without placing anything. A port writes the same events; `--diff` names the first one where the two
-part ways (from a placed file's build on, when one side built only that). `rs_check.py` builds `rust/`,
-runs it on every placed file, diffs its events with the golden record and times it (`--python` times
-the Python too).
+The KiCad library parts come from is part of the record (`golden/index.json` names it). After
+updating KiCad, record again and look at what changed.
+
+To check that a change leaves layouts alone, such as a refactor or a speed-up, compare the layout
+hash `bbgen dev build FILE` prints. Compare it with one core (`BBGEN_JOBS=1`) and with all of them:
+the parallel search is meant to be exact.

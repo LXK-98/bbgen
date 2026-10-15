@@ -1,0 +1,5 @@
+error   BAD_WIRE     W1 (U1.GND -> top-): U1.GND is ambiguous: pins 1, 4
+check: 1 error, 0 warnings
+wrote OUT/t030.svg
+wrote OUT/t030.md
+exit 1

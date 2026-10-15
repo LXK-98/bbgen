@@ -1,0 +1,4 @@
+check: 0 errors, 0 warnings
+wrote OUT/pico-blink.svg
+wrote OUT/pico-blink.md
+exit 0

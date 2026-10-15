@@ -1,0 +1,4 @@
+check: 0 errors, 0 warnings
+wrote OUT/10-atmega328-breadboard.svg
+wrote OUT/10-atmega328-breadboard.md
+exit 0

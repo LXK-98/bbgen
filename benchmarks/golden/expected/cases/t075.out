@@ -1,0 +1,2 @@
+bbgen: nets: 3 positive supplies (VIN, VCC, 5V) but the board has 2 + rails: each needs its own. Split the rails (split_rails: true) or add a board (VIN, VCC, 5V are taken as a supply from the name: say rail: none if not)
+exit 2

@@ -5,36 +5,28 @@ What's left to improve in bbgen's placement and wiring, as of the `routing-impro
 tried and what came of it, and where to start. Numbers are from `benchmarks/results.md` unless
 a point says otherwise.
 
-How placement and wiring work today is described in the docstrings at the top of
-[bbgen/autowire.py](../bbgen/autowire.py) and [bbgen/autoplace.py](../bbgen/autoplace.py); every weight
-they trade off is in [bbgen/costs.py](../bbgen/costs.py).
+bbgen has since been rewritten in Rust with exactly the same results ([rust-port-plan.md](rust-port-plan.md)):
+every layout and number below still holds, only the times are about 25× shorter. How placement and wiring
+work is described at the top of [src/autowire.rs](../src/autowire.rs), [src/search.rs](../src/search.rs)
+and [src/legs.rs](../src/legs.rs); every weight they trade off is in [src/costs.rs](../src/costs.rs).
+Names below like `_relay` or `_Model.cost` are the Python's; in Rust they're `relay` and `Model::cost`.
 
 ## Measuring a change
 
 - `python3 benchmarks/run.py` builds all 21 circuits and compares them with `benchmarks/baseline.json`;
   `--check` exits 1 on any regression; `--no-png` is faster; `run.py 13 14` builds only those. A full
-  run takes about 3.5 minutes on 8 cores (16 alone is about 75 s).
-- Check one circuit's numbers in Python (`Circuit.load(path)`, then `check()`, and
-  `bbgen.measure.crossings`, `slanted`, and so on) rather than adding up the table by hand.
-- To prove a change leaves layouts alone (a refactor, a speed-up), compare every part's holes and
-  every wire before and after, with a fixed `PYTHONHASHSEED`:
-
-  ```python
-  import hashlib, sys
-  from bbgen.circuit import Circuit
-  for f in sys.argv[1:]:
-      c = Circuit.load(f)
-      parts = sorted((p.ref, tuple(c.hole_name(x.hole) if x.hole else '-' for x in p.pins)) for p in c.parts.values())
-      wires = sorted((w.group, c.hole_name(w.a.hole) if w.a.hole else str(w.a.pin),
-                      c.hole_name(w.b.hole) if w.b.hole else str(w.b.pin), w.flex) for w in c.wires)
-      print(f, hashlib.md5(repr((parts, wires)).encode()).hexdigest()[:10])
-  ```
-
-  `BBGEN_JOBS=1` and the default must print the same: the parallel search is meant to be exact.
+  run takes about 8 s on 8 cores (16 alone about 3 s).
+- Check one circuit's numbers with `bbgen dev measure FILE OUTDIR --no-png` (the same JSON run.py
+  tabulates) rather than adding up the table by hand.
+- To prove a change leaves layouts alone (a refactor, a speed-up), compare the layout hash
+  `bbgen dev build FILE` prints (every part's holes and every wire), before and after. `cargo test`
+  does this and more for all 21 against `benchmarks/golden/`. `BBGEN_JOBS=1` and the default must
+  print the same: the parallel search is meant to be exact.
+- A change meant to move wires fails `cargo test` by design: judge it with run.py, then record it with
+  `benchmarks/record.py` and commit the records with it (benchmarks/README.md).
 - Placement scores every trial with the full wiring, so a wiring change also changes which layout
-  wins. To judge a wiring change on its own, build the layout bbgen placed with the old code
-  (`autoplace(data, path)` returns the file with everything placed), then wire that same layout
-  with the old and the new code.
+  wins. To judge a wiring change on its own, wire the placed layouts in `benchmarks/golden/placed/`
+  (the benchmarks as placement left them) with the old and the new code.
 
 ## Where things stand
 
@@ -57,7 +49,7 @@ of a bus become jumpers.
   warnings from 3 to 1. Kept.
 - Rip-up and reroute (taking out a jumper's net and the nets in its way, wiring it first): it traded
   one jumper for another every time, since the rows are simply full. Left out; the reasoning is in
-  autowire.py's docstring.
+  the notes at the top of src/autowire.rs.
 - Placement counting each column's free rows (`taken` in `_Model.cost`) instead of assuming two:
   helped 11, 12, 14 and 15; did nothing for 13.
 
@@ -149,6 +141,11 @@ and 7.
 
 ## 6. Speed: placement rebuilds the whole circuit for every move
 
+**Status: mostly done by the Rust rewrite.** A full run went from 221 s to 8 s on 8 cores. Kept circuits
+come back from the threads that built them, and trials are built in order on threads, which makes the
+results exactly the same. What follows is the Python's story; incremental repair is still open and would
+help 16 most (about 3 s, mostly wiring).
+
 **Issue.** Every trial layout is a fresh `Circuit` built from the file: parse, place, wire, check, score.
 The repair search builds up to 120 of them, plus starts, turns and polish. A full benchmark run is
 about 3.5 minutes; 16 alone 75 s.
@@ -171,8 +168,9 @@ time.
   fingerprint script against a full rebuild.
 - Send the winning circuit back from the worker (pickled) instead of building it again.
 - Anneal the four seeds in parallel; the layouts reference `Pin` objects, so return choices by index.
-- Profile first (`cProfile` on `Circuit.load`): the relay search (`_relay`, `_reach`) and leg placement
-  (`_Legs.cheap`) were the hot spots last time.
+- Profile first (`perf record -g target/release/bbgen dev build FILE`; a build with frame pointers,
+  `RUSTFLAGS="-C force-frame-pointers=yes"`, gives clean call graphs): in Rust the wiring (`join`,
+  `relay`, `settle_leads`) and leg placement (`Legs::choose`) were the hot spots.
 
 ## 7. An exact solver for small circuits or stuck regions
 
@@ -187,7 +185,7 @@ better.
 
 ## 8. Rip-up and reroute
 
-Tried and left out (see point 1, and autowire.py's docstring): on these layouts the jumpers are there
+Tried and left out (see point 1, and the notes at the top of src/autowire.rs): on these layouts the jumpers are there
 for want of room, not wiring order. Worth trying again if a layout turns up where a jumper's net, wired
 first, would lie straight without pushing another net off the board.
 
@@ -195,7 +193,7 @@ first, would lie straight without pushing another net off the board.
 
 - **Stacked boards** (`below:`): the lower board is assumed to sit on the same 0.1 in grid, its row a
   1.0 in (`STACK` = 20 holes) under the upper board's row i, so a 1.0 in module sits in both. Measure two
-  of the boards you build on, snapped together; if the spacing differs, `STACK` in board.py is the place.
+  of the boards you build on, snapped together; if the spacing differs, `STACK` in src/board.rs is the place.
 - **Raised modules** (`raised: true`): assumed high enough on their headers for flat jumper wire to pass
   under (true of standard 2.54 mm headers with their plastic spacer). Header plastic is modelled as an
   obstacle along each row of pins.
@@ -205,7 +203,8 @@ first, would lie straight without pushing another net off the board.
 ## 10. Smaller things
 
 - **A raised Pico** builds (`type: pico, raised: true`), but only a DIP-style module is covered by tests
-  (`tests/test_raised.py`). Add one, including that a wire under it can't cross its pin rows.
+  (the raised cases in `benchmarks/golden/cases/`). Add one, including that a wire under it can't cross
+  its pin rows.
 - **Large KiCad modules hang off the board** in the drawing (the OLED in 17 and 21): their footprint
   body is the whole module. Harmless to the check; a module could be drawn as its header only, with the
   rest outlined.

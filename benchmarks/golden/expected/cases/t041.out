@@ -1,0 +1,2 @@
+bbgen: parts.R1: unknown type 'banana' (expected one of pico, dip, sip, kicad, resistor, capacitor, electrolytic, diode, led, offboard, or a KiCad symbol: Library:Name)
+exit 2

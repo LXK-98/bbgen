@@ -1,0 +1,5 @@
+error   BAD_RAIL     nets.GND is a ground but is on the top+ rail
+check: 1 error, 0 warnings
+wrote OUT/t074.svg
+wrote OUT/t074.md
+exit 1

@@ -1,0 +1,5 @@
+error   BAD_WIRE     W1 (U1.A -> f30): no free hole left in the strip of U1.2 A
+check: 1 error, 0 warnings
+wrote OUT/t085.svg
+wrote OUT/t085.md
+exit 1

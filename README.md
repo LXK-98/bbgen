@@ -14,13 +14,17 @@ Breadboard layouts from YAML, written by you or by Claude Code. One circuit file
 
 ## Install
 
-Needs Python 3.10+ and PyYAML. Either symlink the launcher onto your PATH:
+Written in Rust; needs a Rust toolchain (`cargo`, from [rustup](https://rustup.rs)) to build. Either
+symlink the launcher onto your PATH, which builds bbgen the first time and again whenever the sources
+change:
 
 ```bash
 ln -s ~/Documents/Code/bbgen/bin/bbgen ~/.local/bin/bbgen
 ```
 
-or install it: `pip install -e .`
+or install the binary: `cargo install --path ~/Documents/Code/bbgen`. Parts named from KiCad
+(`symbol:`, `footprint:`) need KiCad's library installed; PNGs need ImageMagick or `rsvg-convert`,
+videos ImageMagick and ffmpeg.
 
 ## Use
 
@@ -359,12 +363,17 @@ ln -s ~/Documents/Code/bbgen/skill ~/.claude/skills/breadboard
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .
+cargo test --release
 ```
+
+The tests hold bbgen to its records in `benchmarks/golden/`: each benchmark placed and wired event
+by event, every trial layout placement builds and its score, and what `bbgen build` prints and
+writes for the examples and 113 circuits built to break it. A change that moves a wire fails them
+by design; once the benchmarks say the change is better, record it with `benchmarks/record.py`.
 
 Changing how bbgen places or wires? Run the benchmarks before and after: 21 real circuits that
 bbgen places and wires from scratch, measured for errors, warnings, slants, crossings, jumpers and
 time, with `--check` failing on any regression ([benchmarks/README.md](benchmarks/README.md)). The
-costs placement and wiring trade off are all in [bbgen/costs.py](bbgen/costs.py), in holes of wire
+costs placement and wiring trade off are all in [src/costs.rs](src/costs.rs), in holes of wire
 length so they compare directly. What's still open, what was tried and where to start is in
 [docs/open-points.md](docs/open-points.md).

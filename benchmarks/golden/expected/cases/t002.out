@@ -1,0 +1,5 @@
+error   BAD_LEG      R2: R2.1, R2.2 is in no net, so bbgen can't tell where it goes; give its pins
+check: 1 error, 0 warnings
+wrote OUT/t002.svg
+wrote OUT/t002.md
+exit 1

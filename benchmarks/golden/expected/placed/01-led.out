@@ -1,0 +1,4 @@
+check: 0 errors, 0 warnings
+wrote OUT/01-led.svg
+wrote OUT/01-led.md
+exit 0

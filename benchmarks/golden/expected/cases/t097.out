@@ -1,0 +1,6 @@
+error   STRAY        U1.1 OUT is connected to U1.4 IN- but isn't in any net
+error   STRAY        U1.4 IN- is connected to U1.1 OUT but isn't in any net
+check: 2 errors, 0 warnings
+wrote OUT/t097.svg
+wrote OUT/t097.md
+exit 1

@@ -1,0 +1,5 @@
+warning OVER_PART    R6 lies over U1 (g17 → e21): put its legs where it clears the part
+check: 0 errors, 1 warning
+wrote OUT/14-7seg-multiplexed.svg
+wrote OUT/14-7seg-multiplexed.md
+exit 0

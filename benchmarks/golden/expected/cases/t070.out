@@ -1,0 +1,8 @@
+error   BAD_WIRE     W3 (Pico.GP0 -> top+): no free hole left in the strip of Pico.1 GP0
+warning DIAGONAL     W2 slants (j3 → top+4): every straight route is blocked (by Pico, W1). Move parts to make room, bend it with via:, or accept it with slant: <reason> on W2
+warning OVER_PART    W1 runs over Pico (i3 → top+3): move a part to make room
+warning OVER_PART    W2 runs over Pico (j3 → top+4): move a part to make room
+check: 1 error, 3 warnings
+wrote OUT/t070.svg
+wrote OUT/t070.md
+exit 1

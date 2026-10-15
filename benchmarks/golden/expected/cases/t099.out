@@ -1,0 +1,6 @@
+warning OVER_PART    W1 ends in b25, under R1: move one of them
+warning DANGLING     W1 ends in b30, where nothing else is connected
+check: 0 errors, 2 warnings
+wrote OUT/t099.svg
+wrote OUT/t099.md
+exit 0

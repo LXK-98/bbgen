@@ -1,0 +1,5 @@
+error   OPEN         net X is in 2 unconnected pieces: {R1.1} | {R1.2}
+check: 1 error, 0 warnings
+wrote OUT/t040.svg
+wrote OUT/t040.md
+exit 1

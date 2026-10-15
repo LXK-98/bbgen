@@ -1,0 +1,2 @@
+bbgen: parts.K1: there's no place on the board where its pins all land in holes without two of them sharing a strip; give it at:, or use another footprint
+exit 2
