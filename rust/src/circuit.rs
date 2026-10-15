@@ -1011,6 +1011,19 @@ impl Circuit {
         n
     }
 
+    /// Each straight run of a wire, in order (its ends and bends), without building the list.
+    #[inline]
+    pub fn for_each_segment(&self, w: &Wire, mut f: impl FnMut(Xy, Xy)) {
+        let a = self.end_xy(w.a.as_ref().unwrap());
+        let b = self.end_xy(w.b.as_ref().unwrap());
+        let mut prev = a;
+        for &v in &w.via_xy {
+            f(prev, v);
+            prev = v;
+        }
+        f(prev, b);
+    }
+
     pub fn wire_points(&self, w: &Wire) -> Vec<Xy> {
         let mut pts = vec![self.end_xy(w.a.as_ref().unwrap())];
         pts.extend(w.via_xy.iter().copied());

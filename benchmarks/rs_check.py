@@ -53,27 +53,37 @@ def full(argv: list[str]) -> int:
     paths = sorted(p for p in HERE.glob("[0-9]*.yaml") if not argv or any(a in p.stem for a in argv))
     bad = 0
     total_rs = total_py = 0.0
-    print(f"{'circuit':26} {'parity':>8} {'Rust s':>8} {'Python s (1 core)':>18} {'speed-up':>9}")
+    golden = json.loads((HERE / "golden" / "index.json").read_text())
+    print(f"{'circuit':26} {'parity':>8} {'1 core s':>9} {'all cores s':>12} {'same hash':>10} {'Python 1 core s':>16} "
+          f"{'Python all s':>13} {'speed-up':>9}")
+    totals = [0.0, 0.0, 0.0, 0.0]
     with tempfile.TemporaryDirectory() as tmp:
         for p in paths:
             out = Path(tmp) / f"{p.stem}.jsonl"
-            t0 = time.perf_counter()
             subprocess.run([str(BIN), "build", str(p), "--dump", str(out)], capture_output=True)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 same = out.exists() and diff(HERE / "golden" / f"{p.stem}.jsonl.gz", out) == 0
-            # timed again without the record
-            t0 = time.perf_counter()
-            subprocess.run([str(BIN), "build", str(p)], capture_output=True)
-            rs = time.perf_counter() - t0
-            ps = py.get(p.stem, {}).get("serial", {}).get("seconds")
-            bad += not same
-            total_rs += rs
-            total_py += ps or 0
-            print(f"{p.stem:26} {'same' if same else 'DIFFERS':>8} {rs:8.2f} {ps or 0:18.1f} {(ps or 0) / rs:8.0f}×", flush=True)
+            times, hashes = [], []
+            for jobs in ("1", ""):  # one core, then all of them: timed without a record
+                env = {**__import__("os").environ, "BBGEN_JOBS": jobs}
+                t0 = time.perf_counter()
+                res = subprocess.run([str(BIN), "build", str(p)], capture_output=True, text=True, env=env)
+                times.append(time.perf_counter() - t0)
+                hashes.append(res.stdout.split("hash ")[1].split(",")[0] if "hash " in res.stdout else "?")
+            hash_ok = all(h == golden[p.stem]["hash"] for h in hashes)
+            hp = py.get(p.stem, {})
+            ps, pp = hp.get("serial", {}).get("seconds", 0), hp.get("parallel", {}).get("seconds", 0)
+            bad += not (same and hash_ok)
+            for i, v in enumerate((times[0], times[1], ps, pp)):
+                totals[i] += v
+            print(f"{p.stem:26} {'same' if same else 'DIFFERS':>8} {times[0]:9.2f} {times[1]:12.2f} {'yes' if hash_ok else 'NO':>10} "
+                  f"{ps:16.1f} {pp:13.1f} {pp / times[1]:8.0f}×", flush=True)
             if not same:
                 print("   " + buf.getvalue().strip().replace("\n", "\n   ")[:2000])
-    print(f"{'all':26} {len(paths) - bad}/{len(paths):<6} {total_rs:8.2f} {total_py:18.1f} {total_py / total_rs:8.0f}×")
+    print(f"{'all':26} {len(paths) - bad}/{len(paths):<6} {totals[0]:9.2f} {totals[1]:12.2f} {'':>10} {totals[2]:16.1f} "
+          f"{totals[3]:13.1f} {totals[3] / totals[1]:8.0f}×")
+    print("speed-up: Python on all cores against Rust on all cores. Python's times are hotspots.py's (benchmarks/out).")
     return 1 if bad else 0
 
 

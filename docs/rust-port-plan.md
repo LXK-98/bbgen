@@ -191,6 +191,45 @@ gain more on top, since threads remove the rebuilds and the pickling.
 
 ## Phase 2: the rest, in order
 
+### Phase 2.1 results: the search, the same as Python, 28× faster (done)
+
+The port places parts too:
+- the estimate model and annealing, with CPython's Mersenne Twister and its two-element set order copied
+  exactly (checked against Python)
+- leg placement for two-lead parts
+- the start, turn, repair and polish search
+
+`python3 benchmarks/rs_check.py --full` runs each benchmark from its own file and compares the whole
+record, from the model's choices and every anneal result to every trial, every kept move and every wire.
+It runs once on one core and once on all cores, and checks the layout hash both times.
+`benchmarks/rs_trials.py` rebuilds each of the 2,985 recorded trials in Rust; all of them score the same.
+
+**Parity: all 21 the same,** on one core and on all cores.
+
+| | Python | Rust |
+|---|---|---|
+| all 21, one core | 589 s | 17.0 s (35×) |
+| all 21, all cores | 221 s | 8.0 s (28×) |
+| 16, all cores | 75 s | 2.8 s |
+| 13, all cores | 11.3 s | 0.47 s |
+
+Trials are built on threads (`rayon`), the next few side by side, and taken in order, so the search stops
+where it would on one core. A worker's circuit comes back with its score, so no trial is built twice. On
+one core the time for 16 splits into wiring (56 %), leg placement (30 %) and the estimate (10 %).
+
+**Found on the way:**
+- **A bug in the Python.** In `_settle_leads`, `x not in leads` compares wires by value. A lead laid
+  again exactly as it was, under the same number, is taken for the old one, which is then put back beside
+  it: a `HOLE_TAKEN` error in 35 of the ~3,000 trials. The port copies it to keep the layouts the same.
+  Fix it on both sides at once, and record the corpus again.
+- **YAML is read as PyYAML reads it.** The Rust reader uses libyaml's grammar and PyYAML's SafeLoader
+  rules for plain scalars (`rail: -}`, `yes`/`on`, octal `010`, `1_000`). On all 47 YAML files in the
+  repository, plus a file of awkward cases, it gives exactly what `yaml.safe_load` gives.
+- **Python's annealing calls `math.exp`.** Rust's `f64::exp` calls the same libm on Linux, so the results
+  match here. On another platform, check the golden records before trusting a match.
+
+
+
 Each step ships with its parity check before the next one starts.
 
 1. **Search** (`autoplace`): the `_Model` estimate, `anneal`, `place_legs`, `_repair`, `_polish`,

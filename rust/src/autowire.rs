@@ -1425,10 +1425,7 @@ fn wires_crossed(c: &Circuit, a: Xy, b: Xy) -> usize {
     let mut n = 0;
     for w in &c.wires {
         if w.a.is_some() && w.b.is_some() {
-            let pts = c.wire_points(w);
-            for s in pts.windows(2) {
-                n += cross((a, b), (s[0], s[1])) as usize;
-            }
+            c.for_each_segment(w, |p, q| n += cross((a, b), (p, q)) as usize);
         }
     }
     n

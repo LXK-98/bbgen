@@ -44,6 +44,8 @@ type MPin = (usize, usize);
 #[derive(Debug)]
 pub struct Layout {
     pub at: String,
+    /// x_of(at): pin 1's column along the model's row of boards
+    pub x: i64,
     pub rot: i32,
     pub xy: Vec<(MPin, (i64, i64))>,
     pub spans: Vec<(Half, i64, i64)>,
@@ -454,7 +456,7 @@ impl Model {
         let prefix = if bi == 0 { String::new() } else { format!("{}:", board.id) };
         let walls: Vec<(Half, i64, i64)> = views.iter().flat_map(|&v| self.walls(part, rot, ax, ay, &xy, v)).collect();
         let taken = self.taken(part, rot, ax, ay, &xy, &views);
-        Some(Layout { at: format!("{}{}{}", prefix, row.name(), col), rot, xy, spans, keep, walls, taken })
+        Some(Layout { at: format!("{}{}{}", prefix, row.name(), col), x: ax, rot, xy, spans, keep, walls, taken })
     }
 
     fn choices_of(&self, pi: usize) -> Result<Vec<Layout>, String> {
@@ -715,17 +717,17 @@ impl Model {
             let a = rng.choice(&all);
             let mut new = state.clone();
             if rng.random() < 0.7 {
-                let at_x = self.x_of(&self.choices[a][state[a].1].at);
-                let near: Vec<usize> = (0..self.choices[a].len()).filter(|&ch| (self.x_of(&self.choices[a][ch].at) - at_x).abs() <= 6).collect();
+                let at_x = self.choices[a][state[a].1].x;
+                let near: Vec<usize> = (0..self.choices[a].len()).filter(|&ch| (self.choices[a][ch].x - at_x).abs() <= 6).collect();
                 let pool: Vec<usize> = if near.is_empty() { (0..self.choices[a].len()).collect() } else { near };
                 new[a].1 = rng.choice(&pool);
             } else if n > 1 && rng.random() < 0.5 {
                 let others: Vec<usize> = (0..n).filter(|&o| o != a).collect();
                 let o = rng.choice(&others);
-                let xo = self.x_of(&self.choices[o][state[o].1].at);
-                let xa = self.x_of(&self.choices[a][state[a].1].at);
-                new[a].1 = (0..self.choices[a].len()).min_by_key(|&ch| (self.x_of(&self.choices[a][ch].at) - xo).abs()).unwrap();
-                new[o].1 = (0..self.choices[o].len()).min_by_key(|&ch| (self.x_of(&self.choices[o][ch].at) - xa).abs()).unwrap();
+                let xo = self.choices[o][state[o].1].x;
+                let xa = self.choices[a][state[a].1].x;
+                new[a].1 = (0..self.choices[a].len()).min_by_key(|&ch| (self.choices[a][ch].x - xo).abs()).unwrap();
+                new[o].1 = (0..self.choices[o].len()).min_by_key(|&ch| (self.choices[o][ch].x - xa).abs()).unwrap();
             } else {
                 let all_ch: Vec<usize> = (0..self.choices[a].len()).collect();
                 new[a].1 = rng.choice(&all_ch);
@@ -825,7 +827,44 @@ struct Scorer<'a> {
     source: &'a str,
 }
 
+/// How many trials to build side by side: BBGEN_JOBS, or one per core.
+pub fn jobs() -> usize {
+    std::env::var("BBGEN_JOBS").ok().and_then(|v| v.parse().ok()).filter(|&n: &usize| n >= 1)
+        .unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1))
+}
+
 impl<'a> Scorer<'a> {
+    /// Build the trials in order, handing each (its index, the file, its build) to visit until visit says stop.
+    /// The next few are built side by side; visit still sees them one at a time and in order, so the search
+    /// stops at the same trial and ends the same as built one at a time. (A record is made one at a time, as
+    /// in the Python: the events come from the builds.)
+    fn scan(&self, trials: Vec<Val>, mut visit: impl FnMut(usize, Val, Built) -> bool) {
+        use rayon::prelude::*;
+        let jobs = jobs();
+        if jobs <= 1 || dump::active() {
+            for (i, t) in trials.into_iter().enumerate() {
+                let b = self.score(&t);
+                if visit(i, t, b) {
+                    return;
+                }
+            }
+            return;
+        }
+        let mut it = trials.into_iter().enumerate();
+        loop {
+            let batch: Vec<(usize, Val)> = it.by_ref().take(jobs).collect();
+            if batch.is_empty() {
+                return;
+            }
+            let built: Vec<Built> = batch.par_iter().map(|(_, t)| evaluate(t, self.source)).collect();
+            for ((i, t), b) in batch.into_iter().zip(built) {
+                if visit(i, t, b) {
+                    return;
+                }
+            }
+        }
+    }
+
     fn score(&self, trial: &Val) -> Built {
         let b = evaluate(trial, self.source);
         if dump::active() {
@@ -976,7 +1015,7 @@ fn moves(model: &Model, leads: &[String], c: &Circuit, result: &crate::check::Re
         let layouts: Vec<usize> = (0..model.choices[a].len()).filter(|&ch| ch != state[a].1 && Some(&ch) != flipped.get(&a)).collect();
         let near = |ch: usize| {
             let l = &model.choices[a][ch];
-            (model.x_of(&l.at) - col).abs() + (parse_hole(&l.at).unwrap().1 != row) as i64 * 2 + (l.rot != rot) as i64 * 3
+            (l.x - col).abs() + (parse_hole(&l.at).unwrap().1 != row) as i64 * 2 + (l.rot != rot) as i64 * 3
         };
         let cost_with = |ch: usize| {
             let mut s = state.clone();
@@ -1063,19 +1102,24 @@ fn polish(sc: &Scorer, leads: &[String], data: Val, mut score: f64, mut c: Circu
         if spent >= budget {
             break;
         }
-        for trial in trials.into_iter().take(budget - spent) {
-            let b = sc.score(&trial);
+        trials.truncate(budget - spent);
+        let mut kept: Option<(f64, Val, Circuit)> = None;
+        sc.scan(trials, |_, trial, b| {
             spent += 1;
             if b.score < score - 1e-9 {
                 if dump::active() {
                     dump::event("keep", vec![("stage", json!("polish")), ("score", dump::num(b.score))]);
                 }
-                score = b.score;
-                c = b.circuit;
-                data = without_rank(with(&trial, &pinned(&c, leads)));
-                improved = true;
-                break;
+                kept = Some((b.score, trial, b.circuit));
+                return true;
             }
+            false
+        });
+        if let Some((s2, trial, c2)) = kept {
+            score = s2;
+            c = c2;
+            data = without_rank(with(&trial, &pinned(&c, leads)));
+            improved = true;
         }
     }
     (score, data, c, spent)
@@ -1132,18 +1176,20 @@ pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
     starts.truncate(KEEP * 2);
     let sc = Scorer { source };
     let mut best: Option<(f64, Val, Circuit, usize)> = None;
-    for (_, state, k) in &starts {
+    let trials: Vec<Val> = starts.iter().map(|(_, state, k)| {
         let m = all_models[*k];
         let changes: Changes = state.iter().map(|&(a, ch)| (m.auto[a].clone(), at_rot(m, a, ch))).collect();
-        let trial = with(&bases[*k], &changes);
-        let b = sc.score(&trial);
+        with(&bases[*k], &changes)
+    }).collect();
+    sc.scan(trials, |i, trial, b| {
         if best.as_ref().map(|x| b.score < x.0).unwrap_or(true) {
             if dump::active() {
                 dump::event("keep", vec![("stage", json!("start")), ("score", dump::num(b.score))]);
             }
-            best = Some((b.score, trial, b.circuit, *k));
+            best = Some((b.score, trial, b.circuit, starts[i].2));
         }
-    }
+        false
+    });
     let (score, data, c, k) = best.ok_or("bbgen found no way to fit these parts on the board without overlapping; place the \
                                           biggest yourself (at:), or use more boards")?;
     let model = all_models[k];
@@ -1171,20 +1217,26 @@ fn turned(sc: &Scorer, model: &Model, mut score: f64, mut data: Val, mut c: Circ
         let here = data.clone();
         let from = start;
         start = combos.len();
-        for j in from..combos.len() {
+        let trials: Vec<Val> = (from..combos.len()).map(|j| {
             let changes: Changes = combos[j].iter().map(|&i| (flips[i].0.clone(), at_rot(model, flips[i].1, flips[i].2))).collect();
-            let trial = with(&here, &changes);
-            let b = sc.score(&trial);
+            with(&here, &changes)
+        }).collect();
+        let mut kept: Option<(usize, f64, Val, Circuit)> = None;
+        sc.scan(trials, |i, trial, b| {
             if b.score < score - 1e-9 {
                 if dump::active() {
                     dump::event("keep", vec![("stage", json!("turn")), ("score", dump::num(b.score))]);
                 }
-                score = b.score;
-                data = trial;
-                c = b.circuit;
-                start = j + 1;
-                break;
+                kept = Some((from + i, b.score, trial, b.circuit));
+                return true;
             }
+            false
+        });
+        if let Some((j, s2, trial, c2)) = kept {
+            score = s2;
+            data = trial;
+            c = c2;
+            start = j + 1;
         }
     }
     (score, data, c)
@@ -1232,13 +1284,14 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
         let here = data.clone();
         let result = crate::check::check(&c);
         let ms = moves(model, leads, &c, &result, &data);
-        for (changes, ranks) in ms {
-            let mut trial = with_ranks(&here, &changes, &ranks);
-            let b = sc.score(&trial);
+        let ranked: Vec<bool> = ms.iter().map(|(_, ranks)| !ranks.is_empty()).collect();
+        let trials: Vec<Val> = ms.iter().map(|(changes, ranks)| with_ranks(&here, changes, ranks)).collect();
+        let mut kept: Option<(f64, Val, Circuit)> = None;
+        sc.scan(trials, |i, mut trial, b| {
             let (mut s2, mut c2) = (b.score, b.circuit);
             builds += 1;
             since += 1;
-            if ranks.is_empty() && score <= s2 && s2 < score + LOOKAHEAD && polishes < LOOKAHEAD_TIMES {
+            if !ranked[i] && score <= s2 && s2 < score + LOOKAHEAD && polishes < LOOKAHEAD_TIMES {
                 let (s3, d3, c3, _) = polish(sc, leads, trial.clone(), s2, c2, LOOKAHEAD_BUILDS);
                 polishes += 1;
                 if s3 < s2 {
@@ -1252,15 +1305,16 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
                     dump::event("keep", vec![("stage", json!("repair")), ("score", dump::num(s2))]);
                 }
                 since = 0;
-                score = s2;
-                c = c2;
-                data = without_rank(with(&trial, &pinned(&c, leads)));
-                improved = true;
-                break;
+                kept = Some((s2, trial, c2));
+                return true;
             }
-            if builds >= REPAIR_BUILDS || since >= PATIENCE {
-                break;
-            }
+            builds >= REPAIR_BUILDS || since >= PATIENCE
+        });
+        if let Some((s2, trial, c2)) = kept {
+            score = s2;
+            c = c2;
+            data = without_rank(with(&trial, &pinned(&c, leads)));
+            improved = true;
         }
     }
     if !leads.is_empty() && data.get("_leg_rank").is_none() {

@@ -142,7 +142,7 @@ fn leg_options(c: &Circuit, all: &[Hole], net: &str, plan: &IndexMap<String, Vec
 
 /// Free holes in empty strips: within reach of the other leg's strips, or anywhere if the net has nothing on
 /// the board yet.
-fn empty_near(c: &Circuit, all: &[Hole], mine: &[Hole], others: &[Hole], reach: f64) -> Vec<Hole> {
+fn empty_near(c: &Circuit, strips: &[Strip], mine: &[Hole], others: &[Hole], reach: f64) -> Vec<Hole> {
     let reach = if mine.iter().any(|h| h.is_rail()) { pymin(reach, 3.0) } else { reach };
     let xs: Vec<f64> = {
         let mut v: Vec<f64> = Vec::new();
@@ -157,9 +157,8 @@ fn empty_near(c: &Circuit, all: &[Hole], mine: &[Hole], others: &[Hole], reach: 
     if !mine.is_empty() && xs.is_empty() {
         return vec![];
     }
-    let strips = sorted_strips(c, all.iter().filter(|h| !h.is_rail()).map(|&h| c.boards[h.board as usize].strip(h)));
     let mut out = Vec::new();
-    for s in strips {
+    for &s in strips {
         let holes = c.boards[s.board as usize].strip_holes(s);
         let x = c.xy(holes[0]).0;
         if !xs.is_empty() && !xs.iter().any(|o| (x - o).abs() <= reach) {
@@ -399,6 +398,8 @@ pub fn place_legs(c: &mut Circuit, parts: &[usize]) {
     let net_of = net_of(c);
     let plan = crate::autoplace::plan_for(c, &net_of);
     let all = all_holes(c);
+    // the terminal strips in Python's sorted order: worked out once, they don't change
+    let strips = sorted_strips(c, all.iter().filter(|h| !h.is_rail()).map(|&h| c.boards[h.board as usize].strip(h)));
     let total_columns: i32 = c.boards.iter().map(|b| b.columns).sum();
     c.rounds = c.parts.iter().filter(|p| is_round(p.kind) && p.pins.iter().all(|x| x.xy.is_some()))
         .map(|p| {
@@ -422,13 +423,13 @@ pub fn place_legs(c: &mut Circuit, parts: &[usize]) {
         let base: Vec<Vec<Hole>> = nets.iter().map(|n| leg_options(c, &all, n, &plan, &extra)).collect();
         let reach = span(kind).1 + 4.0;
         let mut options: Vec<Vec<Hole>> = vec![
-            [base[0].clone(), empty_near(c, &all, &base[0], &base[1], reach)].concat(),
-            [base[1].clone(), empty_near(c, &all, &base[1], &base[0], reach)].concat(),
+            [base[0].clone(), empty_near(c, &strips, &base[0], &base[1], reach)].concat(),
+            [base[1].clone(), empty_near(c, &strips, &base[1], &base[0], reach)].concat(),
         ];
         let snapshot = [options[1].clone(), options[0].clone()];
         for (i, other) in snapshot.iter().enumerate() {
             if options[i].is_empty() {
-                options[i] = empty_near(c, &all, &[], other, total_columns as f64);
+                options[i] = empty_near(c, &strips, &[], other, total_columns as f64);
             }
         }
         if options.iter().any(|o| o.is_empty()) {

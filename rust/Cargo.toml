@@ -13,6 +13,7 @@ path = "src/main.rs"
 foldhash = "0.2"
 indexmap = "2"
 md-5 = "0.10"
+rayon = "1"
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 unsafe-libyaml = "0.2"
 
