@@ -1358,12 +1358,12 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
                     trial = d3;
                 }
                 c2 = c3;
-                if crate::trace::active() {
-                    let (what, refs) = describe(model, &data, &ms[i].0, &ms[i].1);
-                    let kept = s2 < score - 1e-9;
-                    crate::trace::step(&c2, &format!("repair {}: {}: score {:.0} → {:.0} {}", builds, what, score, s2,
-                                                     if kept { "✓" } else { "✗" }), kept, &refs, None, false);
-                }
+            }
+            if crate::trace::active() {
+                let (what, refs) = describe(model, &data, &ms[i].0, &ms[i].1);
+                let kept = s2 < score - 1e-9;
+                crate::trace::step(&c2, &format!("repair {}: {}: score {:.0} → {:.0} {}", builds, what, score, s2,
+                                                 if kept { "✓" } else { "✗" }), kept, &refs, None, false);
             }
             if s2 < score - 1e-9 {
                 if dump::active() {

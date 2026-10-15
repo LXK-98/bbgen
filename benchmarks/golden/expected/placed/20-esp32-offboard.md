@@ -20,10 +20,10 @@ Place these first.
 - [ ] **U1** DS18B20: pin 1 in `f55`, pin-1 end pointing down (Sensor_Temperature:DS18B20 on Package_TO_SOT_THT:TO-92_Inline_Wide)
 - [ ] **OLED** ER_OLEDM0.91_1x-I2C: pin 1 in `f61`, pin-1 end pointing down (Display_Graphic:ER_OLEDM0.91_1x-I2C on Display:ER_OLEDM0.91_1x-I2C)
 - [ ] **R1** 4k7: legs in `h53` and `h54`
-- [ ] **R2** 330R: legs in `d63` and `f63`
+- [ ] **R2** 330R: legs in `c63` and `f63`
 - [ ] **D1** led: legs in `h63` and `h61` (anode first)
-- [ ] **R3** 10k: legs in `bot+41` and `h41`
-- [ ] **SW1** button: pin 1 in `f41`, notch (pin-1 end) pointing left; 4 pins, rows 0.3 in apart
+- [ ] **R3** 10k: legs in `bot+42` and `h42`
+- [ ] **SW1** button: pin 1 in `f42`, notch (pin-1 end) pointing left; 4 pins, rows 0.3 in apart
 
 ## Wires
 
@@ -36,7 +36,7 @@ Place these first.
 
 ### GND (6)
 
-- [ ] **W5** black: `j42` → `bot-42` · GND (SW1.2 ↔ bot- rail)
+- [ ] **W5** black: `j43` → `bot-43` · GND (SW1.2 ↔ bot- rail)
 - [ ] **W6** black: `j55` → `bot-55` · GND (U1.1 GND ↔ bot- rail)
 - [ ] **W7** black: `i55` → `i61` · GND (U1.1 GND ↔ OLED.1 GND, D1.2 K)
 - [ ] **W8** black: `ESP32.38 GND3` → `bot-61` · GND (ESP32.38 GND3 ↔ bot- rail)
@@ -49,11 +49,11 @@ Place these first.
 
 ### LED_DRIVE (1)
 
-- [ ] **W12** green: `ESP32.24 IO2` → `c63` · LED_DRIVE (ESP32.24 IO2 ↔ R2.1)
+- [ ] **W12** green: `ESP32.24 IO2` → `b63` · LED_DRIVE (ESP32.24 IO2 ↔ R2.1)
 
 ### BUTTON (1)
 
-- [ ] **W13** orange: `ESP32.26 IO4` → `g41` · BUTTON (ESP32.26 IO4 ↔ R3.2, SW1.1)
+- [ ] **W13** orange: `ESP32.26 IO4` → `g42` · BUTTON (ESP32.26 IO4 ↔ R3.2, SW1.1)
 
 ### SDA (1)
 

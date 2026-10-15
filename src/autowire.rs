@@ -260,19 +260,6 @@ fn wire_index(c: &Circuit, id: u64) -> Option<usize> {
     c.wires.iter().position(|w| w.id == id)
 }
 
-/// Two wires equal field by field (a pin by identity), not by which wire they are: how bbgen has always told
-/// wires apart in settle_leads and unwire. A lead laid again exactly as it was, under the same number, equals
-/// the one it replaces, so the old one is put back beside it (a bug, kept so far: fixing it moves wires).
-fn wire_eq(a: &Wire, b: &Wire) -> bool {
-    let end_eq = |x: &Option<End>, y: &Option<End>| match (x, y) {
-        (None, None) => true,
-        (Some(x), Some(y)) => x.spec == y.spec && x.hole == y.hole && x.pin == y.pin,
-        _ => false,
-    };
-    a.num == b.num && a.group == b.group && a.spec == b.spec && a.color == b.color && a.via == b.via && a.slant == b.slant
-        && a.auto == b.auto && a.flex == b.flex && end_eq(&a.a, &b.a) && end_eq(&a.b, &b.b) && a.via_xy == b.via_xy
-}
-
 /// Lay each flying lead that crosses another again, now that every lead is in, keeping the new one only if it
 /// costs less; then let two leads of one net that cross swap holes.
 fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
@@ -333,11 +320,8 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                 }
             }
             crate::trace::placing(|| join(c, &mut dsu, &net, &board_rails, node_pins, true));
-            // `x not in leads` compares by value: a lead laid again exactly as it was (same number, same holes)
-            // counts as the old one, so it's not found as new (and the old one is put back beside it)
-            let lead_wires: Vec<Wire> = leads.iter().map(|&l| get(c, &out, l)).collect();
             let new: Vec<u64> = c.wires.iter().filter(|x| {
-                !lead_wires.iter().any(|l| wire_eq(l, x)) && x.group == net.name && x.auto && x.a.is_some() && x.b.is_some()
+                !leads.contains(&x.id) && x.group == net.name && x.auto && x.a.is_some() && x.b.is_some()
                     && (x.a.as_ref().unwrap().pin == Some(pp) || x.b.as_ref().unwrap().pin == Some(pp))
             }).map(|x| x.id).collect();
             if let Some(&xid) = new.first() {
@@ -350,7 +334,7 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                 ho.covered = c.covered.contains_key(&pyf::key(xxy));
                 let k = cost(c, &po, &ho, false).0;
                 if k < old - 1e-9 {
-                    let i = lead_wires.iter().position(|l| wire_eq(l, &w)).unwrap();
+                    let i = leads.iter().position(|&l| l == wid).unwrap();
                     leads[i] = xid;
                     moved = true;
                     if crate::trace::active() {
@@ -1300,9 +1284,7 @@ fn unwire(c: &mut Circuit, wid: u64) {
     if dump::building() {
         dump::event("unwire", vec![("num", json!(c.wires[wi].num))]);
     }
-    // list.remove takes out the first wire equal to it
-    let first = c.wires.iter().position(|x| wire_eq(x, &c.wires[wi])).unwrap();
-    let w = c.wires.remove(first);
+    let w = c.wires.remove(wi);
     c.wired += 1;
     let who = format!("W{}", w.num);
     for e in [&w.a, &w.b].into_iter().flatten() {

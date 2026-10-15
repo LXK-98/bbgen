@@ -9,7 +9,7 @@ replaced). A change that moves a wire fails it, by design. Check the change with
 
 - golden/<name>.jsonl.gz: each benchmark's build event by event (`bbgen dev build --dump`), from the first
   anneal to the check; tests/golden.rs and tests/trials.rs read them
-- golden/placed/<name>.yaml: each benchmark as placement left it (as JSON, which YAML reads)
+- golden/placed/<name>.yaml: each benchmark as placement left it (needs PyYAML)
 - golden/expected/: what `bbgen build` prints, writes and exits with for the placed files, the examples and
   golden/cases/ (the checklist and report in full, the drawing's SHA-256); tests/outputs.rs reads them
 - golden/index.json: each benchmark's layout hash and score
@@ -28,6 +28,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:
+    sys.exit("record.py needs PyYAML to write golden/placed/ (pip install pyyaml)")
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 GOLDEN = HERE / "golden"
@@ -42,11 +47,13 @@ def record(path: Path) -> dict:
         if not out.exists():
             raise SystemExit(f"{path.name}: {done.stderr.strip()}")
         events = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
-    with gzip.open(GOLDEN / f"{path.stem}.jsonl.gz", "wt", encoding="utf-8") as f:
-        for e in events:
-            f.write(json.dumps(e, separators=(",", ":")) + "\n")
+    text = "".join(json.dumps(e, separators=(",", ":")) + "\n" for e in events)
+    gz = GOLDEN / f"{path.stem}.jsonl.gz"
+    # gzip stamps the time it was written: left alone when its events are the same, so it shows no change
+    if not gz.exists() or gzip.decompress(gz.read_bytes()).decode("utf-8") != text:
+        gz.write_bytes(gzip.compress(text.encode("utf-8"), mtime=0))
     placed = next(e["data"] for e in events if e["kind"] == "placed")
-    (GOLDEN / "placed" / f"{path.stem}.yaml").write_text(json.dumps(placed, indent=1, ensure_ascii=False) + "\n")
+    (GOLDEN / "placed" / f"{path.stem}.yaml").write_text(yaml.safe_dump(placed, sort_keys=False, allow_unicode=True))
     check = events[-1]
     return {"hash": check["hash"], "score": check["score"], "events": len(events)}
 

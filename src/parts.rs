@@ -577,9 +577,8 @@ fn adapter(part: &mut Part, spec: &Val, lib: Option<&[PathBuf]>) -> Result<(i64,
     for (pad, name) in sn {
         let pin = moves.iter().rev().find(|(k, _)| *k == pad).map(|(_, v)| *v).unwrap_or(pad);
         if !(1..=n).contains(&pin) {
-            // as bbgen has always printed it: the braces and names as they are (a bug, kept so far)
             return Err(format!("parts.{}: chip pad {} has no adapter pin {} (the adapter has {}); map it, like map: \
-                                {{{{{{pad}}: {{n}}}}}}", part.r#ref, pad, pin, n));
+                                {{{}: {}}}", part.r#ref, pad, pin, n, pad, n));
         }
         if let Some((_, other)) = taken.iter().find(|(p, _)| *p == pin) {
             return Err(format!("parts.{}: chip pads {} and {} both on adapter pin {}", part.r#ref, other, pad, pin));

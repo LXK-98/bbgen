@@ -23,7 +23,8 @@ Names below like `_relay` or `_Model.cost` are the Python's; in Rust they're `re
   does this and more for all 21 against `benchmarks/golden/`. `BBGEN_JOBS=1` and the default must
   print the same: the parallel search is meant to be exact.
 - A change meant to move wires fails `cargo test` by design: judge it with run.py, then record it with
-  `benchmarks/record.py` and commit the records with it (benchmarks/README.md).
+  `benchmarks/record.py` (it needs PyYAML) and commit the records with it (benchmarks/README.md). It
+  leaves a record whose events are the same untouched, so the diff shows only what moved.
 - Placement scores every trial with the full wiring, so a wiring change also changes which layout
   wins. To judge a wiring change on its own, wire the placed layouts in `benchmarks/golden/placed/`
   (the benchmarks as placement left them) with the old and the new code.
@@ -123,8 +124,13 @@ its nine Dupont leads. All are flying leads from off-board connectors crossing e
 
 **Starting points.**
 - Choose the rail sides of supplies with the connector in view: a supply whose connector pin is above
-  another's should get the upper rail. Today `rail_plan` (autoplace) and `_rails` (autowire) fill rails
-  top first and placement tries both orders only for two free supplies (`_rail_order`).
+  another's should get the upper rail. Today `rail_plan` (autoplace) and `rails` (autowire) fill rails
+  top first, and placement tries both orders only for two free supplies (`_rail_order`, `orders` in
+  `search::autoplace`).
+- 19 is such a case: both orders are already built and scored, and the crossed one wins. Start there
+  (11 columns, 0.2 s): build it with each `_rail_order` and compare what each score is made of. Either
+  the crossing (`CROSS_WEIGHT` on the leads) is too cheap against what the other order costs, or the
+  other order loses for a reason of its own (the LD1117's body over its input pin, as `expect:` notes).
 - Where the file doesn't fix the connector's pin order (off-board parts whose labels are just names),
   bbgen could order the pins to match where their nets land; for a real header (the ESP32) it can't.
 
@@ -202,6 +208,9 @@ first, would lie straight without pushing another net off the board.
 
 ## 10. Smaller things
 
+- **A label can sit on a flying lead.** In 20, R2's label lies across the ONEWIRE lead W11. The label
+  check counts a label over a wire end or another label, not one a wire passes through, so the `labels`
+  column says 0. Count labels over any wire, then move the label like the others.
 - **A raised Pico** builds (`type: pico, raised: true`), but only a DIP-style module is covered by tests
   (the raised cases in `benchmarks/golden/cases/`). Add one, including that a wire under it can't cross
   its pin rows.
@@ -216,21 +225,6 @@ first, would lie straight without pushing another net off the board.
 
 Each of these is known and not yet done. The ones that move wires need `benchmarks/record.py` afterwards,
 and `run.py` to judge them.
-
-**Bugs kept so that the layouts stayed the same as the Python's:**
-- **A re-laid lead taken for the old one** (`settle_leads` in src/autowire.rs, `wire_eq`). Wires are
-  compared field by field, not by identity. A flying lead laid again exactly as it was, under the same
-  number, equals the old one, so it isn't found as new, and the old one is put back beside it. Two wires
-  then claim one hole: a `HOLE_TAKEN` error that costs that trial 1000 points. It hits 35 of the ~3,000
-  recorded trials, and can change which layout wins. The fix is comparing wires by `id`. It moves wires,
-  so record again.
-- **The adapter-pin error prints its placeholders.** It says `map: {{{pad}: {n}}}` instead of the pad
-  and pin (src/parts.rs, `adapter`). Fixing it changes one expected output (golden/cases/t062).
-- **The video leaves out repair moves that improve the layout.** The repair frame is only recorded
-  inside the polish branch (src/search.rs, `repair`). That branch runs only for a move that scored no
-  better, so a move that improves directly is kept but never shown, although the README says each
-  improving move is. The fix: record a frame for every move, as starts and turns do. Video only; no
-  layout changes.
 
 **Behaviour that depends on the machine:**
 - **The golden records hold for this platform's maths library.** Annealing's `exp`, the drawing's
