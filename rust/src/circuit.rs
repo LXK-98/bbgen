@@ -331,7 +331,7 @@ impl Circuit {
             return Err("the file must be a mapping with title, boards, parts, wires and nets".into());
         }
         if needs_placing(data) {
-            let placed = crate::dump::placing(|| crate::search::autoplace(data, source))?;
+            let placed = crate::trace::placing(|| crate::dump::placing(|| crate::search::autoplace(data, source)))?;
             if crate::dump::active() {
                 crate::dump::event("placed", vec![("data", placed.to_json())]);
             }

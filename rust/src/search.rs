@@ -841,7 +841,7 @@ impl<'a> Scorer<'a> {
     fn scan(&self, trials: Vec<Val>, mut visit: impl FnMut(usize, Val, Built) -> bool) {
         use rayon::prelude::*;
         let jobs = jobs();
-        if jobs <= 1 || dump::active() {
+        if jobs <= 1 || dump::active() || crate::trace::active() {
             for (i, t) in trials.into_iter().enumerate() {
                 let b = self.score(&t);
                 if visit(i, t, b) {
@@ -1040,6 +1040,33 @@ fn moves(model: &Model, leads: &[String], c: &Circuit, result: &crate::check::Re
     out
 }
 
+/// What a repair move does, in words, and the parts it moves.
+fn describe(model: &Model, data: &Val, changes: &Changes, ranks: &[(String, i64)]) -> (String, Vec<String>) {
+    if let Some((r, k)) = ranks.first() {
+        let nth = ["best", "2nd best", "3rd best", "4th best"][*k as usize];
+        return (format!("{} into its {} legs", r, nth), vec![r.clone()]);
+    }
+    let has_at = |fields: &Vec<(&str, Val)>| fields.iter().any(|(k, _)| *k == "at");
+    let moved: Vec<String> = changes.iter().filter(|(_, f)| has_at(f)).map(|(r, _)| r.clone()).collect();
+    if moved.len() > 1 {
+        return (format!("move {} a row", moved.join(" and ")), moved);
+    }
+    for (r, fields) in changes {
+        if has_at(fields) {
+            let get = |k: &str| fields.iter().find(|(x, _)| *x == k).map(|(_, v)| v.clone()).unwrap();
+            let (at, rot) = (get("at").py_str(), get("rot").py_int().unwrap_or(0) as i32);
+            let a = model.auto.iter().position(|x| x == r).unwrap();
+            if let Some(f) = flip(model, data, a) {
+                if model.choices[a][f].at == at && model.choices[a][f].rot == rot {
+                    return (format!("turn {}", r), vec![r.clone()]);
+                }
+            }
+            return (format!("move {} from {} to {}", r, data.at("parts").at(r).at("at").py_str(), at), vec![r.clone()]);
+        }
+    }
+    ("re-place the two-lead parts".into(), vec![])
+}
+
 /// The layout with every footprint part bbgen places moved a row up, or a row down, where they all can go.
 fn shifted(model: &Model, state: &[(usize, usize)]) -> Vec<Changes> {
     let mut out = Vec::new();
@@ -1181,8 +1208,14 @@ pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
         let changes: Changes = state.iter().map(|&(a, ch)| (m.auto[a].clone(), at_rot(m, a, ch))).collect();
         with(&bases[*k], &changes)
     }).collect();
+    let n_starts = starts.len();
     sc.scan(trials, |i, trial, b| {
-        if best.as_ref().map(|x| b.score < x.0).unwrap_or(true) {
+        let kept = best.as_ref().map(|x| b.score < x.0).unwrap_or(true);
+        if crate::trace::active() {
+            crate::trace::step(&b.circuit, &format!("starting layout {} of {}: score {:.0}{}", i + 1, n_starts, b.score,
+                                                    if kept { " ✓ best so far" } else { "" }), kept, &[], None, false);
+        }
+        if kept {
             if dump::active() {
                 dump::event("keep", vec![("stage", json!("start")), ("score", dump::num(b.score))]);
             }
@@ -1223,7 +1256,13 @@ fn turned(sc: &Scorer, model: &Model, mut score: f64, mut data: Val, mut c: Circ
         }).collect();
         let mut kept: Option<(usize, f64, Val, Circuit)> = None;
         sc.scan(trials, |i, trial, b| {
-            if b.score < score - 1e-9 {
+            let better = b.score < score - 1e-9;
+            if crate::trace::active() {
+                let refs: Vec<String> = combos[from + i].iter().map(|&k| flips[k].0.clone()).collect();
+                crate::trace::step(&b.circuit, &format!("turn {}: score {:.0} → {:.0} {}", refs.join(" and "), score, b.score,
+                                                        if better { "✓" } else { "✗" }), better, &refs, None, false);
+            }
+            if better {
                 if dump::active() {
                     dump::event("keep", vec![("stage", json!("turn")), ("score", dump::num(b.score))]);
                 }
@@ -1299,6 +1338,12 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
                     trial = d3;
                 }
                 c2 = c3;
+                if crate::trace::active() {
+                    let (what, refs) = describe(model, &data, &ms[i].0, &ms[i].1);
+                    let kept = s2 < score - 1e-9;
+                    crate::trace::step(&c2, &format!("repair {}: {}: score {:.0} → {:.0} {}", builds, what, score, s2,
+                                                     if kept { "✓" } else { "✗" }), kept, &refs, None, false);
+                }
             }
             if s2 < score - 1e-9 {
                 if dump::active() {

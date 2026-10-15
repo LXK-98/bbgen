@@ -731,8 +731,46 @@ fn marks(cv: &mut Canvas, c: &Circuit, result: &Result) {
     }
 }
 
+const FOCUS: &str = "#ff8c00";
+
+/// Ring what a step changed: parts by ref, wires by W<num>.
+fn focus_rings(cv: &mut Canvas, c: &Circuit, focus: &[String]) {
+    for name in focus {
+        if let Some(&pi) = c.part_index.get(name) {
+            let part = &c.parts[pi as usize];
+            // the last body of that name, as a dict of them keeps
+            let body = c.bodies.iter().rev().find(|(_, r)| r == name).map(|(b, _)| *b);
+            let bx = if let Some(b) = body {
+                b
+            } else if part.kind.is_lead() && part.pins.iter().all(|p| p.xy.is_some()) {
+                let xs: Vec<f64> = part.pins.iter().map(|p| p.xy.unwrap().0).collect();
+                let ys: Vec<f64> = part.pins.iter().map(|p| p.xy.unwrap().1).collect();
+                (crate::parts::min(&xs), crate::parts::min(&ys), crate::parts::max(&xs), crate::parts::max(&ys))
+            } else if let Some(e) = part.extent {
+                e
+            } else {
+                continue;
+            };
+            cv.rect(bx.0 - 0.6, bx.1 - 0.6, bx.2 + 0.6, bx.3 + 0.6, "none", FOCUS, i(3), 0.4, "");
+            continue;
+        }
+        for w in &c.wires {
+            if format!("W{}", w.num) == *name && w.a.is_some() && w.b.is_some() {
+                let (d, _, _) = wire_d(cv, c, w);
+                cv.add(format!("<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-opacity=\"0.45\" stroke-width=\"{:.1}\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+                               d, FOCUS, 0.8 * P));
+            }
+        }
+    }
+}
+
 /// The drawing's SVG, and the canvas it was drawn on (whose labels the measures look at).
 pub fn draw(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, Canvas) {
+    draw_full(c, result, highlight, None, &[])
+}
+
+/// draw(), with a video frame's caption and the parts and wires the step changed.
+pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption: Option<&str>, focus: &[String]) -> (String, Canvas) {
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
     for b in &c.boards {
@@ -787,6 +825,9 @@ pub fn draw(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, C
     }
     cv.text(minx + 0.8, miny + 1.1, &c.title, T::new(i(15)).anchor("start").bold());
     cv.text(minx + 0.8, miny + 2.3, &sub, T::new(i(8)).anchor("start").fill(if errors > 0 { "#c62828" } else { "#555" }));
+    if let Some(cap) = caption.filter(|s| !s.is_empty()) {
+        cv.text(maxx - 0.8, miny + 1.1, cap, T::new(i(11)).anchor("end").fill("#b35c00").bold());
+    }
     for w in &c.wires {
         if w.a.is_some() && w.b.is_some() {
             let pts = c.wire_points(w);
@@ -824,6 +865,7 @@ pub fn draw(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, C
             cv.add("</g>".into());
         }
     }
+    focus_rings(&mut cv, c, focus);
     let late = std::mem::take(&mut cv.late);
     cv.out.extend(late);
     marks(&mut cv, c, result);

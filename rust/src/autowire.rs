@@ -127,6 +127,7 @@ pub fn autowire(c: &mut Circuit) {
     c.strip_at = strip_at;
     let rails = rails(c, &mut dsu, &node_pins);
     let first = c.wires.len();
+    crate::trace::step(c, "parts placed: wiring next", true, &[], Some(1.5), true);
     let mut order: Vec<String> = c.nets.keys().cloned().collect();
     let spans: HashMap<String, f64> = order.iter().map(|n| (n.clone(), span(c, &c.nets[n]))).collect();
     let has = |n: &String| rails.get(n).map(|r| !r.is_empty()).unwrap_or(false);
@@ -302,7 +303,7 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                     board_rails.push(n);
                 }
             }
-            join(c, &mut dsu, &net, &board_rails, node_pins, true);
+            crate::trace::placing(|| join(c, &mut dsu, &net, &board_rails, node_pins, true));
             // `x not in leads` compares by value: a lead laid again exactly as it was (same number, same holes)
             // counts as the old one, so it's not found as new (and the old one is put back beside it)
             let lead_wires: Vec<Wire> = leads.iter().map(|&l| get(c, &out, l)).collect();
@@ -323,6 +324,10 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                     let i = lead_wires.iter().position(|l| wire_eq(l, &w)).unwrap();
                     leads[i] = xid;
                     moved = true;
+                    if crate::trace::active() {
+                        crate::trace::step(c, &format!("the lead to {} again, crossing less", c.pin_str(pp)), true,
+                                           &[format!("W{}", x.num)], None, true);
+                    }
                     continue;
                 }
                 unwire(c, xid);
@@ -341,6 +346,11 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
                 let after: usize = leads.iter().map(|&y| crossed(c, &out, &leads, y)).sum();
                 if after < before {
                     moved = true;
+                    if crate::trace::active() {
+                        let (nw, nx) = (get(c, &out, leads[i]).num, get(c, &out, leads[j]).num);
+                        crate::trace::step(c, &format!("leads W{} and W{} swap holes, uncrossing them", nw, nx), true,
+                                           &[format!("W{}", nw), format!("W{}", nx)], None, true);
+                    }
                 } else {
                     swap_holes(c, leads[i], leads[j]);
                 }
@@ -850,6 +860,9 @@ fn lay(c: &mut Circuit, dsu: Option<&mut Dsu<Node>>, net: &Net, end_a: &Cand, en
         if let Some(d) = dsu {
             d.union(end_a.node, end_b.node);
         }
+        if crate::trace::active() {
+            crate::trace::step(c, &format!("wiring {}: a flexible jumper", net.name), true, &[format!("W{}", num)], None, true);
+        }
         return id;
     }
     if w.on_board() {
@@ -870,10 +883,15 @@ fn lay(c: &mut Circuit, dsu: Option<&mut Dsu<Node>>, net: &Net, end_a: &Cand, en
         dump::event("wire", dumped_fields(c, &w));
     }
     let over = c.lies_over(&w);
+    let bent = !w.via.is_empty();
     c.wires.push(w);
     c.lain.extend(over);
     if let Some(d) = dsu {
         d.union(end_a.node, end_b.node);
+    }
+    if !_quiet && crate::trace::active() {
+        let what = if _flying { "a flying lead" } else if bent { "bent around a part" } else { "a wire" };
+        crate::trace::step(c, &format!("wiring {}: {}", net.name, what), true, &[format!("W{}", num)], None, true);
     }
     id
 }
@@ -1153,9 +1171,14 @@ fn lay_route(c: &mut Circuit, dsu: &mut Dsu<Node>, net: &Net, route: &[(Cand, Ca
             }
         }
     }
+    let nums: Vec<i64> = laid.iter().map(|&id| c.wires[wire_index(c, id).unwrap()].num).collect();
     if dump::building() {
-        let nums: Vec<i64> = laid.iter().map(|&id| c.wires[wire_index(c, id).unwrap()].num).collect();
         dump::event("relay", vec![("net", json!(net.name)), ("nums", json!(nums))]);
+    }
+    if crate::trace::active() {
+        let through = if laid.len() == 2 { "an empty strip" } else { "empty strips" };
+        crate::trace::step(c, &format!("wiring {}: {} wires through {}", net.name, laid.len(), through), true,
+                           &nums.iter().map(|n| format!("W{}", n)).collect::<Vec<_>>(), None, true);
     }
     true
 }
@@ -1207,8 +1230,9 @@ fn prune(c: &mut Circuit, net: &str, rails: &[Node], node_pins: &NodePins) {
                 continue;
             }
             if here.len() == 1 {
-                let id = c.wires[here[0]].id;
+                let (id, num) = (c.wires[here[0]].id, c.wires[here[0]].num);
                 unwire(c, id);
+                crate::trace::step(c, &format!("dropping W{}: it only reached a rail nothing uses", num), true, &[], None, true);
                 changed = true;
             }
         }
@@ -1231,7 +1255,9 @@ fn prune(c: &mut Circuit, net: &str, rails: &[Node], node_pins: &NodePins) {
                     .any(|e| e.hole.map(|h| holes.contains(&h)).unwrap_or(false)));
                 let has_pins = node_pins.get(&Node::Strip(strip)).map(|v| !v.is_empty()).unwrap_or(false);
                 if !has_pins && !others {
+                    let num = c.wires[wi].num;
                     unwire(c, wid);
+                    crate::trace::step(c, &format!("dropping W{}: it only led to a rail nothing uses", num), true, &[], None, true);
                     changed = true;
                     break;
                 }

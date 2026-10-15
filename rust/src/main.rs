@@ -18,7 +18,8 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 const USAGE: &str = "usage: bbgen-rs {build,check,find} ...\n\n\
-  build circuit.yaml [-o DIR] [--no-png] [--steps]  write <name>.svg/.png/.md next to the YAML and check the wiring\n\
+  build circuit.yaml [-o DIR] [--no-png] [--steps] [--video FILE] [--video-all]\n\
+                                                    write <name>.svg/.png/.md next to the YAML and check the wiring\n\
   check circuit.yaml                                check the wiring only\n\
   find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
 
@@ -98,6 +99,7 @@ fn slug(group: &str) -> String {
 fn run(args: &[String]) -> i32 {
     let cmd = args[0].as_str();
     let (mut circuit, mut out_dir, mut no_png, mut steps) = (None, None, false, false);
+    let (mut video, mut video_all): (Option<PathBuf>, bool) = (None, false);
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -107,6 +109,11 @@ fn run(args: &[String]) -> i32 {
             }
             "--no-png" if cmd == "build" => no_png = true,
             "--steps" if cmd == "build" => steps = true,
+            "--video" if cmd == "build" && i + 1 < args.len() => {
+                video = Some(PathBuf::from(&args[i + 1]));
+                i += 1;
+            }
+            "--video-all" if cmd == "build" => video_all = true,
             a if !a.starts_with('-') && circuit.is_none() => circuit = Some(PathBuf::from(a)),
             a => {
                 eprintln!("bbgen: unrecognised argument {}\n{}", a, USAGE);
@@ -122,15 +129,30 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
+    if video.is_some() {
+        bbgen::trace::start(video_all);
+    }
     let c = match Circuit::load(&circuit.to_string_lossy()) {
         Ok(c) => c,
         Err(e) => {
+            bbgen::trace::finish();
             eprintln!("bbgen: {}", e);
             return 2;
         }
     };
     let result = check(&c);
+    if video.is_some() {
+        let status = format!("{} errors, {} warnings", result.errors(), result.warnings());
+        bbgen::trace::step(&c, &format!("done: {}", status), true, &[], Some(bbgen::trace::LAST_SECONDS), false);
+    }
+    let frames = bbgen::trace::finish();
     report(&result);
+    if let Some(v) = &video {
+        match bbgen::trace::write_video(&frames, v) {
+            Ok(()) => println!("wrote {} ({} frames)", v.display(), frames.len()),
+            Err(e) => eprintln!("bbgen: no video written: {}", e),
+        }
+    }
     if cmd == "build" {
         let out = clean(&out_dir.unwrap_or_else(|| circuit.parent().map(Path::to_path_buf).unwrap_or_default()));
         if !out.as_os_str().is_empty() {
@@ -219,6 +241,24 @@ fn dev(args: &[String]) -> i32 {
         }
         Some("pyf-check") => {
             pyf_check();
+            0
+        }
+        Some("frames") => {
+            // dev frames FILE OUTDIR [--all]: a video's frames as SVG files (00000.svg ...), for comparing
+            bbgen::trace::start(args.iter().any(|a| a == "--all"));
+            let c = match Circuit::load(&args[1]) {
+                Ok(c) => c,
+                Err(e) => { eprintln!("{}", e); return 2; }
+            };
+            let r = check(&c);
+            let status = format!("{} errors, {} warnings", r.errors(), r.warnings());
+            bbgen::trace::step(&c, &format!("done: {}", status), true, &[], Some(bbgen::trace::LAST_SECONDS), false);
+            let frames = bbgen::trace::finish();
+            std::fs::create_dir_all(&args[2]).unwrap();
+            for (k, (svg, secs)) in frames.iter().enumerate() {
+                std::fs::write(Path::new(&args[2]).join(format!("{:05}.svg", k)), svg).unwrap();
+                println!("{:05} {}", k, bbgen::pyf::repr(*secs));
+            }
             0
         }
         _ => {
