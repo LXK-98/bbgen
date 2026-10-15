@@ -1,0 +1,10 @@
+parts:
+  R1:
+    type: resistor
+    pins:
+    - d25
+    - top-25
+wires:
+- - b25
+  - b30
+nets: {}

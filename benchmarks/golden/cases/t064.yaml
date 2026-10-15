@@ -1,0 +1,10 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+wires:
+- - Pico.VSYS
+  - top+
+- - Pico.3
+  - bot-
+nets: {}

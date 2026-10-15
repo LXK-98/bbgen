@@ -1,0 +1,25 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels: &id001
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+  U2:
+    type: dip
+    pins: 6
+    at: e10
+    rot: 180
+    labels: *id001
+nets:
+  EN:
+  - U1.EN
+  - U2.EN
+wires: []
+autowire: true

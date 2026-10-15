@@ -1,0 +1,8 @@
+parts:
+  R1:
+    type: resistor
+    pins:
+    - bot+47
+    - j48
+wires: []
+nets: {}

@@ -1,0 +1,24 @@
+parts:
+  J1:
+    type: offboard
+    cols: 2
+    labels:
+      1: A
+      2: B
+  R1:
+    type: resistor
+    pins:
+    - a5
+    - a9
+wires:
+- - b5
+  - J1.A
+- - b9
+  - J1.2
+nets:
+  N1:
+  - R1.1
+  - J1.1
+  N2:
+  - R1.2
+  - J1.B

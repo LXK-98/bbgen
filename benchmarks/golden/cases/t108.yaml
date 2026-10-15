@@ -1,0 +1,23 @@
+boards:
+- type: half
+- type: half
+  below: 1
+parts:
+  U1:
+    type: dip
+    pins: 8
+    width: 10
+    labels:
+    - VCC
+    - A
+    - B
+    - GND
+    - X
+    - Y
+    - Z
+    - W
+    at: i10
+    rot: 180
+nets:
+  A:
+  - U1.2

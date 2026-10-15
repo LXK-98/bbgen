@@ -1,0 +1,32 @@
+parts:
+  J1:
+    type: offboard
+    labels:
+    - 5V
+    - GND
+  R1:
+    type: resistor
+    pins:
+    - top+59
+    - a59
+  D1:
+    type: led
+    pins:
+    - c59
+    - c61
+nets:
+  5V:
+    pins:
+    - J1.1
+    - R1.1
+    rail: +
+  LED:
+  - R1.2
+  - D1.A
+  GND:
+    pins:
+    - J1.2
+    - D1.K
+    rail: '-'
+wires: []
+autowire: true

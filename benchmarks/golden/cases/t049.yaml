@@ -1,0 +1,6 @@
+wires:
+- from: a1
+  to: a5
+  flex: true
+  via:
+  - c3

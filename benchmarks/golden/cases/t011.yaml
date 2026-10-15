@@ -1,0 +1,19 @@
+parts:
+  Pico:
+    type: pico
+    at: c40
+    rot: 180
+  C1:
+    type: capacitor
+    pins:
+    - top+49
+    - top-49
+nets:
+  3V3:
+  - Pico.3V3
+  - C1.1
+  GND:
+  - Pico.GND
+  - C1.2
+wires: []
+autowire: true

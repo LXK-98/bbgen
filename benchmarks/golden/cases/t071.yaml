@@ -1,0 +1,8 @@
+parts:
+  U1:
+    type: dip
+    pins: 4
+    width: 2
+    at: f10
+wires: []
+nets: {}

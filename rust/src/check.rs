@@ -48,9 +48,35 @@ pub fn end_node(c: &Circuit, end: &End) -> Node {
 
 pub struct Result {
     pub issues: Vec<Issue>,
+    /// board strip -> pins sitting in it
+    pub strip_pins: IndexMap<crate::board::Strip, Vec<PinId>>,
+    /// connection root -> net names found on it (sorted)
+    pub root_nets: IndexMap<Node, Vec<String>>,
+    pub dsu: std::cell::RefCell<Dsu<Node>>,
 }
 
 impl Result {
+    /// The nets on whatever a node is connected to.
+    pub fn nets_at(&self, node: Node) -> Vec<String> {
+        let root = self.dsu.borrow_mut().find(node);
+        self.root_nets.get(&root).cloned().unwrap_or_default()
+    }
+
+    pub fn wire_nets(&self, c: &Circuit, w: &crate::circuit::Wire) -> Vec<String> {
+        match &w.a {
+            Some(a) => self.nets_at(end_node(c, a)),
+            None => vec![],
+        }
+    }
+
+    pub fn wire_color(&self, c: &Circuit, w: &crate::circuit::Wire) -> String {
+        if let Some(col) = &w.color {
+            return col.clone();
+        }
+        let nets = self.wire_nets(c, w);
+        if nets.len() == 1 { c.nets[&nets[0]].color.clone() } else { "gray".into() }
+    }
+
     pub fn errors(&self) -> usize {
         self.issues.iter().filter(|i| i.level == "error").count()
     }
@@ -105,7 +131,7 @@ pub fn check(c: &Circuit) -> Result {
         let (na, nb) = (end_node(c, a), end_node(c, b));
         dsu.union(na, nb);
         if na == nb {
-            issues.push(Issue::new("warning", "NO_EFFECT", format!("W{} has both ends in the same strip", w.num)));
+            issues.push(Issue::new("warning", "NO_EFFECT", format!("W{} has both ends in the same strip", w.num)).holes(vec![a.hole]));
         }
         for (end, node) in [(a, na), (b, nb)] {
             if end.hole.is_some() {
@@ -118,7 +144,7 @@ pub fn check(c: &Circuit) -> Result {
         if here.len() == 1 && !has_pins {
             let (wi, end) = here[0];
             issues.push(Issue::new("warning", "DANGLING", format!("W{} ends in {}, where nothing else is connected",
-                                                                  c.wires[wi].num, c.hole_name(end.hole.unwrap()))));
+                                                                  c.wires[wi].num, c.hole_name(end.hole.unwrap()))).holes(vec![end.hole]));
         }
     }
     let mut net_of: IndexMap<PinId, &str> = IndexMap::default();
@@ -126,7 +152,7 @@ pub fn check(c: &Circuit) -> Result {
         for &pin in &net.pins {
             if let Some(&other) = net_of.get(&pin) {
                 if other != net.name {
-                    issues.push(Issue::new("error", "TWO_NETS", format!("{} is in both {} and {}", c.pin_str(pin), other, net.name)));
+                    issues.push(Issue::new("error", "TWO_NETS", format!("{} is in both {} and {}", c.pin_str(pin), other, net.name)).pins(vec![pin]));
                 }
             }
             net_of.entry(pin).or_insert(&net.name);
@@ -135,7 +161,7 @@ pub fn check(c: &Circuit) -> Result {
     for net in c.nets.values() {
         let missing: Vec<PinId> = net.pins.iter().copied().filter(|p| !pin_node.contains_key(p)).collect();
         if !missing.is_empty() {
-            issues.push(Issue::new("error", "NOT_PLACED", format!("net {}: {} not on the board", net.name, short_list(c, &missing, 6))));
+            issues.push(Issue::new("error", "NOT_PLACED", format!("net {}: {} not on the board", net.name, short_list(c, &missing, 6))).pins(missing.clone()));
         }
         let mut pieces: IndexMap<Node, Vec<PinId>> = IndexMap::default();
         for &pin in &net.pins {
@@ -145,7 +171,7 @@ pub fn check(c: &Circuit) -> Result {
         }
         if pieces.len() > 1 {
             let text = pieces.values().map(|g| format!("{{{}}}", short_list(c, g, 4))).collect::<Vec<_>>().join(" | ");
-            issues.push(Issue::new("error", "OPEN", format!("net {} is in {} unconnected pieces: {}", net.name, pieces.len(), text)));
+            issues.push(Issue::new("error", "OPEN", format!("net {} is in {} unconnected pieces: {}", net.name, pieces.len(), text)).pins(pieces.values().flatten().copied().collect()));
         }
     }
     let mut groups: IndexMap<Node, Vec<PinId>> = IndexMap::default();
@@ -153,12 +179,14 @@ pub fn check(c: &Circuit) -> Result {
     for (pin, node) in nodes {
         groups.entry(dsu.find(node)).or_default().push(pin);
     }
-    for pins in groups.values() {
+    let mut root_nets: IndexMap<Node, Vec<String>> = IndexMap::default();
+    for (root, pins) in &groups {
         let mut nets: Vec<&str> = pins.iter().filter_map(|p| net_of.get(p).copied()).collect();
         nets.sort();
         nets.dedup();
+        root_nets.insert(*root, nets.iter().map(|n| n.to_string()).collect());
         if nets.len() > 1 {
-            issues.push(Issue::new("error", "SHORT", format!("nets {} are connected together ({})", nets.join(", "), short_list(c, pins, 6))));
+            issues.push(Issue::new("error", "SHORT", format!("nets {} are connected together ({})", nets.join(", "), short_list(c, pins, 6))).pins(pins.clone()));
         }
         // a pin, or the bus it's part of: one unit
         let unit = |p: PinId| -> (u16, Vec<u16>) {
@@ -191,7 +219,7 @@ pub fn check(c: &Circuit) -> Result {
                 let others: Vec<PinId> = pins.iter().copied().filter(|&q| q != pin).collect();
                 short_list(c, &others, 4)
             };
-            issues.push(Issue::new("error", "STRAY", format!("{} is connected to {} but isn't in any net", c.pin_str(pin), what)));
+            issues.push(Issue::new("error", "STRAY", format!("{} is connected to {} but isn't in any net", c.pin_str(pin), what)).pins(vec![pin]));
         }
     }
     for (pi, part) in c.parts.iter().enumerate() {
@@ -200,12 +228,12 @@ pub fn check(c: &Circuit) -> Result {
             let a = dsu.find(pin_node[&ids[0]]);
             let b = dsu.find(pin_node[&ids[1]]);
             if a == b {
-                issues.push(Issue::new("error", "SHORTED_PART", format!("both legs of {} are in the same connection", part.r#ref)));
+                issues.push(Issue::new("error", "SHORTED_PART", format!("both legs of {} are in the same connection", part.r#ref)).pins(ids.clone()));
             }
         }
     }
     // errors first, otherwise in order
     let (mut errors, warnings): (Vec<Issue>, Vec<Issue>) = issues.into_iter().partition(|i| i.level == "error");
     errors.extend(warnings);
-    Result { issues: errors }
+    Result { issues: errors, strip_pins, root_nets, dsu: std::cell::RefCell::new(dsu) }
 }

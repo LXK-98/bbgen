@@ -1,0 +1,4 @@
+boards:
+- type: half
+  below: 2
+- half

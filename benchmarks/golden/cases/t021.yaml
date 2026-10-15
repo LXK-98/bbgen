@@ -1,0 +1,25 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+nets:
+  EN:
+  - Pico.GP21
+  - U1.EN
+  GND:
+  - Pico.GND
+  - U1.GND
+wires: []
+autowire: true

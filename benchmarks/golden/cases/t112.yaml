@@ -1,0 +1,30 @@
+nets:
+  GND:
+  - U1.GND
+  - D1.K
+  LED:
+  - R1.2
+  - D1.A
+  OUT:
+  - U1.OUT
+  - R1.1
+  VCC:
+  - U1.VCC
+  - U1.RST
+parts:
+  D1:
+    type: led
+  R1:
+    type: resistor
+  U1:
+    labels:
+    - GND
+    - TRIG
+    - OUT
+    - RST
+    - CV
+    - THR
+    - DIS
+    - VCC
+    pins: 8
+    type: dip

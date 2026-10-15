@@ -1,0 +1,23 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e58
+    rot: 180
+    labels:
+    - A
+    - GND
+    - B
+    - C
+    - D
+    - E
+  J1:
+    type: offboard
+    labels:
+    - GND
+nets:
+  GND:
+  - U1.GND
+  - J1.1
+wires: []
+autowire: true

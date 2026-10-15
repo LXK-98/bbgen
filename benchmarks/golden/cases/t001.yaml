@@ -1,0 +1,9 @@
+parts:
+  U1:
+    type: dip
+    pins: 8
+    width: 10
+nets:
+  A:
+  - U1.1
+  - U1.8

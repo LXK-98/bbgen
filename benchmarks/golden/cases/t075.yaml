@@ -1,0 +1,14 @@
+parts:
+  J1:
+    type: offboard
+    labels:
+    - A
+    - B
+    - C
+nets:
+  VIN:
+  - J1.1
+  VCC:
+  - J1.2
+  5V:
+  - J1.3

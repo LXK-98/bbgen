@@ -1,0 +1,4 @@
+wires:
+- from: a1
+  to: b5
+  slant: true

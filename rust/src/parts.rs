@@ -573,8 +573,9 @@ fn adapter(part: &mut Part, spec: &Val, lib: Option<&[PathBuf]>) -> Result<(i64,
     for (pad, name) in sn {
         let pin = moves.iter().rev().find(|(k, _)| *k == pad).map(|(_, v)| *v).unwrap_or(pad);
         if !(1..=n).contains(&pin) {
+            // the Python's second half isn't an f-string: it prints the braces and names as they are (a bug there)
             return Err(format!("parts.{}: chip pad {} has no adapter pin {} (the adapter has {}); map it, like map: \
-                                {{{{{}: {}}}}}", part.r#ref, pad, pin, n, pad, n));
+                                {{{{{{pad}}: {{n}}}}}}", part.r#ref, pad, pin, n));
         }
         if let Some((_, other)) = taken.iter().find(|(p, _)| *p == pin) {
             return Err(format!("parts.{}: chip pads {} and {} both on adapter pin {}", part.r#ref, other, pad, pin));

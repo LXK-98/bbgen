@@ -1,0 +1,23 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - CE
+    - NC
+    - X
+    - VOUT
+  R1:
+    type: resistor
+    pins:
+    - U1.CE
+    - a30
+wires: []
+nets: {}

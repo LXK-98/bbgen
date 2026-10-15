@@ -1,0 +1,7 @@
+parts: {}
+wires:
+- - a12
+  - a18
+- - a10
+  - a20
+nets: {}

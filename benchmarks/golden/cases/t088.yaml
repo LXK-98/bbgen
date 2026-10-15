@@ -1,0 +1,8 @@
+parts:
+  J1:
+    type: offboard
+    cols: 2
+    labels:
+      3: GND
+wires: []
+nets: {}

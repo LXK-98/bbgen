@@ -1,0 +1,3 @@
+parts:
+  U1:
+    symbol: Timer:NE555X

@@ -1,0 +1,11 @@
+parts: {}
+wires: []
+nets:
+  A:
+    pins: []
+    color: blue
+  B: []
+  C: []
+  D:
+    pins: []
+    color: green

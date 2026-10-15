@@ -1,0 +1,13 @@
+parts:
+  U1:
+    symbol: Timer:NE555P
+  C1:
+    type: capacitor
+wires: []
+nets:
+  5V:
+  - U1.VCC
+  - C1.1
+  GND:
+  - U1.GND
+  - C1.2

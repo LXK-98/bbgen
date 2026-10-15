@@ -1,0 +1,8 @@
+parts:
+  Pico:
+    type: pico
+    at: h22
+wires:
+- - d15
+  - g15
+nets: {}

@@ -1,0 +1,19 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+  J1:
+    type: offboard
+    cols: 2
+    labels:
+      1: GND
+      2: GND
+      3: GND
+nets:
+  GND:
+  - Pico.GND
+  - J1.1
+  - J1.2
+  - J1.3
+wires: []
+autowire: true

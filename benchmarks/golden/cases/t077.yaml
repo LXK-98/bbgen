@@ -1,0 +1,30 @@
+parts:
+  U1:
+    type: dip
+    pins: 8
+    at: e30
+    rot: 180
+    labels:
+    - G1
+    - X
+    - Y
+    - Z
+    - G2
+    - P
+    - Q
+    - R
+  J1:
+    type: offboard
+    labels:
+    - A
+    - B
+    - C
+nets:
+  GND:
+    pins:
+    - U1.G1
+    - U1.G2
+    - J1.1
+    rail: '-'
+wires: []
+autowire: true

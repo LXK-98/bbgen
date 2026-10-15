@@ -1,0 +1,20 @@
+parts:
+  J1:
+    type: offboard
+    labels:
+    - A
+    - B
+    - C
+nets:
+  5V:
+    pins:
+    - J1.1
+    rail: +
+  3V3:
+    pins:
+    - J1.2
+    rail: +
+  12V:
+    pins:
+    - J1.3
+    rail: +

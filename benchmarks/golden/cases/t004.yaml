@@ -1,0 +1,37 @@
+parts:
+  U1:
+    type: dip
+    pins: 8
+    width: 6
+    labels:
+    - A
+    - B
+    - GND
+    - D
+    - E
+    - F
+    - G
+    - VCC
+  U2:
+    type: dip
+    pins: 6
+    labels:
+    - X
+    - Y
+    - GND
+    - P
+    - Q
+    - VCC
+nets:
+  GND:
+  - U1.GND
+  - U2.GND
+  VCC:
+  - U1.VCC
+  - U2.VCC
+  S1:
+  - U1.A
+  - U2.X
+  S2:
+  - U1.F
+  - U2.Q

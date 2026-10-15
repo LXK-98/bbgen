@@ -1,0 +1,18 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - CE
+    - NC
+    - X
+    - VOUT
+wires:
+- from: U1.GND
+  to: top-
+  slant: U1 can't move
+nets: {}

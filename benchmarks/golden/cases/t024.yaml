@@ -1,0 +1,25 @@
+parts:
+  U1:
+    type: dip
+    pins: 8
+    width: 6
+    at: f10
+  U2:
+    type: dip
+    pins: 6
+    at: e40
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+nets:
+  V:
+  - U1.7
+  - U1.8
+  - U2.VIN
+wires: []
+autowire: true

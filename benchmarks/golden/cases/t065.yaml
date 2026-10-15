@@ -1,0 +1,8 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+wires: []
+nets: {}

@@ -1,0 +1,27 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+  R1:
+    type: resistor
+    pins:
+    - Pico.GP15
+    - b22
+  D1:
+    type: led
+    pins:
+    - a22
+    - top-
+wires:
+- - Pico.38
+  - top-
+nets:
+  GND:
+  - Pico.GND
+  - D1.K
+  DRIVE:
+  - Pico.GP15
+  - R1.1
+  LED:
+  - R1.2
+  - D1.A

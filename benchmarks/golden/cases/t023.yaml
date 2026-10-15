@@ -1,0 +1,21 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+nets:
+  VCC:
+    pins:
+    - U1.VIN
+    - U1.VOUT
+    rail: bot+
+wires: []
+autowire: true

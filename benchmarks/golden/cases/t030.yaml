@@ -1,0 +1,14 @@
+parts:
+  U1:
+    type: dip
+    pins: 4
+    at: f10
+    labels:
+    - GND
+    - A
+    - B
+    - GND
+wires:
+- - U1.GND
+  - top-
+nets: {}

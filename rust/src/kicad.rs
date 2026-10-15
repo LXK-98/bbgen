@@ -460,3 +460,77 @@ fn footprint_uncached(r: &str, roots: &[PathBuf]) -> Result<Footprint, String> {
     let has_pads = !pads.is_empty();
     Ok(Footprint { name: name.to_string(), pads, smd: smd > 0 && !has_pads, outline, keepouts })
 }
+
+// ---- searching ----
+
+/// (Library:Name, footprint, description) for symbols whose name, description or keywords hold every word,
+/// names that hold them first.
+pub fn search(words: &[String], roots: &[PathBuf], limit: usize) -> Vec<(String, String, String)> {
+    let words: Vec<String> = words.iter().filter(|w| !w.is_empty()).map(|w| w.to_lowercase()).collect();
+    let mut seen: Vec<String> = Vec::new();
+    let mut hits: Vec<(i64, String, String, String)> = Vec::new();
+    for root in roots {
+        let mut paths: Vec<PathBuf> = std::fs::read_dir(root.join("symbols")).map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "kicad_sym").unwrap_or(false)).collect()).unwrap_or_default();
+        paths.sort();
+        for path in paths {
+            let lib = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            // ^\t\(symbol "([^"]+)"
+            let mut starts: Vec<(usize, String)> = Vec::new();
+            let mut at = 0;
+            for line in text.split_inclusive('\n') {
+                if let Some(rest) = line.strip_prefix("\t(symbol \"") {
+                    if let Some(end) = rest.find('"') {
+                        if end > 0 {
+                            starts.push((at, rest[..end].to_string()));
+                        }
+                    }
+                }
+                at += line.len();
+            }
+            for (k, (start, name)) in starts.iter().enumerate() {
+                let r = format!("{}:{}", lib, name);
+                if seen.contains(&r) {
+                    continue;
+                }
+                let stop = starts.get(k + 1).map(|s| s.0).unwrap_or(text.len());
+                let head: String = text[*start..stop].chars().take(6000).collect();
+                let props = properties(&head);
+                let get = |k: &str| props.iter().rev().find(|(x, _)| x == k).map(|(_, v)| v.clone()).unwrap_or_default();
+                let about = format!("{} {} {}", r, get("Description"), get("ki_keywords")).to_lowercase();
+                if words.iter().all(|w| about.contains(w.as_str())) {
+                    seen.push(r.clone());
+                    let in_name = words.iter().filter(|w| r.to_lowercase().contains(w.as_str())).count() as i64;
+                    hits.push((-in_name, r, get("Footprint"), get("Description")));
+                }
+            }
+        }
+    }
+    hits.sort();
+    hits.into_iter().take(limit).map(|(_, r, fp, about)| (r, fp, about)).collect()
+}
+
+/// \(property "(Description|ki_keywords|Footprint)" "((?:\\.|[^"\\])*)" over a symbol's text.
+fn properties(text: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let b = text.as_bytes();
+    let mut i = 0;
+    while let Some(off) = text[i..].find("(property \"") {
+        let start = i + off + "(property \"".len();
+        i = start;
+        let key = ["Description", "ki_keywords", "Footprint"].iter().find(|k| text[start..].starts_with(&format!("{}\" \"", k)));
+        if let Some(k) = key {
+            let vstart = start + k.len() + 3;
+            let mut j = vstart;
+            while j < b.len() && b[j] != b'"' {
+                j += if b[j] == b'\\' { 2 } else { 1 };
+            }
+            if j < b.len() {
+                out.push((k.to_string(), text[vstart..j].to_string()));
+                i = j + 1;
+            }
+        }
+    }
+    out
+}

@@ -1,0 +1,22 @@
+parts:
+  U1:
+    type: dip
+    pins: 8
+    width: 10
+    at: j20
+    raised: false
+    labels:
+    - VCC
+    - A
+    - B
+    - GND
+    - X
+    - Y
+    - Z
+    - W
+wires:
+- - U1.A
+  - f30
+nets:
+  A:
+  - U1.A

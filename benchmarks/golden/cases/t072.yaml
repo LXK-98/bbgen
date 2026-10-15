@@ -1,0 +1,9 @@
+parts:
+  D1:
+    type: led
+    color: green
+    pins:
+    - a10
+    - a12
+wires: []
+nets: {}

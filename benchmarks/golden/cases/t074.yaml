@@ -1,0 +1,15 @@
+parts:
+  C1:
+    type: capacitor
+    pins:
+    - top+10
+    - a10
+nets:
+  GND:
+    pins:
+    - C1.1
+    rail: '-'
+  X:
+  - C1.2
+wires: []
+autowire: true

@@ -1,0 +1,12 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+wires:
+- - Pico.GP0
+  - top+
+- - Pico.GP0
+  - top+
+- - Pico.GP0
+  - top+
+nets: {}

@@ -51,6 +51,9 @@ python3 benchmarks/hotspots.py         # where the time goes: builds, ms per bui
 python3 benchmarks/golden.py           # record the golden corpus into golden/
 python3 benchmarks/golden.py --diff golden/13-ben-eater-register.jsonl.gz other.jsonl
 python3 benchmarks/rs_check.py         # the Rust port (rust/) against the golden records, and its speed
+python3 benchmarks/rs_check.py --full  # ... placing from scratch: the whole record, on one core and on all
+python3 benchmarks/rs_trials.py        # every trial placement built, rebuilt in Rust: the same score?
+python3 benchmarks/rs_outputs.py       # bbgen and bbgen-rs on the same files: the same SVG, checklist, report
 ```
 
 `hotspots.py` writes `hotspots.md`: each circuit built serially (plain, then under cProfile) and with

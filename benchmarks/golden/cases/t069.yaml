@@ -1,0 +1,8 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+wires:
+- - e10
+  - top+
+nets: {}

@@ -1,0 +1,18 @@
+parts:
+  J1:
+    type: offboard
+    labels:
+    - A
+    - B
+    - C
+nets:
+  VIN:
+    pins:
+    - J1.1
+    rail: none
+  VCC:
+  - J1.2
+  5V:
+  - J1.3
+wires: []
+autowire: true

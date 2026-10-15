@@ -1,0 +1,66 @@
+title: 5 V and 3.3 V side by side
+notes:
+- Tier 2. A bench 5 V supply and an LD1117 regulating 3.3 V from it, each with its
+  input or output cap and an LED showing it's on. Two voltages, so each gets a + rail
+  of its own; the grounds share the - rails.
+parts:
+  J1:
+    type: offboard
+    title: 5 V supply
+    labels:
+    - 5V
+    - GND
+  U1:
+    symbol: Regulator_Linear:LD1117V33
+  C1:
+    type: capacitor
+    value: 100nF
+    near: U1
+  C2:
+    type: electrolytic
+    value: 10uF
+    near: U1
+  R1:
+    type: resistor
+    value: 330R
+  D1:
+    type: led
+    color: green
+  R2:
+    type: resistor
+    value: 220R
+  D2:
+    type: led
+    color: blue
+nets:
+  5V:
+    pins:
+    - J1.1
+    - U1.VI
+    - C1.1
+    - R1.1
+    rail: +
+  3V3:
+    pins:
+    - U1.VO
+    - C2.+
+    - R2.1
+    rail: +
+  GND:
+    pins:
+    - J1.2
+    - U1.GND
+    - C1.2
+    - C2.-
+    - D1.K
+    - D2.K
+    rail: '-'
+  ON_5V:
+  - R1.2
+  - D1.A
+  ON_3V3:
+  - R2.2
+  - D2.A
+expect:
+  flex: 1
+  warnings: 0

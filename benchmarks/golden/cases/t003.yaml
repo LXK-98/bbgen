@@ -1,0 +1,33 @@
+parts:
+  Pico:
+    type: pico
+  U1:
+    type: dip
+    pins: 6
+    labels:
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+  R1:
+    type: resistor
+    value: 10k
+  C1:
+    type: capacitor
+    value: 1uF
+nets:
+  GND:
+  - Pico.GND
+  - U1.GND
+  - R1.2
+  - C1.2
+  EN:
+  - Pico.GP21
+  - U1.EN
+  - R1.1
+  3V3:
+  - Pico.VSYS
+  - U1.VIN
+  - C1.1

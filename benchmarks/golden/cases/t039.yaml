@@ -1,0 +1,35 @@
+title: Pico blink
+notes:
+- The LED's long leg is the anode (A).
+boards:
+- type: half
+parts:
+  Pico:
+    type: pico
+    at: h3
+  R1:
+    type: resistor
+    value: 330R
+    pins:
+    - Pico.GP15
+    - j26
+  D1:
+    type: led
+    value: red
+    pins:
+    - R1.2
+    - bot-
+wires:
+  ground:
+  - - Pico.3
+    - bot-
+nets:
+  GND:
+  - Pico.GND
+  - D1.K
+  LED_DRIVE:
+  - Pico.GP15
+  - R1.1
+  LED_A:
+  - R1.2
+  - D1.A

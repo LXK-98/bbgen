@@ -1,0 +1,31 @@
+parts:
+  Pico:
+    type: pico
+    at: h3
+  U1:
+    type: dip
+    pins: 6
+    at: e27
+    rot: 180
+    labels:
+    - VIN
+    - GND
+    - EN
+    - X
+    - Y
+    - VOUT
+  C1:
+    type: capacitor
+    pins:
+    - top+45
+    - top-45
+nets:
+  GND:
+  - Pico.GND
+  - U1.GND
+  - C1.2
+  VSYS:
+  - Pico.VSYS
+  - C1.1
+wires: []
+autowire: true

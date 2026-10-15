@@ -1,0 +1,9 @@
+parts:
+  R1:
+    type: resistor
+    pins:
+    - bot+47
+    - j48
+    slant: fits better
+wires: []
+nets: {}

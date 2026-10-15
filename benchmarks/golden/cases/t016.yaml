@@ -1,0 +1,19 @@
+parts:
+  U1:
+    type: dip
+    pins: 6
+    at: e42
+    rot: 180
+    labels:
+    - OUT
+    - V-
+    - IN+
+    - IN-
+    - X
+    - V+
+nets:
+  FB:
+  - U1.OUT
+  - U1.IN-
+wires: []
+autowire: true

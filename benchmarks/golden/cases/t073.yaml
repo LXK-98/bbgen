@@ -1,0 +1,4 @@
+parts:
+  D1:
+    type: led
+    color: chartreuse

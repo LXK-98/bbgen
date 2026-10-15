@@ -58,11 +58,24 @@ pub struct Issue {
     pub level: &'static str,
     pub code: &'static str,
     pub message: String,
+    /// the pins and holes it's about: the drawing rings them
+    pub pins: Vec<PinId>,
+    pub holes: Vec<Option<Hole>>,
 }
 
 impl Issue {
     pub fn new(level: &'static str, code: &'static str, message: String) -> Issue {
-        Issue { level, code, message }
+        Issue { level, code, message, pins: vec![], holes: vec![] }
+    }
+
+    pub fn pins(mut self, pins: Vec<PinId>) -> Issue {
+        self.pins = pins;
+        self
+    }
+
+    pub fn holes(mut self, holes: Vec<Option<Hole>>) -> Issue {
+        self.holes = holes;
+        self
     }
 }
 
@@ -251,6 +264,7 @@ pub type Hint = Option<(Option<f64>, Option<f64>)>;
 pub struct Circuit {
     pub source: String,
     pub title: String,
+    pub notes: Vec<String>,
     pub flex: bool,
     pub issues: Vec<Issue>,
     pub occupied: HashMap<Hole, String>,
@@ -299,7 +313,15 @@ fn bits(p: Xy) -> (u64, u64) {
 
 impl Circuit {
     pub fn load(path: &str) -> Result<Circuit, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path, e))?;
+        // an OSError as Python writes it: [Errno 2] No such file or directory: 'missing.yaml'
+        let text = std::fs::read_to_string(path).map_err(|e| {
+            let text = e.to_string();
+            let text = text.split(" (os error").next().unwrap_or(&text).to_string();
+            match e.raw_os_error() {
+                Some(n) => format!("[Errno {}] {}: {}", n, text, crate::val::repr_str(path)),
+                None => format!("{}: {}", path, text),
+            }
+        })?;
         let data = Val::load(&text)?;
         Circuit::new(&data, path)
     }
@@ -319,6 +341,7 @@ impl Circuit {
         let mut c = Circuit {
             source: source.into(),
             title: if data.at("title").truthy() { data.at("title").py_str() } else { stem },
+            notes: data.at("notes").as_list().map(|l| l.iter().map(Val::py_str).collect()).unwrap_or_default(),
             flex: !matches!(data.get("flex"), Some(Val::Bool(false))),
             issues: vec![], occupied: HashMap::default(), used: HashMap::default(), segments: vec![], lines: HashMap::default(),
             bodies: vec![], pin_holes: HashSet::default(), covered: HashMap::default(), keepouts: HashSet::default(), raised: vec![],
@@ -641,7 +664,7 @@ impl Circuit {
             self.parts[pi].pins[k].hole = hole;
             let name = self.parts[pi].pin_str(k);
             match hole {
-                None => self.issues.push(Issue::new("error", "OFF_HOLES", format!("{} lands in the trench or off the board", name))),
+                None => self.issues.push(Issue::new("error", "OFF_HOLES", format!("{} lands in the trench or off the board", name)).pins(vec![PinId { part: pi as u16, pin: k as u16 }])),
                 Some(h) => {
                     self.occupy(h, &name);
                     self.pin_holes.insert(h);
@@ -1097,7 +1120,7 @@ impl Circuit {
                 let fixc = capitalize(&fix);
                 self.issues.push(Issue::new("warning", "DIAGONAL", format!(
                     "{}: column {} has no {} hole (the rails have none in columns {}). {}, {}",
-                    route, hs[i].col, hs[1 - i].row.name(), gaps, fixc, accept)));
+                    route, hs[i].col, hs[1 - i].row.name(), gaps, fixc, accept)).holes(vec![Some(holes.0), Some(holes.1)]));
             }
             return;
         }
@@ -1145,7 +1168,7 @@ impl Circuit {
             }
             let fix = changes(&best).iter().map(|(n, o)| format!("{} instead of {}", self.hole_name(*n), self.hole_name(*o)))
                 .collect::<Vec<_>>().join(" and ");
-            self.issues.push(Issue::new("warning", "DIAGONAL", format!("{}: {} would make it straight", route, fix)));
+            self.issues.push(Issue::new("warning", "DIAGONAL", format!("{}: {} would make it straight", route, fix)).holes(vec![Some(holes.0), Some(holes.1)]));
             return;
         }
         let mut names: Vec<String> = Vec::new();
@@ -1161,7 +1184,7 @@ impl Circuit {
         }
         let what = if names.is_empty() { String::new() } else { format!(" (by {})", names.iter().take(5).cloned().collect::<Vec<_>>().join(", ")) };
         let fix = if auto { "Move parts to make room".to_string() } else { format!("Move parts to make room, bend it with via:, {}", accept) };
-        self.issues.push(Issue::new("warning", "DIAGONAL", format!("{}: every straight route is blocked{}. {}", route, what, fix)));
+        self.issues.push(Issue::new("warning", "DIAGONAL", format!("{}: every straight route is blocked{}. {}", route, what, fix)).holes(vec![Some(holes.0), Some(holes.1)]));
     }
 
     fn find_over_parts(&mut self) {
@@ -1173,7 +1196,7 @@ impl Circuit {
                 if let Some(h) = end.hole {
                     if let Some(r) = self.covered.get(&pyf::key(self.end_xy(end))) {
                         issues.push(Issue::new("warning", "OVER_PART", format!("{} ends in {}, under {}: move one of them",
-                                                                               name, self.hole_name(h), r)));
+                                                                               name, self.hole_name(h), r)).holes(vec![Some(h)]));
                     }
                 }
             }
@@ -1182,7 +1205,7 @@ impl Circuit {
                     .into_iter().map(|i| self.body_name(i)).filter(|z| self.keepouts.contains(*z)).collect();
                 if !zones.is_empty() {
                     issues.push(Issue::new("warning", "OVER_PART", format!("{} arches over {}, which needs that room: move one of them",
-                                                                           name, zones.join(" and "))));
+                                                                           name, zones.join(" and "))).holes(vec![w.a.as_ref().unwrap().hole, w.b.as_ref().unwrap().hole]));
                 }
             }
             if !w.on_board() || w.flex {
@@ -1200,7 +1223,7 @@ impl Circuit {
             }
             if !along.is_empty() {
                 issues.push(Issue::new("warning", "OVER_PART", format!("{} runs along {} {}, hiding it: move one of them",
-                                                                       name, along.join(" and "), ends)));
+                                                                       name, along.join(" and "), ends)).holes(vec![w.a.as_ref().unwrap().hole, w.b.as_ref().unwrap().hole]));
             }
             let mut refs: Vec<&str> = Vec::new();
             for s in pts.windows(2) {
@@ -1223,7 +1246,7 @@ impl Circuit {
                 None if !w.via.is_empty() => "move the bends in its via".to_string(),
                 None => "move a part to make room".to_string(),
             };
-            issues.push(Issue::new("warning", "OVER_PART", format!("{}: {}", route, fix)));
+            issues.push(Issue::new("warning", "OVER_PART", format!("{}: {}", route, fix)).holes(vec![w.a.as_ref().unwrap().hole, w.b.as_ref().unwrap().hole]));
         }
         for part in &self.parts {
             if part.kind.is_lead() && part.pins.iter().all(|p| p.xy.is_some()) {
@@ -1232,7 +1255,7 @@ impl Circuit {
                 if !refs.is_empty() {
                     issues.push(Issue::new("warning", "OVER_PART", format!(
                         "{} lies over {} ({} → {}): put its legs where it clears the part", part.r#ref, refs.join(" and "),
-                        self.hole_name(part.pins[0].hole.unwrap()), self.hole_name(part.pins[1].hole.unwrap()))));
+                        self.hole_name(part.pins[0].hole.unwrap()), self.hole_name(part.pins[1].hole.unwrap()))).holes(part.pins.iter().map(|p| p.hole).collect()));
                 }
             }
         }
@@ -1249,13 +1272,13 @@ impl Circuit {
                 if let Some(r) = self.under.get(&pyf::key(pin.xy.unwrap())) {
                     issues.push(Issue::new("error", "HOLE_TAKEN", format!(
                         "{} leg in {}, under {}: only a flat wire goes under a raised module", part.r#ref,
-                        self.hole_name(pin.hole.unwrap()), r)));
+                        self.hole_name(pin.hole.unwrap()), r)).holes(vec![pin.hole]));
                 }
             }
             let refs = self.raised_crossed(part.pins[0].xy.unwrap(), part.pins[1].xy.unwrap());
             if !refs.is_empty() {
                 issues.push(Issue::new("warning", "OVER_PART", format!(
-                    "{} lies across {}, which stands over it: put its legs where it clears the part", part.r#ref, refs.join(" and "))));
+                    "{} lies across {}, which stands over it: put its legs where it clears the part", part.r#ref, refs.join(" and "))).holes(part.pins.iter().map(|p| p.hole).collect()));
             }
         }
         for w in &self.wires {
@@ -1268,7 +1291,7 @@ impl Circuit {
                     if let Some(r) = self.under.get(&pyf::key(self.end_xy(end))) {
                         let what = if w.flex { "a flexible jumper's" } else { "a flying lead's" };
                         issues.push(Issue::new("error", "HOLE_TAKEN", format!(
-                            "W{} ends in {}, under {}: {} plug won't go under a raised module", w.num, self.hole_name(h), r, what)));
+                            "W{} ends in {}, under {}: {} plug won't go under a raised module", w.num, self.hole_name(h), r, what)).holes(vec![Some(h)]));
                     }
                 }
             }
@@ -1281,6 +1304,35 @@ impl Circuit {
         let (x0, x1, y0, y1) = (pymin(a.0, b.0), pymax(a.0, b.0), pymin(a.1, b.1), pymax(a.1, b.1));
         self.raised.iter().filter(|(bx, _)| x1 > bx.0 && x0 < bx.2 && y1 > bx.1 && y0 < bx.3 && crosses(a, b, *bx))
             .map(|(_, r)| r.as_str()).collect()
+    }
+
+    /// The raised modules a flat wire lies under or ends under: it goes in before them.
+    pub fn under_of(&self, w: &Wire) -> Vec<String> {
+        if w.flex || !w.on_board() {
+            return vec![];
+        }
+        let mut keys = self.lies_over(w);
+        for e in [&w.a, &w.b].into_iter().flatten() {
+            keys.insert(pyf::key(self.end_xy(e)));
+        }
+        let mut refs: Vec<String> = Vec::new();
+        for k in keys {
+            if let Some(r) = self.under.get(&k) {
+                if !refs.contains(r) {
+                    refs.push(r.clone());
+                }
+            }
+        }
+        let pts = self.wire_points(w);
+        for s in pts.windows(2) {
+            for r in self.raised_crossed(s[0], s[1]) {
+                if !refs.iter().any(|x| x == r) {
+                    refs.push(r.to_string());
+                }
+            }
+        }
+        refs.sort();
+        refs
     }
 
     /// Positions of the holes a wire lying on the board covers: between its ends, and at its bends.
@@ -1319,7 +1371,7 @@ impl Circuit {
                         let what = if w.flex { "the jumper".to_string() } else { format!("W{}", w.num) };
                         issues.push(Issue::new("error", "END_COVERED", format!(
                             "W{} ends in {}, under W{}, which goes in first: {} can't be plugged in. Move one of them",
-                            w.num, self.hole_name(h), other.num, what)));
+                            w.num, self.hole_name(h), other.num, what)).holes(vec![Some(h)]));
                     }
                 }
             }
@@ -1334,7 +1386,7 @@ impl Circuit {
                     && other.a.as_ref().map(|e| e.hole.is_some()).unwrap_or(false) {
                     issues.push(Issue::new("warning", "NESTED", format!(
                         "W{} lies over W{}, hiding it, and has to come out before it can: buildable, but hard to trace \
-                         (nested: flex makes the outer one a flexible jumper)", w.num, other.num)));
+                         (nested: flex makes the outer one a flexible jumper)", w.num, other.num)).holes(vec![w.a.as_ref().unwrap().hole, w.b.as_ref().unwrap().hole]));
                 }
             }
         }
@@ -1413,7 +1465,7 @@ impl Circuit {
         if let Some(prev) = self.occupied.get(&hole) {
             let name = self.boards[hole.board as usize].name(hole, self.default_board);
             let msg = format!("{}: {} and {} both want this hole", name, who, prev);
-            self.issues.push(Issue::new("error", "HOLE_TAKEN", msg));
+            self.issues.push(Issue::new("error", "HOLE_TAKEN", msg).holes(vec![Some(hole)]));
         } else {
             self.occupied.insert(hole, who.to_string());
             self.used.insert(pyf::key(self.boards[hole.board as usize].xy(hole)), who.to_string());

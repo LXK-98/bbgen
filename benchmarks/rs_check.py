@@ -60,7 +60,7 @@ def full(argv: list[str]) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         for p in paths:
             out = Path(tmp) / f"{p.stem}.jsonl"
-            subprocess.run([str(BIN), "build", str(p), "--dump", str(out)], capture_output=True)
+            subprocess.run([str(BIN), "dev", "build", str(p), "--dump", str(out)], capture_output=True)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 same = out.exists() and diff(HERE / "golden" / f"{p.stem}.jsonl.gz", out) == 0
@@ -68,7 +68,7 @@ def full(argv: list[str]) -> int:
             for jobs in ("1", ""):  # one core, then all of them: timed without a record
                 env = {**__import__("os").environ, "BBGEN_JOBS": jobs}
                 t0 = time.perf_counter()
-                res = subprocess.run([str(BIN), "build", str(p)], capture_output=True, text=True, env=env)
+                res = subprocess.run([str(BIN), "dev", "build", str(p)], capture_output=True, text=True, env=env)
                 times.append(time.perf_counter() - t0)
                 hashes.append(res.stdout.split("hash ")[1].split(",")[0] if "hash " in res.stdout else "?")
             hash_ok = all(h == golden[p.stem]["hash"] for h in hashes)
@@ -104,16 +104,16 @@ def main(argv: list[str]) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         for p in paths:
             out = Path(tmp) / f"{p.stem}.jsonl"
-            subprocess.run([str(BIN), "build", str(p), "--dump", str(out)], capture_output=True)
+            subprocess.run([str(BIN), "dev", "build", str(p), "--dump", str(out)], capture_output=True)
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 same = diff(HERE / "golden" / f"{p.stem}.jsonl.gz", out) == 0
             bad += not same
             # enough builds for about a second
-            first = subprocess.run([str(BIN), "build", str(p), "--repeat", "3"], capture_output=True, text=True).stdout
+            first = subprocess.run([str(BIN), "dev", "build", str(p), "--repeat", "3"], capture_output=True, text=True).stdout
             ms = float(first.strip().splitlines()[-1].split()[0])
             n = max(3, int(1000 / max(ms, 0.01)))
-            res = subprocess.run([str(BIN), "build", str(p), "--repeat", str(n)], capture_output=True, text=True).stdout
+            res = subprocess.run([str(BIN), "dev", "build", str(p), "--repeat", str(n)], capture_output=True, text=True).stdout
             ms = float(res.strip().splitlines()[-1].split()[0])
             total_rs += ms
             line = f"{p.stem:26} {'same' if same else 'DIFFERS':>8} {ms:9.2f}"

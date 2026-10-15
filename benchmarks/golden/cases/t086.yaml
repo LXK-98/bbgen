@@ -1,0 +1,9 @@
+parts:
+  R1:
+    type: resistor
+    value: 4k7
+    pins:
+    - a1
+    - a5
+wires: []
+nets: {}

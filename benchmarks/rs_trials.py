@@ -52,7 +52,7 @@ def main(argv: list[str]) -> int:
         with gzip.open(HERE / "golden" / f"{p.stem}.jsonl.gz", "rt") as f:
             trials = [e for e in map(json.loads, f) if e["kind"] == "trial"]
         lines = "".join(json.dumps({"data": trial_data(data, t["layout"]), "source": str(p)}) + "\n" for t in trials)
-        out = subprocess.run([str(BIN), "score-lines"], input=lines, capture_output=True, text=True)
+        out = subprocess.run([str(BIN), "dev", "score-lines"], input=lines, capture_output=True, text=True)
         got = out.stdout.splitlines()
         bad = [(i, t["score"], g) for i, (t, g) in enumerate(zip(trials, got)) if g.split()[0] != repr(float(t["score"]))]
         if len(got) != len(trials):

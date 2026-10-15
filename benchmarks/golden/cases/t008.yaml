@@ -1,0 +1,36 @@
+boards:
+- half
+- half
+parts:
+  U1:
+    type: dip
+    pins: 16
+  U2:
+    type: dip
+    pins: 16
+  U3:
+    type: dip
+    pins: 16
+  U4:
+    type: dip
+    pins: 16
+nets:
+  GND:
+  - U1.8
+  - U2.8
+  - U3.8
+  - U4.8
+  VCC:
+  - U1.16
+  - U2.16
+  - U3.16
+  - U4.16
+  S1:
+  - U1.1
+  - U2.9
+  S2:
+  - U2.1
+  - U3.9
+  S3:
+  - U3.1
+  - U4.9
