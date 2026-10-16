@@ -7,6 +7,8 @@
 	import Sidebar from '#lib/components/studio/Sidebar.svelte';
 	import Board from '#lib/components/studio/Board.svelte';
 	import Circuit from '#lib/components/studio/Circuit.svelte';
+	import Generation from '#lib/components/studio/Generation.svelte';
+	import Progress from '#lib/components/studio/Progress.svelte';
 	import Drawer from '#lib/components/studio/Drawer.svelte';
 	import Inspector from '#lib/components/studio/Inspector.svelte';
 	import StatusBar from '#lib/components/studio/StatusBar.svelte';
@@ -44,7 +46,9 @@
 			<Resizable.Pane defaultSize={57} minSize={30}>
 				<Resizable.PaneGroup direction="vertical" autoSaveId="bbgen-studio.rows">
 					<Resizable.Pane defaultSize={72} minSize={30} class="relative">
-						{#if studio.view === 'both'}
+						{#if studio.mode === 'generation'}
+							<Generation />
+						{:else if studio.view === 'both'}
 							<Resizable.PaneGroup direction="horizontal" autoSaveId="bbgen-studio.both">
 								<Resizable.Pane defaultSize={50} minSize={20}><Board /></Resizable.Pane>
 								<Resizable.Handle />
@@ -59,7 +63,7 @@
 					</Resizable.Pane>
 					<Resizable.Handle />
 					<Resizable.Pane defaultSize={28} minSize={10}>
-						<Drawer />
+						{#if studio.mode === 'generation'}<Progress />{:else}<Drawer />{/if}
 					</Resizable.Pane>
 				</Resizable.PaneGroup>
 			</Resizable.Pane>

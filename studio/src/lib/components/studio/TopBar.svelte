@@ -1,6 +1,6 @@
 <script lang="ts">
-	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result, Export, and
-	// Rebuild (or step by step, each step in the status bar as bbgen takes it), which turns into Stop while it runs.
+	// The file, the mode (Inspect, or Generation: bbgen building the board step by step), the view (board, circuit or
+	// both, in Inspect), the check's result, Export, and Rebuild, which turns into Stop while it runs.
 	import { studio } from '#lib/studio.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -29,11 +29,11 @@
 		{ view: 'both', label: 'Both', icon: Columns2 }
 	] as const;
 	const MODES = [
-		{ name: 'Inspect', ready: true },
-		{ name: 'Build guide', ready: false },
-		{ name: 'Generation', ready: false },
-		{ name: 'Edit', ready: false }
-	];
+		{ mode: 'inspect', name: 'Inspect', icon: Eye },
+		{ mode: null, name: 'Build guide' },
+		{ mode: 'generation', name: 'Generation', icon: Footprints },
+		{ mode: null, name: 'Edit' }
+	] as const;
 </script>
 
 <header class="flex h-12 shrink-0 items-center gap-4 border-b bg-background px-3">
@@ -54,8 +54,18 @@
 
 	<nav aria-label="Mode" class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
 		{#each MODES as m}
-			{#if m.ready}
-				<span aria-current="page" class="flex h-7 items-center gap-1.5 rounded-md bg-background px-3 text-xs font-medium shadow-sm"><Eye class="size-3.5" /> {m.name}</span>
+			{#if m.mode}
+				<button
+					type="button"
+					aria-current={studio.mode === m.mode ? 'page' : undefined}
+					onclick={() => studio.setMode(m.mode)}
+					class="flex h-7 items-center gap-1.5 rounded-md px-3 text-xs {studio.mode === m.mode
+						? 'bg-background font-medium shadow-sm'
+						: 'text-muted-foreground hover:text-foreground'}"
+				>
+					<m.icon class="size-3.5" />
+					{m.name}
+				</button>
 			{:else}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
@@ -69,7 +79,7 @@
 		{/each}
 	</nav>
 
-	<div role="group" aria-label="View" class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+	<div role="group" aria-label="View" class:invisible={studio.mode !== 'inspect'} class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
 		{#each VIEWS as v}
 			<button
 				type="button"
@@ -104,16 +114,6 @@
 			{/if}
 		{/if}
 		<ExportMenu />
-		<Tooltip.Root>
-			<Tooltip.Trigger>
-				{#snippet child({ props })}
-					<Button {...props} variant="outline" size="sm" disabled={!studio.path || studio.building} onclick={() => studio.rebuild(true)}>
-						<Footprints /> Step by step
-					</Button>
-				{/snippet}
-			</Tooltip.Trigger>
-			<Tooltip.Content>Rebuild, showing each step bbgen takes as it places and wires</Tooltip.Content>
-		</Tooltip.Root>
 		{#if studio.building}
 			<Button size="sm" variant="secondary" class="w-24" onclick={() => studio.stop()}>
 				<Square class="fill-current" /> Stop

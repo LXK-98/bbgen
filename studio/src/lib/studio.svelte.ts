@@ -43,6 +43,19 @@ export class Studio {
 	step = $state.raw<StepEvent | null>(null);
 	/** whether the build running shows its steps */
 	stepping = $state(false);
+	/** the file the steps are of */
+	stepsFor = $state<string | null>(null);
+	/** the kept step Generation mode shows: its number, or null for the latest */
+	shown = $state<number | null>(null);
+	/** this file's steps, the kept ones (those with a drawing), and the one Generation mode shows */
+	ofFile = $derived(this.stepsFor === this.path ? this.steps : []);
+	kept = $derived(this.ofFile.filter((e) => e.svg));
+	keptAt = $derived(this.shown === null ? this.kept.length - 1 : this.kept.findIndex((e) => e.n === this.shown));
+	shownStep = $derived<StepEvent | null>(this.kept[this.keptAt] ?? null);
+	/** following bbgen as it goes: running, and showing the latest step */
+	live = $derived(this.stepping && this.shown === null);
+	/** Inspect the last build, or watch bbgen generate it (every build then shows its steps) */
+	mode = $state<'inspect' | 'generation'>('inspect');
 	exporting = $state(false);
 	watching = $state(false);
 	builtAt = $state<Date | null>(null);
@@ -96,6 +109,9 @@ export class Studio {
 			this.selected = null;
 			this.hover = null;
 			this.scene = null;
+			this.steps = [];
+			this.step = null;
+			this.stepsFor = null;
 			this.#unwatch = this.engine.watch(path, () => {
 				clearTimeout(this.#debounce);
 				this.#debounce = setTimeout(() => this.rebuild(), 150);
@@ -167,8 +183,9 @@ export class Studio {
 		} else toast.error('Not a circuit file', { description: 'Drop a .yaml or .yml file.' });
 	}
 
-	/** build the circuit again; with `steps`, showing each step bbgen takes as it takes it (`--events`) */
-	async rebuild(steps = false) {
+	/** build the circuit again; with `steps` (in Generation mode), showing each step bbgen takes as it takes it
+	 * (`--events`) */
+	async rebuild(steps = this.mode === 'generation') {
 		if (!this.engine || !this.path) return;
 		const seq = ++this.#seq;
 		this.building = true;
@@ -178,6 +195,8 @@ export class Studio {
 			const taken: StepEvent[] = [];
 			this.steps = [];
 			this.step = null;
+			this.stepsFor = this.path;
+			this.shown = null;
 			onStep = (e) => {
 				if (seq !== this.#seq) return;
 				taken.push(e);
@@ -225,6 +244,27 @@ export class Studio {
 			this.error = { message: out.stderr.trim() || 'bbgen printed nothing', line: null, column: null };
 			toast.error(`Didn't build (${took})`, { description: this.error.message });
 		}
+	}
+
+	/** switch modes; Generation runs bbgen step by step, unless it has for this file already, and Inspect builds
+	 * the board if there's none (a run stopped before it ended) */
+	setMode(mode: 'inspect' | 'generation') {
+		this.mode = mode;
+		if (!this.path || this.building) return;
+		if (mode === 'generation' && this.stepsFor !== this.path) this.rebuild(true);
+		if (mode === 'inspect' && !this.scene && !this.error) this.rebuild(false);
+	}
+
+	/** show the kept step at index i of the kept ones; the last means the latest, following a run along */
+	showKept(i: number) {
+		if (!this.kept.length) return;
+		const j = Math.max(0, Math.min(this.kept.length - 1, i));
+		this.shown = j === this.kept.length - 1 ? null : this.kept[j].n;
+	}
+
+	/** show the board as it was at step n: the last kept step at or before it */
+	showStep(n: number) {
+		this.showKept(Math.max(0, this.kept.findLastIndex((e) => e.n <= n)));
 	}
 
 	/** stop the build that's running */

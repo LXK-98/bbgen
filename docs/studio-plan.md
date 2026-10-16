@@ -18,9 +18,9 @@ from `bbgen dev frames --all`.
 ([scene-format.md](scene-format.md)). Phase 1 is too: [studio/](../studio) is the Inspect mode, in SvelteKit
 with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), with light, dark and system
 themes, the board and the circuit's schematic side by side, opening by drop, Show in YAML, Export, a minimap
-and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps). Phase 2 has begun:
-`bbgen build --events` streams each step, and the studio shows them as they come and can stop a build;
-Generation mode is next. The sections after it are the plan as written, with what changed on the way
+and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps). Phase 2 is done
+too: `bbgen build --events` streams each step, and Generation mode shows the board as bbgen builds it, with
+the score chart, a log and a scrubber. Phase 3, the build guide, is next. The sections after it are the plan as written, with what changed on the way
 noted where it did.
 
 ## Next steps
@@ -89,8 +89,13 @@ noted where it did.
    (the Rebuild button while a build runs) kills the process, and the last board stays up. **Step by step**
    in the top bar builds with `--events`, and the status bar shows each step. Plain rebuilds stay `--json`:
    on a placed file the drawings make `--events` ten times slower (benchmark 13 placed: 0.01 s to 0.13 s).
-3. A Generation mode in the top bar: the board as it is at the latest kept step, the moved part ringed
-   (`focus`), the phase, the score chart, the event log; afterwards a scrubber over the kept steps.
+3. **Done (October 2026).** A Generation mode in the top bar: the board as it is at the latest kept step, the
+   moved part ringed (`focus`), the phase, the score chart, the event log; afterwards a scrubber over the kept
+   steps. The chart and log take the drawer's place under the board, so the board keeps its room. The chart is
+   on a log scale (an error costs about 4000), with a dot for each layout tried, the best so far as a line,
+   the phases as bands and each wire laid as a tick. The scrubber works during the run too: moving it off the
+   end stops following along, and moving it back to the end follows again. The temporary **Step by step**
+   button from step 2 is gone: in Generation mode every build, a save's included, shows its steps.
 
 Phases 3 to 5 stay as written below.
 

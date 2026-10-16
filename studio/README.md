@@ -63,11 +63,15 @@ circuit (`pin:U1.5`) lights its hole and strip on the board.
 board, the checklist, the schematic, or all three into a folder. bbgen builds them afresh, so they're what
 `bbgen build` would write. In the browser they're downloads.
 
-**Step by step** (top bar) rebuilds with `bbgen build --events`: bbgen prints each step of placing and
-wiring as it takes it, and the status bar shows the step, its phase, what it tried, its score and the best so
-far. (Generation mode, next, will show the board at each step.) While a build runs, **Rebuild** is **Stop**,
-which kills bbgen and leaves the last board up. Plain rebuilds don't ask for the steps: on a placed file the
-drawings they carry make the build ten times longer.
+**Generation** (top bar) watches bbgen build the board: it rebuilds with `bbgen build --events`, which prints
+each step of placing and wiring as it takes it. The centre shows the board as it stood at the latest kept step,
+the parts and wires that step changed ringed, with the phase (starting layouts, turning, moving parts, wiring)
+and what the step did. Under it, the score of every layout tried (a dot each, the kept ones larger, the best so
+far as a line, on a log scale: an error costs about 4000) and every step in a log. The scrubber, ← and →, a
+click on the chart or on a kept step in the log show the board as it was then. Saves rebuild step by step while
+Generation is on; Inspect's rebuilds don't ask for the steps, since on a placed file the drawings they carry
+make the build ten times longer. While a build runs, **Rebuild** is **Stop**, which kills bbgen and leaves the
+last board up.
 
 Zoomed in, a minimap in the bottom right shows where you are; drag on it to move the view.
 
