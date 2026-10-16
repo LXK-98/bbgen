@@ -15,22 +15,20 @@ https://claude.ai/artifact/JJiYFhnAVriMLC3m3ueWtc. It uses bbgen's real drawings
 from `bbgen dev frames --all`.
 
 **Where it stands (October 2026):** Phase 0 is done: `bbgen build --json` prints the scene
-([scene-format.md](scene-format.md)). Phase 1 mostly is: [studio/](../studio) is the Inspect mode, in
-SvelteKit with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), with light, dark
-and system themes, the bare board (`bbgen build --bare`: no title, legend or background), a legend of its
-own over the board's top right, and a toast after each rebuild. What's left, in order, is under
-[Next steps](#next-steps). The sections after it are the plan as written, with what changed on the way
+([scene-format.md](scene-format.md)). Phase 1 is too: [studio/](../studio) is the Inspect mode, in SvelteKit
+with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), with light, dark and system
+themes, the board and the circuit's schematic side by side, opening by drop, Show in YAML, Export, a minimap
+and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps); Phase 2 is
+next. The sections after it are the plan as written, with what changed on the way
 noted where it did.
 
 ## Next steps
 
 ### Finish Phase 1
 
-1. **Run the desktop window.** `pnpm tauri dev` compiles, but the window has never been opened: every
-   check so far was in a browser against the Vite dev server. Check in the Tauri window that the native
-   Open dialog, recent files, watching (the `notify` watcher, not the dev server's), killing a running build
-   when a new one starts, and the theme following the OS (WebKitGTK and `prefers-color-scheme`) all work.
-   Fonts: compare the board's labels with the PNG of the same build; ship DejaVu Sans if they differ.
+1. **Run the desktop window.** Done (October 2026): checked by hand in the Tauri window, with everything
+   below that needs it (the drop, Show in YAML, the Export dialogs). A touchpad pinch zoomed the whole page
+   in WebKitGTK; it now zooms the drawing.
 2. **Open by dropping a file.** Done (October 2026). The engine's `onDrag` passes on Tauri's
    `onDragDropEvent` (the dev server: the window's HTML drag events); a drop opens the first `.yaml`/`.yml`
    and ignores the rest, and while files are dragged the centre says what a drop would open, or that it's not
@@ -55,20 +53,24 @@ noted where it did.
    No PNG, as planned. In the browser the files are downloads. Checked: every item in a browser (the downloads
    caught), and the native side's copy by calling it from a test; the dialogs are still to see in the desktop
    window.
-5. **Minimap.** A small copy of the board in a corner (the bottom right is free; the legend is top
-   right, zoom top left) with the visible area as a rectangle you can drag. It's the same SVG at a fixed
-   scale, so render it once per build (`<img>` of the svg as a data URL is cheaper than a second DOM
-   copy). Hidden when the whole board is in view.
-6. **A setting for which bbgen runs**, shown in the output tab with its version, for when `$BBGEN` and
-   the lookup aren't enough.
-7. **Phase 1's done check, written down as a test.** For each example and benchmark: the scene's svg
-   matches `bbgen build --bare` (already in `tests/scene.rs`), every part, wire and net key lights at least
-   one group (extend `lookup.spec.ts` from eeprom to all of them, as the Rust test does), a broken file
-   gives an error with a line. Then by hand: a save in an editor rebuilds in under a second on benchmark 17.
-8. **Small things seen along the way.** The examples' committed SVGs are stale (eeprom's is 1508 px
-   wide, a build now gives 1610): regenerate them with `bbgen build`, look at them, and commit them on
-   their own. A selected wire may be a different wire after a rebuild (numbers shift); leave it until
-   editing, as planned.
+5. **Minimap.** Done (October 2026), in Drawing.svelte, so the board and the circuit both have one: the
+   drawing as an image (a data URL made once per build) in the bottom right, at most 180 × 120 px, the visible
+   part outlined; pressing or dragging on it moves the view there. Hidden while the whole drawing is in view.
+   The schematic's is inverted in the dark theme (it's drawn in `currentColor`, which an image draws black).
+6. **A setting for which bbgen runs.** Done (October 2026). At the top of the output tab: the version
+   (`bbgen --version`), the path, and how it was found (picked in the studio, `$BBGEN`, beside the studio,
+   this checkout's `bin/bbgen`, on PATH); "Change…" takes a path (or Browse… in the desktop app). A path that
+   doesn't answer `--version` as bbgen does is refused with the reason. The pick is remembered and used before
+   the first build. The engine call is `useBbgen(path)`.
+7. **Phase 1's done check, written down as a test.** Done (October 2026): `src/lib/done.spec.ts` builds every
+   example and benchmark (as placed) with `--schematic` and holds every part, wire and net to something lit on
+   the board, and every part, net and pin to something lit in the schematic; three broken files (bad YAML, a
+   part and a wire bbgen rejects) each give an error with the right line. The scene's svg matching
+   `bbgen build --bare` stays in `tests/scene.rs`. By hand: a save of benchmark 17 rebuilds in about 1.1 s
+   (0.93 s of bbgen placing it from scratch, 0.04 s for `bin/bbgen`'s cargo check, 150 ms of the watcher
+   letting the save settle); the placed file takes 0.03 s.
+8. **Small things seen along the way.** The examples' drawings and checklists are regenerated (October 2026).
+   A selected wire may be a different wire after a rebuild (numbers shift); left until editing, as planned.
 
 ### Then Phase 2 (generation), from bbgen's side first
 

@@ -24,6 +24,14 @@ export function exportName(path: string, what: Exclude<Export, 'all'>): string {
 	return `${stemOf(path)}.${EXPORTS[what].ext}`;
 }
 
+/** the bbgen the engine runs: where, how it was found, its version (`bbgen 0.1.0`), or why it can't be run */
+export interface BbgenInfo {
+	path: string;
+	how: string;
+	version: string | null;
+	error: string | null;
+}
+
 export interface Engine {
 	kind: 'tauri' | 'web';
 	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--wires`: every net a wire, no labels) */
@@ -34,11 +42,15 @@ export interface Engine {
 	watch(path: string, onChange: () => void): () => void;
 	/** a native open-file dialog, where there is one */
 	pick: (() => Promise<string | null>) | null;
+	/** a native dialog to pick a bbgen binary, where there is one */
+	pickBbgen: (() => Promise<string | null>) | null;
 	/** open the circuit file in an editor, at a line if given */
 	edit(path: string, line: number | null): Promise<void>;
 	/** write one of bbgen's files where you choose (all of them into a folder); the files written, or null if
 	 * you cancelled. The schematic is drawn as the circuit view shows it (`wires`: no labels). */
 	export(path: string, what: Export, wires: boolean): Promise<string[] | null>;
+	/** run `path` as bbgen from now on (null: find it as usual), after checking it is one; which bbgen runs now */
+	useBbgen(path: string | null): Promise<BbgenInfo>;
 	/** call onDrag as files are dragged over the window and dropped on it */
 	onDrag(onDrag: (e: Drag) => void): void;
 }
@@ -57,6 +69,7 @@ async function tauriEngine(): Promise<Engine> {
 		build: (path, schematic, wires) => invoke<BuildOutput>('build', { path, schematic, wires }),
 		examples: () => invoke<string[]>('examples'),
 		edit: (path, line) => invoke('edit', { path, line }),
+		useBbgen: (path) => invoke<BbgenInfo>('use_bbgen', { path }),
 		async export(path, what, wires) {
 			let to: string | null;
 			if (what === 'all') {
@@ -86,6 +99,10 @@ async function tauriEngine(): Promise<Engine> {
 		},
 		async pick() {
 			const file = await open({ multiple: false, filters: [{ name: 'Circuit', extensions: ['yaml', 'yml'] }] });
+			return typeof file === 'string' ? file : null;
+		},
+		async pickBbgen() {
+			const file = await open({ multiple: false, title: 'Pick a bbgen to run' });
 			return typeof file === 'string' ? file : null;
 		},
 		onDrag(onDrag) {
@@ -129,6 +146,7 @@ function webEngine(): Engine {
 			}
 			return names;
 		},
+		useBbgen: (path) => get<BbgenInfo>(`/api/bbgen${path ? `?path=${encodeURIComponent(path)}` : ''}`),
 		edit: (path, line) => get(`/api/edit?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ''}`),
 		watch(path, onChange) {
 			const source = new EventSource(`/api/watch?path=${encodeURIComponent(path)}`);
@@ -136,6 +154,7 @@ function webEngine(): Engine {
 			return () => source.close();
 		},
 		pick: null,
+		pickBbgen: null,
 		onDrag(onDrag) {
 			// a browser gives a dropped file's name and contents but not its path, so a drop can't open it; it's
 			// caught all the same, or the browser would leave the studio to show the file

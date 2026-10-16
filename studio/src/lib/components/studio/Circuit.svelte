@@ -30,7 +30,7 @@
 
 <div class="circuit relative h-full w-full overflow-hidden bg-muted/60 text-foreground">
 	{#if schematic}
-		<Drawing svg={schematic.svg} width={schematic.width} height={schematic.height} name="schematic" {selectors} {under}>
+		<Drawing svg={schematic.svg} width={schematic.width} height={schematic.height} name="schematic" {selectors} {under} ink>
 			<div class="absolute top-3 right-3 z-10 rounded-lg border bg-background/95 p-1 shadow-sm">
 				<Toggle size="sm" pressed={studio.wires} onPressedChange={(on) => studio.setWires(on)}
 					aria-label="Draw every net as a wire, supplies from one power symbol each, with no labels">

@@ -1,9 +1,9 @@
 /// <reference types="node" />
 // The studio's engine for `pnpm dev` in a browser: the same things the Tauri app does (build a circuit, list the
 // repo's examples, say when a file changes, open it in an editor), as HTTP endpoints on the dev server. Only the dev server
-// has them; the built app talks to Tauri instead (src-tauri/src/main.rs).
+// has them; the built app talks to Tauri instead (src-tauri/src/lib.rs).
 
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
@@ -12,9 +12,31 @@ import type { Plugin } from 'vite';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-/** bbgen: $BBGEN, else the repo's launcher (it builds bbgen first when the sources changed). */
-function bbgen(): string {
-	return process.env.BBGEN || join(repo, 'bin/bbgen');
+/** the bbgen picked in the studio, if one was */
+let chosen: string | null = null;
+
+/** bbgen, and how it was found: the one picked in the studio, else $BBGEN, else the repo's launcher (it builds bbgen
+ * first when the sources changed). */
+function findBbgen(pick: string | null = chosen): { path: string; how: string } {
+	if (pick) return { path: pick, how: 'picked in the studio' };
+	if (process.env.BBGEN) return { path: process.env.BBGEN, how: '$BBGEN' };
+	return { path: join(repo, 'bin/bbgen'), how: "this checkout's bin/bbgen" };
+}
+
+const bbgen = () => findBbgen().path;
+
+/** run `pick` as bbgen from now on (null: find it as at the start), if it is one: which, how found, its version */
+function useBbgen(pick: string | null): Promise<{ path: string; how: string; version: string | null; error: string | null }> {
+	const found = findBbgen(pick);
+	return new Promise((done, fail) =>
+		execFile(found.path, ['--version'], (e, out) => {
+			const text = String(out ?? '').trim();
+			const error = !e && text.startsWith('bbgen ') ? null : e ? `can't run ${found.path}: ${e.message}` : `${found.path} doesn't answer --version as bbgen does`;
+			if (pick && error) return fail(new Error(error));
+			chosen = pick;
+			done({ ...found, version: error ? null : text, error });
+		})
+	);
 }
 
 function isCircuit(path: string): boolean {
@@ -127,6 +149,12 @@ export function bbgenDev(): Plugin {
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
 					return json(200, await run(path, url.searchParams.get('schematic') === '1', url.searchParams.get('wires') === '1'));
+				}
+				if (url.pathname === '/api/bbgen') {
+					return useBbgen(url.searchParams.get('path')?.trim() || null).then(
+						(info) => json(200, info),
+						(e) => json(400, { error: e.message })
+					);
 				}
 				if (url.pathname === '/api/export') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });

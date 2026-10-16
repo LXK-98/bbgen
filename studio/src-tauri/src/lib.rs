@@ -16,26 +16,64 @@ fn repo() -> Option<PathBuf> {
     root.join("Cargo.toml").is_file().then(|| root.canonicalize().unwrap_or(root))
 }
 
-/// bbgen: $BBGEN, else one next to the studio, else the checkout's launcher (which builds bbgen when its sources
-/// changed), else whatever `bbgen` is on PATH.
-fn bbgen() -> PathBuf {
+/// bbgen, and how it was found: the one picked in the studio, else $BBGEN, else one next to the studio, else the
+/// checkout's launcher (which builds bbgen when its sources changed), else whatever `bbgen` is on PATH.
+fn find_bbgen(chosen: Option<&Path>) -> (PathBuf, &'static str) {
+    if let Some(p) = chosen {
+        return (p.into(), "picked in the studio");
+    }
     if let Some(p) = std::env::var_os("BBGEN") {
-        return PathBuf::from(p);
+        return (PathBuf::from(p), "$BBGEN");
     }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
         let beside = dir.join(if cfg!(windows) { "bbgen.exe" } else { "bbgen" });
         if beside.is_file() {
-            return beside;
+            return (beside, "beside the studio");
         }
     }
     if let Some(launcher) = repo().map(|r| r.join("bin/bbgen")).filter(|p| p.is_file()) {
-        return launcher;
+        return (launcher, "this checkout's bin/bbgen");
     }
-    PathBuf::from("bbgen")
+    (PathBuf::from("bbgen"), "on PATH")
+}
+
+impl Studio {
+    fn bbgen(&self) -> PathBuf {
+        find_bbgen(self.chosen.lock().unwrap().as_deref()).0
+    }
+}
+
+/// `bbgen --version`, or why it couldn't be run.
+fn version(exe: &Path) -> std::result::Result<String, String> {
+    let out = Command::new(exe).arg("--version").stdin(Stdio::null()).output()
+        .map_err(|e| format!("can't run {}: {}", exe.display(), e))?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if out.status.success() && text.starts_with("bbgen ") {
+        Ok(text)
+    } else {
+        Err(format!("{} doesn't answer --version as bbgen does", exe.display()))
+    }
+}
+
+/// Run `path` as bbgen from now on (null: find it as at the start), if it is one; which bbgen runs, how it was
+/// found, and its version.
+#[tauri::command]
+async fn use_bbgen(path: Option<String>, studio: State<'_, Studio>) -> Result<Value, String> {
+    let chosen = path.filter(|p| !p.trim().is_empty()).map(PathBuf::from);
+    let (exe, how) = find_bbgen(chosen.as_deref());
+    let probe = exe.clone();
+    let version = tauri::async_runtime::spawn_blocking(move || version(&probe)).await.map_err(|e| e.to_string())?;
+    if chosen.is_some() {
+        version.as_ref()?;
+    }
+    *studio.chosen.lock().unwrap() = chosen;
+    Ok(json!({"path": exe.to_string_lossy(), "how": how, "version": version.as_ref().ok(), "error": version.err()}))
 }
 
 #[derive(Default)]
 struct Studio {
+    /// the bbgen picked in the studio, if one was
+    chosen: Mutex<Option<PathBuf>>,
     /// the build running now: a newer one stops it
     running: Mutex<Option<Arc<Mutex<Child>>>>,
     watchers: Mutex<HashMap<String, notify::RecommendedWatcher>>,
@@ -45,7 +83,7 @@ struct Studio {
 /// error), its stderr and exit status.
 #[tauri::command]
 async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Studio>) -> Result<Value, String> {
-    let exe = bbgen();
+    let exe = studio.bbgen();
     let mut args = vec!["build", path.as_str(), "--json"];
     if schematic {
         args.push(if wires { "--wires" } else { "--schematic" });
@@ -86,7 +124,7 @@ async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Stu
 /// What `bbgen build` writes, for the export menu: one file (`board`, `bare`, `checklist` or `schematic`) to the
 /// file `to`, or `all` (the board, its checklist and the schematic) into the folder `to`. bbgen writes them into a
 /// folder of its own first, since the board and the bare board have the same name. Returns the files written.
-fn export_files(path: &str, what: &str, wires: bool, to: &Path) -> Result<Vec<String>, String> {
+fn export_files(exe: &Path, path: &str, what: &str, wires: bool, to: &Path) -> Result<Vec<String>, String> {
     let stem = Path::new(path).file_stem().ok_or(format!("not a file: {path}"))?.to_string_lossy().into_owned();
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let tmp = std::env::temp_dir().join(format!("bbgen-studio-{}-{}", std::process::id(), nanos));
@@ -97,8 +135,7 @@ fn export_files(path: &str, what: &str, wires: bool, to: &Path) -> Result<Vec<St
     if what == "schematic" || what == "all" {
         args.push(if wires { "--wires" } else { "--schematic" }.into());
     }
-    let exe = bbgen();
-    let run = Command::new(&exe).args(&args).stdin(Stdio::null()).output()
+    let run = Command::new(exe).args(&args).stdin(Stdio::null()).output()
         .map_err(|e| format!("can't run {}: {}", exe.display(), e));
     let copied = run.and_then(|out| {
         // 1 is a board the check found errors on: still a board to export
@@ -129,8 +166,9 @@ fn export_files(path: &str, what: &str, wires: bool, to: &Path) -> Result<Vec<St
 }
 
 #[tauri::command]
-async fn export(path: String, what: String, wires: bool, to: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || export_files(&path, &what, wires, Path::new(&to)))
+async fn export(path: String, what: String, wires: bool, to: String, studio: State<'_, Studio>) -> Result<Vec<String>, String> {
+    let exe = studio.bbgen();
+    tauri::async_runtime::spawn_blocking(move || export_files(&exe, &path, &what, wires, Path::new(&to)))
         .await.map_err(|e| e.to_string())?
 }
 
@@ -288,7 +326,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit, export])
+        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit, export, use_bbgen])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

@@ -31,10 +31,12 @@
 		overlay?: Snippet<[number]>;
 		/** over the view: a legend, banners */
 		children?: Snippet;
+		/** the minimap's drawing is in currentColor (the schematic): an image draws that black, so invert it in the dark */
+		ink?: boolean;
 		class?: string;
 	}
 
-	let { svg, width, height, name, selectors, under, onleave, quiet, overlay, children, class: klass = '' }: Props = $props();
+	let { svg, width, height, name, selectors, under, onleave, quiet, overlay, children, ink = false, class: klass = '' }: Props = $props();
 
 	let viewport = $state<HTMLDivElement>();
 	let content = $state<HTMLDivElement>();
@@ -42,6 +44,9 @@
 	let tx = $state(0);
 	let ty = $state(0);
 	let pointer = $state<{ x: number; y: number } | null>(null);
+	// the view's size, for the minimap
+	let vw = $state(0);
+	let vh = $state(0);
 	let fittedFor: string | null = null;
 	// a press: where it started, and what was under it (once the view captures the pointer, events target the view)
 	let drag: { x: number; y: number; tx: number; ty: number; moved: boolean; key: Key | null } | null = null;
@@ -92,6 +97,26 @@
 		if (hover) mark(hover, 'lit');
 		root.classList.toggle('dim', !!hover && dim && !quiet?.(hover));
 	});
+
+	// the minimap: the drawing at a fixed size (an image, made once per build), the visible part outlined
+	const MINI = { w: 180, h: 120 };
+	const mini = $derived(Math.min(MINI.w / width, MINI.h / height));
+	const miniSrc = $derived(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+	const seen = $derived.by(() => {
+		const x0 = Math.max(0, -tx / scale);
+		const y0 = Math.max(0, -ty / scale);
+		const x1 = Math.min(width, (vw - tx) / scale);
+		const y1 = Math.min(height, (vh - ty) / scale);
+		return { x0, y0, x1, y1, all: x0 <= 0 && y0 <= 0 && x1 >= width && y1 >= height };
+	});
+	let miniDrag = false;
+
+	/** centre the view on the drawing's point under the pointer on the minimap */
+	function miniMove(e: PointerEvent) {
+		const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		tx = vw / 2 - ((e.clientX - box.left) / mini) * scale;
+		ty = vh / 2 - ((e.clientY - box.top) / mini) * scale;
+	}
 
 	function onmove(e: PointerEvent) {
 		if (!viewport) return;
@@ -155,6 +180,8 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={viewport}
+		bind:clientWidth={vw}
+		bind:clientHeight={vh}
 		class="absolute inset-0 cursor-default touch-none select-none"
 		onpointermove={onmove}
 		onpointerdown={ondown}
@@ -197,6 +224,32 @@
 			<Contrast /> Dim the rest
 		</Toggle>
 	</div>
+
+	{#if !seen.all && vw}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="absolute right-3 z-10 cursor-move overflow-hidden rounded-lg border bg-background/95 shadow-sm touch-none {studio.error ? 'bottom-24' : 'bottom-3'}"
+			style:width="{width * mini}px"
+			style:height="{height * mini}px"
+			title="Drag to move the view"
+			onpointerdown={(e) => {
+				miniDrag = true;
+				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+				miniMove(e);
+			}}
+			onpointermove={(e) => miniDrag && miniMove(e)}
+			onpointerup={() => (miniDrag = false)}
+		>
+			<img src={miniSrc} alt="" draggable="false" class="pointer-events-none block size-full {ink ? 'dark:invert' : ''}" />
+			<div
+				class="pointer-events-none absolute rounded-sm border-2 border-primary bg-primary/10"
+				style:left="{seen.x0 * mini}px"
+				style:top="{seen.y0 * mini}px"
+				style:width="{Math.max(4, (seen.x1 - seen.x0) * mini)}px"
+				style:height="{Math.max(4, (seen.y1 - seen.y0) * mini)}px"
+			></div>
+		</div>
+	{/if}
 
 	{@render children?.()}
 </div>

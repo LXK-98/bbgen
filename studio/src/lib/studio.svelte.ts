@@ -2,13 +2,14 @@
 // and writes this one object, so hovering a row in a list lights the same thing on the board.
 
 import { toast } from 'svelte-sonner';
-import { getEngine, type Drag, type Engine, type Export } from './engine';
+import { getEngine, type BbgenInfo, type Drag, type Engine, type Export } from './engine';
 import { indexScene, type SceneIndex } from './lookup';
 import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError } from './scene';
 
 const RECENT = 'bbgen-studio.recent';
 const VIEW = 'bbgen-studio.view';
 const WIRES = 'bbgen-studio.wires';
+const BBGEN = 'bbgen-studio.bbgen';
 
 function load<T>(key: string, fallback: T): T {
 	try {
@@ -58,6 +59,8 @@ export class Studio {
 	/** files being dragged over the window: the circuit a drop would open, if any; paths: false in a browser */
 	dragging = $state.raw<{ circuit: string | null; paths: boolean } | null>(null);
 
+	/** the bbgen that runs, and how it was found */
+	bbgen = $state.raw<BbgenInfo | null>(null);
 	examples = $state.raw<string[]>([]);
 	recent = $state<string[]>(load(RECENT, []));
 
@@ -68,6 +71,9 @@ export class Studio {
 	async init() {
 		this.engine = await getEngine();
 		this.engine.onDrag((e) => this.drag(e));
+		// the bbgen picked last time, if it still runs; else the usual one
+		const picked = load<string | null>(BBGEN, null);
+		this.bbgen = await this.engine.useBbgen(picked).catch(() => this.engine!.useBbgen(null)).catch(() => null);
 		this.examples = await this.engine.examples();
 		const last = this.recent[0];
 		if (last) await this.open(last);
@@ -91,6 +97,19 @@ export class Studio {
 			this.watching = true;
 		}
 		await this.rebuild();
+	}
+
+	/** run `path` as bbgen from now on (null: the usual one), and rebuild with it; why not, if it isn't a bbgen */
+	async useBbgen(path: string | null): Promise<string | null> {
+		if (!this.engine) return null;
+		try {
+			this.bbgen = await this.engine.useBbgen(path);
+		} catch (e) {
+			return String(e).replace(/^Error: /, '');
+		}
+		save(BBGEN, path);
+		await this.rebuild();
+		return null;
 	}
 
 	/** open the circuit file in an editor, at a line if given */

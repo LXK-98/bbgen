@@ -5,6 +5,7 @@
 	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
 	import Code from './Code.svelte';
+	import BbgenSetting from './BbgenSetting.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 
 	const scene = $derived(studio.scene);
@@ -56,7 +57,10 @@
 						<span class="min-w-0 flex-1">{i.message}</span>
 					</button>
 				{/each}
-			{:else if studio.output}
+			{:else}
+				<BbgenSetting />
+			{/if}
+			{#if studio.drawer === 'output' && studio.output}
 				<pre class="p-2 font-mono text-xs leading-5 whitespace-pre-wrap">$ {studio.output.command}
 {#if studio.output.stderr.trim()}{studio.output.stderr.trim()}
 {/if}exit {studio.output.code ?? '—'} · {studio.output.ms} ms{#if scene} · scene {scene.schema}, bbgen {scene.bbgen}{/if}</pre>

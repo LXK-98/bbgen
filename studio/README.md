@@ -38,8 +38,9 @@ opens it too.
 "Show in YAML" in the inspector and on error banners opens the file at that line in `$VISUAL` or `$EDITOR`
 (a terminal editor such as nano in a terminal window), or with the system's opener when neither is set.
 
-Which bbgen runs: `$BBGEN` if set, else a `bbgen` beside the app, else this checkout's `bin/bbgen` (which
-builds bbgen first when its sources changed), else `bbgen` on `PATH`.
+Which bbgen runs: the one picked in the "bbgen output" tab (Change…), else `$BBGEN` if set, else a `bbgen`
+beside the app, else this checkout's `bin/bbgen` (which builds bbgen first when its sources changed), else
+`bbgen` on `PATH`.
 
 ## Where things are
 
@@ -62,6 +63,8 @@ circuit (`pin:U1.5`) lights its hole and strip on the board.
 board, the checklist, the schematic, or all three into a folder. bbgen builds them afresh, so they're what
 `bbgen build` would write. In the browser they're downloads.
 
+Zoomed in, a minimap in the bottom right shows where you are; drag on it to move the view.
+
 The board is bbgen's own SVG, put in the page once per build. Hover and selection add classes to its
 `data-part`, `data-wire`, `data-net` and `data-issue` groups; nothing is redrawn as the pointer moves.
 
@@ -75,5 +78,6 @@ pnpm check
 pnpm test
 ```
 
-The tests build `examples/eeprom.yaml` with `../target/release/bbgen` (or `$BBGEN`), and are skipped when it
-isn't built.
+The tests build every example and benchmark (as placed) with `../target/release/bbgen` (or `$BBGEN`), and
+are skipped when it isn't built. `src/lib/done.spec.ts` is Phase 1's done check: everything in a scene lights
+something on the board and in the schematic, and a broken file says on which line.
