@@ -4,8 +4,8 @@ Breadboard layouts from YAML, written by you or by Claude Code. One circuit file
 
 - **a drawing** (`.svg`, plus `.png` if ImageMagick or `rsvg-convert` is around): the board, every
   part with labelled pins, numbered wires coloured by net, and rings around anything that's wrong
-- **a build checklist** (`.md`): parts first, then wires group by group, each with the holes it
-  goes between and what it connects
+- **a build checklist** (`.md`) in building order: wires that parts go over, chips and modules,
+  small parts, wires, flexible jumpers, flying leads; each with the holes it goes in and what it connects
 - **a wiring check**: bbgen works out what the strips and wires actually connect and compares
   that with the nets you declared. Opens, shorts, stray connections, pins in the trench or under
   another part, and two things in one hole are all errors.

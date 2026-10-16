@@ -1,7 +1,7 @@
-//! The build checklist: parts first, then the wires group by group, then any raised modules (over the wires
-//! laid under them), then any flexible jumpers.
+//! The build checklist, in building order (`steps`): wires that parts go over, chips and modules, small parts,
+//! the wires, flexible jumpers, and last the flying leads to parts off the board.
 
-use crate::board::{Row, RAILS};
+use crate::board::{Row, Xy, RAILS};
 use crate::check::Result;
 use crate::circuit::{Circuit, End, Node, Wire};
 use crate::parts::{Kind, Part};
@@ -110,10 +110,6 @@ pub fn part_text(c: &Circuit, part: &Part) -> String {
     format!("{}: {}{}", name, where_(c, part), raised)
 }
 
-fn part_line(c: &Circuit, part: &Part) -> String {
-    format!("- [ ] **{}** {}", part.r#ref, part_text(c, part))
-}
-
 /// A wire's checklist line after its number: `blue: `b22` → `b33` · SDA (Pico.21 GP16 ↔ U1.5 SDA)`.
 pub fn wire_text(c: &Circuit, result: &Result, w: &Wire) -> String {
     let (a, b) = match (&w.a, &w.b) {
@@ -137,18 +133,147 @@ pub fn wire_text(c: &Circuit, result: &Result, w: &Wire) -> String {
             nets, end(c, result, a), end(c, result, b), beneath)
 }
 
+/// The build's stages in order: a step's section, the checklist's heading for it, and what it says first.
+pub const SECTIONS: [(&str, &str, &str); 6] = [
+    ("under", "Wires under parts", "Lay these flat first: the parts that go over them come next."),
+    ("chips", "Chips and modules", "Left to right; a raised module last, over the wires laid under it."),
+    ("parts", "Small parts", "Lowest first: resistors and diodes, capacitors, transistors, buttons and the like, LEDs, \
+                              electrolytics. Like parts of one value together, left to right."),
+    ("wires", "Wires", "Shortest first, so the longer ones lie over them."),
+    ("flex", "Flexible jumpers", "Shortest first: they arch over the rest."),
+    ("leads", "Flying leads", "Last, one part off the board at a time, in its pins' order."),
+];
+
+/// Where a thing sits, for building left to right: its board, then the leftmost and topmost of its points, in
+/// hundredths of a pixel (so it sorts).
+type Spot = (u8, i64, i64);
+
+fn spot(boards: impl Iterator<Item = u8>, xys: impl Iterator<Item = Xy>) -> Spot {
+    let (mut x, mut y) = (f64::INFINITY, f64::INFINITY);
+    for p in xys {
+        x = x.min(p.0);
+        y = y.min(p.1);
+    }
+    let h = |v: f64| if v.is_finite() { (v * 100.0).round() as i64 } else { i64::MAX };
+    (boards.min().unwrap_or(u8::MAX), h(x), h(y))
+}
+
+fn part_spot(part: &Part) -> Spot {
+    spot(part.pins.iter().filter_map(|p| p.hole.map(|h| h.board)), part.pins.iter().filter_map(|p| p.xy))
+}
+
+/// A part's stage: chips and modules (more than four pins, a body ten holes long, or raised) are `chips`; the rest
+/// on the board (two-lead parts, transistors, regulators, pots, buttons) are `parts`; off-board parts go with their
+/// flying leads.
+fn part_section(part: &Part) -> &'static str {
+    let long = crate::parts::body_rect(part).map(|r| (r.2 - r.0).max(r.3 - r.1) >= 10.0).unwrap_or(false);
+    match part.kind {
+        Kind::Offboard => "leads",
+        k if k.is_lead() => "parts",
+        Kind::Pico => "chips",
+        _ if part.raised || part.pins.len() > 4 || long => "chips",
+        _ => "parts",
+    }
+}
+
+/// How high a small part stands, lowest first: they go in in this order, so fingers reach past what's in.
+fn height(kind: Kind) -> u8 {
+    match kind {
+        Kind::Resistor | Kind::Diode => 0,
+        Kind::Capacitor => 1,
+        Kind::Led => 3,
+        Kind::Electrolytic => 4,
+        _ => 2,
+    }
+}
+
+/// A wire's length along its path, in pixels; unplaced wires last.
+fn length(c: &Circuit, w: &Wire) -> i64 {
+    if w.a.is_none() || w.b.is_none() {
+        return i64::MAX;
+    }
+    let pts = c.wire_points(w);
+    (pts.windows(2).map(|s| pyf::dist(s[0], s[1])).sum::<f64>() * 100.0).round() as i64
+}
+
+fn wire_spot(c: &Circuit, w: &Wire) -> Spot {
+    let ends: Vec<&End> = [&w.a, &w.b].into_iter().flatten().collect();
+    spot(ends.iter().filter_map(|e| e.hole.map(|h| h.board)), ends.iter().map(|e| c.end_xy(e)))
+}
+
 /// The checklist as steps, in building order: (section, what it's about, its text). Parts are `part:<ref>`, wires
-/// `wire:W<num>`; sections are `parts`, each wire group, `raised` and `flex`.
+/// `wire:W<num>`; the sections are SECTIONS' and come in their order:
+///
+/// - `under`: flat wires a part goes over (a raised module, or a two-lead part lying across them), by the part
+///   they're under in the order the parts go in, then shortest first.
+/// - `chips`: left to right, raised modules last (they stand over what's laid before them).
+/// - `parts`: the lowest first (`height`), like parts of one value together (in the order the leftmost of each
+///   value comes), left to right.
+/// - `wires`, `flex`: shortest first, left to right among equals. Jumpers between boards are `flex`.
+/// - `leads`: each off-board part, left to right, then its leads in its pins' order.
 pub fn steps(c: &Circuit, result: &Result) -> Vec<(String, String, String)> {
-    let raised = |p: &Part| p.raised && p.kind != Kind::Offboard;
     let part = |p: &Part, section: &str| (section.to_string(), format!("part:{}", p.r#ref), part_text(c, p));
     let wire = |w: &Wire, section: &str| (section.to_string(), format!("wire:W{}", w.num), wire_text(c, result, w));
-    let mut out: Vec<(String, String, String)> = c.parts.iter().filter(|p| !raised(p)).map(|p| part(p, "parts")).collect();
-    for g in &c.groups {
-        out.extend(c.wires.iter().filter(|w| w.group == *g && !w.flex).map(|w| wire(w, g)));
+
+    let mut chips: Vec<&Part> = c.parts.iter().filter(|p| part_section(p) == "chips").collect();
+    chips.sort_by_key(|p| (p.raised, part_spot(p)));
+    let mut small: Vec<&Part> = c.parts.iter().filter(|p| part_section(p) == "parts").collect();
+    let first_of_value = |p: &Part| small.iter().filter(|q| q.kind == p.kind && q.value == p.value).map(|q| part_spot(q)).min();
+    let mut keyed: Vec<(_, &Part)> = small.iter().map(|p| ((height(p.kind), first_of_value(p), part_spot(p)), *p)).collect();
+    keyed.sort_by_key(|k| k.0);
+    small = keyed.into_iter().map(|k| k.1).collect();
+    let order: Vec<&str> = chips.iter().chain(small.iter()).map(|p| p.r#ref.as_str()).collect();
+    let rank = |r: &str| order.iter().position(|x| *x == r).unwrap_or(usize::MAX);
+
+    // the first part (in building order) each flat wire goes under
+    let below = |w: &Wire| -> Option<usize> {
+        if w.flex || !w.on_board() {
+            return None;
+        }
+        let pts = c.wire_points(w);
+        let mut over: Vec<usize> = c.under_of(w).iter().map(|r| rank(r)).collect();
+        for p in c.parts.iter().filter(|p| p.kind.is_lead() && p.pins.iter().all(|q| q.xy.is_some())) {
+            let legs = (p.pins[0].xy.unwrap(), p.pins[1].xy.unwrap());
+            if pts.windows(2).any(|s| crate::measure::cross(legs, (s[0], s[1]))) {
+                over.push(rank(&p.r#ref));
+            }
+        }
+        over.into_iter().min()
+    };
+    let offboard = |w: &Wire| [&w.a, &w.b].into_iter().flatten().find_map(|e| e.pin).filter(|p| c.parts[p.part as usize].kind == Kind::Offboard);
+
+    let mut under: Vec<(usize, i64, Spot, &Wire)> = Vec::new();
+    let (mut flat, mut flex): (Vec<(i64, Spot, &Wire)>, Vec<(i64, Spot, &Wire)>) = (Vec::new(), Vec::new());
+    let mut leads: Vec<(u16, i64, &Wire)> = Vec::new();
+    for w in &c.wires {
+        if let Some(p) = offboard(w).filter(|_| !w.on_board()) {
+            leads.push((p.part, c.parts[p.part as usize].pins[p.pin as usize].num, w));
+        } else if let Some(k) = below(w) {
+            under.push((k, length(c, w), wire_spot(c, w), w));
+        } else if w.flex {
+            flex.push((length(c, w), wire_spot(c, w), w));
+        } else {
+            flat.push((length(c, w), wire_spot(c, w), w));
+        }
     }
-    out.extend(c.parts.iter().filter(|p| raised(p)).map(|p| part(p, "raised")));
-    out.extend(c.wires.iter().filter(|w| w.flex).map(|w| wire(w, "flex")));
+    under.sort_by_key(|x| (x.0, x.1, x.2));
+    flat.sort_by_key(|x| (x.0, x.1));
+    flex.sort_by_key(|x| (x.0, x.1));
+
+    let mut out: Vec<(String, String, String)> = under.iter().map(|x| wire(x.3, "under")).collect();
+    out.extend(chips.iter().map(|p| part(p, "chips")));
+    out.extend(small.iter().map(|p| part(p, "parts")));
+    out.extend(flat.iter().map(|x| wire(x.2, "wires")));
+    out.extend(flex.iter().map(|x| wire(x.2, "flex")));
+    let mut off: Vec<(Spot, usize)> = c.parts.iter().enumerate().filter(|(_, p)| p.kind == Kind::Offboard)
+        .map(|(i, p)| (spot(std::iter::empty(), p.pins.iter().filter_map(|q| q.xy)), i)).collect();
+    off.sort();
+    for (_, i) in off {
+        out.push(part(&c.parts[i], "leads"));
+        let mut mine: Vec<&(u16, i64, &Wire)> = leads.iter().filter(|l| l.0 as usize == i).collect();
+        mine.sort_by_key(|l| (l.1, l.2.num));
+        out.extend(mine.iter().map(|l| wire(l.2, "leads")));
+    }
     out
 }
 
@@ -204,32 +329,15 @@ pub fn checklist(c: &Circuit, result: &Result) -> String {
         let split = if b.split_rails { ", rails split in the middle" } else { "" };
         out.push(format!("- board {}: {}-size{}. Rails: {}", b.id, b.kind, split, rails.join(", ")));
     }
-    let raised: Vec<&Part> = c.parts.iter().filter(|p| p.raised && p.kind != Kind::Offboard).collect();
-    out.extend(["".into(), "## Parts".into(), "".into(), "Place these first.".into(), "".into()]);
-    for part in &c.parts {
-        if !raised.iter().any(|r| r.r#ref == part.r#ref) {
-            out.push(part_line(c, part));
-        }
-    }
-    out.extend(["".into(), "## Wires".into()]);
-    let flex: Vec<&Wire> = c.wires.iter().filter(|w| w.flex).collect();
-    let mut sections: Vec<(String, Vec<&Wire>)> = c.groups.iter()
-        .map(|g| (format!("### {}", g), c.wires.iter().filter(|w| w.group == *g && !w.flex).collect())).collect();
-    sections.push(("## Flexible jumpers\n\nPlug these in last: they arch over the rest.".into(), flex));
-    for (head, wires) in sections {
-        if head.starts_with("## Flexible") && !raised.is_empty() {
-            out.extend(["".into(), "## Raised modules".into(), "".into(),
-                        "Put these in now, standing on their headers over the wires laid under them.".into(), "".into()]);
-            out.extend(raised.iter().map(|p| part_line(c, p)));
-        }
-        if wires.is_empty() {
+    let steps = steps(c, result);
+    for (section, head, intro) in SECTIONS {
+        let mine: Vec<&(String, String, String)> = steps.iter().filter(|s| s.0 == section).collect();
+        if mine.is_empty() {
             continue;
         }
-        out.push(String::new());
-        out.push(if head.starts_with("###") { format!("{} ({})", head, wires.len()) } else { head.clone() });
-        out.push(String::new());
-        for w in wires {
-            out.push(format!("- [ ] **W{}** {}", w.num, wire_text(c, result, w)));
+        out.extend(["".into(), format!("## {} ({})", head, mine.len()), "".into(), intro.into(), "".into()]);
+        for (_, item, text) in mine {
+            out.push(format!("- [ ] **{}** {}", item.split_once(':').unwrap().1, text));
         }
     }
     out.join("\n") + "\n"
