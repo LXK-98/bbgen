@@ -227,6 +227,39 @@ then be told from a price change: if the search ends above the old layout, it mi
   Crossings over all 21: 265 → 245, jumpers 91 → 91, warnings 2 → 4 (16). The cost is time: 8 s → 33 s
   for all 21, 16 alone 3 s → 11–15 s, since 8 repairs are 8 times the work (16: 54 s on one core).
 
+**Checked again (October 2026, with the supply-lead rules in).** Repairing each start in turn (a temporary
+`BBGEN_START` override, not kept) over all 21 benchmarks and the 4 examples: in 12 of 22 circuits with more than
+one start, a start other than the one picked ends with a lower score (19: 45.1 → 29.3, 18: 66.0 → 51.9, 13:
+783.1 → 682.4, 02: 57.0 → 50.0, 09: 229.4 → 212.3, 17: 174.6 → 162.9). Drawn, most of those lower scores are the
+same exploits as above: 18's LEDs leave their row for three places and a label clashes, 02 stretches legs to save
+two wires, 09 spreads its LEDs over both halves, 19 packs everything into one corner with labels over the
+regulator. The 555s lose nothing (04's chosen start and its first two end within a point). So the verdict stands:
+the score, not the choice of start, is what to change first.
+
+**Research (October 2026): measuring tidiness.**
+- Learning a layout score from examples is established for graphic design: an energy of design-principle
+  terms (alignment, white space, symmetry), weights fitted to a small number of example layouts by nonlinear
+  inverse optimization ([O'Donovan, Agarwala & Hertzmann 2014](https://www.dgp.toronto.edu/~donovan/layout/)).
+  With pairwise judgments ("this one is tidier"), each pair becomes a margin constraint, score(tidier) <
+  score(messier), as in a ranking SVM ([Form + Function](https://arxiv.org/pdf/1912.05047)); with many pairs,
+  a Bradley–Terry fit gives a latent score to regress on features ([3D shape study](https://arxiv.org/pdf/2505.12373)).
+  bbgen has too few judgments to fit weights, but the pairs work as a test the hand-set weights must pass.
+- Breadboard and stripboard tools keep tidiness out of the score by rule: Stripboard Editor enforces
+  clearance as a hard constraint and only produces overlap-free packings, scoring area, wires and "wire mess"
+  ([how auto-layout works](https://stripboard-editor.com/how-auto-layout-works)); a generative breadboard tool
+  leaves an empty row between components so they're told apart ([Trigger-action-circuits](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10558776)).
+  tscircuit lays like parts out on a grid or along a line (LED grids, keyboards)
+  ([automatic PCB layout](https://docs.tscircuit.com/guides/tscircuit-essentials/automatic-pcb-layout)).
+- What bbgen's final score lacks, by the drawings above: room around parts (the placement estimate has it,
+  `CROWD_COST`, `ROOM_COST`, `SPACE_COST`; the built score doesn't), labels over parts (the score counts only
+  two-lead parts' labels near each other), like parts in line (an LED bank in one row), and a leg's stretch
+  priced against a wire it saves (3 a hole beyond `span_max`, while a wire costs 2 plus its length).
+
+What to try, in order: (1) a tidiness test: pairs of placed layouts of one circuit, one judged tidier,
+checked by `cargo test` (score(tidier) < score(messier)); the pairs above are the first. (2) Score terms for what
+the pairs show, kept only when every pair ranks right, run.py's numbers on today's layouts hold, and all 21
+drawings read no worse. (3) Then the search: repair the best two or three starts and pick by the full score.
+
 **Kept (October 2026): rules for the supply leads, and crossings on the board only.**
 - `crossings` (the `cross` column, and the score) counts only wires on the board: where an off-board part
   sits is the drawing's choice, and a lead runs above the board. `lead×` counts crossings with a lead in
