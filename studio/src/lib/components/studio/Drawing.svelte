@@ -204,24 +204,20 @@
 		onpointerleave={leave}
 		onwheel={onwheel}
 	>
-		<div
-			class="absolute top-0 left-0 origin-top-left"
-			style:width="{width}px"
-			style:height="{height}px"
-			style:transform="translate({tx}px, {ty}px) scale({scale})"
-		>
-			<div bind:this={content} class="drawing-svg">{@html svg}</div>
-			{@render overlay?.(scale)}
+		<!-- moved with a transform, zoomed with CSS zoom: a scale() transform lets WebKit (the desktop app) stretch the
+		     drawing it painted at the old size, blurred, until something repaints it; zoom draws it at its real size -->
+		<div class="absolute top-0 left-0" style:transform="translate({tx}px, {ty}px)">
+			<div class="relative" style:width="{width}px" style:height="{height}px" style:zoom={scale}>
+				<div bind:this={content} class="drawing-svg">{@html svg}</div>
+				{@render overlay?.(scale)}
+			</div>
 		</div>
 		{#if before !== undefined}
 			<div class="pointer-events-none absolute inset-0 overflow-hidden" style:clip-path="inset(0 {vw - splitX}px 0 0)">
-				<div
-					class="absolute top-0 left-0 origin-top-left"
-					style:width="{width}px"
-					style:height="{height}px"
-					style:transform="translate({tx}px, {ty}px) scale({scale})"
-				>
-					<div class="drawing-svg">{@html before}</div>
+				<div class="absolute top-0 left-0" style:transform="translate({tx}px, {ty}px)">
+					<div style:width="{width}px" style:height="{height}px" style:zoom={scale}>
+						<div class="drawing-svg">{@html before}</div>
+					</div>
 				</div>
 			</div>
 		{/if}
