@@ -2,6 +2,8 @@
 	// Generation mode: bbgen placing and wiring the board, step by step (`bbgen build --events`). The board as it
 	// stood at the kept step shown (the latest while it runs), the parts and wires that step changed ringed; the
 	// phases; a scrubber over the kept steps (← and →). The score chart and the log are under it (Progress.svelte).
+	// Two kept steps picked in the log (right-click) are compared: the earlier left of a divider you drag, the later
+	// right of it.
 	import { studio } from '#lib/studio.svelte.js';
 	import type { StepEvent } from '#lib/scene.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -12,6 +14,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Play from '@lucide/svelte/icons/play';
 	import Check from '@lucide/svelte/icons/check';
+	import X from '@lucide/svelte/icons/x';
 
 	const PHASES = [
 		{ phase: 'start', label: 'Starting layouts' },
@@ -32,9 +35,19 @@
 	const ran = $derived(new Set(steps.map((e) => e.phase)));
 	const best = $derived(kept.filter((e) => e.score !== null && e.n <= (shown?.n ?? Infinity)).at(-1)?.score ?? null);
 	const go = (i: number) => studio.showKept(i);
+	/** the two steps compared, earlier first */
+	const pair = $derived.by(() => {
+		if (!studio.compare) return null;
+		const [a, b] = studio.compare.map((n) => kept.find((e) => e.n === n));
+		return a?.svg && b?.svg ? [a, b] : null;
+	});
 
 	function onkeydown(e: KeyboardEvent) {
-		if (e.target instanceof Element && e.target.closest('input:not([type=range]), textarea, [role=dialog]')) return;
+		if (e.target instanceof Element && e.target.closest('input:not([type=range]), textarea, [role=dialog], [role=menu]')) return;
+		if (e.key === 'Escape' && studio.compare) {
+			studio.compare = null;
+			return;
+		}
 		const moves: Record<string, number> = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: kept.length - 1 };
 		if (e.key in moves && kept.length) {
 			e.preventDefault();
@@ -49,7 +62,11 @@
 
 <div class="flex h-full flex-col bg-muted/60">
 	<div class="relative min-h-0 flex-1">
-		{#if shown?.svg}
+		{#if pair}
+			<Drawing svg={pair[1].svg!} before={pair[0].svg} beforeLabel="Step {pair[0].n}" afterLabel="Step {pair[1].n}"
+				width={Math.max(pair[0].width ?? 0, pair[1].width ?? 0)} height={Math.max(pair[0].height ?? 0, pair[1].height ?? 0)}
+				name="boards compared" selectors={() => []} under={() => null} quiet={() => true} />
+		{:else if shown?.svg}
 			<Drawing svg={shown.svg} width={shown.width ?? 0} height={shown.height ?? 0} name="board at this step"
 				selectors={() => []} under={() => null} quiet={() => true}>
 				{#if studio.error}<BuildError banner />{/if}
@@ -70,7 +87,20 @@
 			</div>
 		{/if}
 
-		{#if steps.length}
+		{#if pair}
+			<div class="absolute top-3 right-3 z-10 flex max-w-[calc(100%-22rem)] items-start gap-2 rounded-lg border bg-background/95 py-1.5 pr-1.5 pl-3 text-xs shadow-sm">
+				<div class="min-w-0">
+					<div class="font-medium">Comparing step {pair[0].n} with step {pair[1].n}</div>
+					{#each pair as e}
+						<div class="truncate text-muted-foreground">
+							<span class="font-mono">{e.n}</span> {e.caption}{#if e.score !== null} · <span class="font-mono">{e.score}</span>{/if}
+						</div>
+					{/each}
+				</div>
+				<Button variant="ghost" size="icon" class="size-6 shrink-0" aria-label="Stop comparing (Esc)" title="Stop comparing (Esc)"
+					onclick={() => (studio.compare = null)}><X /></Button>
+			</div>
+		{:else if steps.length}
 			<div class="pointer-events-none absolute top-3 right-3 z-10 flex max-w-[calc(100%-22rem)] flex-col items-end gap-2">
 				<ol class="flex w-fit items-center gap-0.5 rounded-lg border bg-background/95 p-1 text-xs shadow-sm" aria-label="Phases">
 					{#each PHASES as p, i}

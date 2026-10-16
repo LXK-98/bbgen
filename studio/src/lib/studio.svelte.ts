@@ -54,6 +54,9 @@ export class Studio {
 	shownStep = $derived<StepEvent | null>(this.kept[this.keptAt] ?? null);
 	/** following bbgen as it goes: running, and showing the latest step */
 	live = $derived(this.stepping && this.shown === null);
+	/** a kept step picked to compare with another (its number), and the two being compared, earlier first */
+	compareWith = $state<number | null>(null);
+	compare = $state<[number, number] | null>(null);
 	/** Inspect the last build, or watch bbgen generate it (every build then shows its steps) */
 	mode = $state<'inspect' | 'generation'>('inspect');
 	exporting = $state(false);
@@ -112,6 +115,8 @@ export class Studio {
 			this.steps = [];
 			this.step = null;
 			this.stepsFor = null;
+			this.compareWith = null;
+			this.compare = null;
 			this.#unwatch = this.engine.watch(path, () => {
 				clearTimeout(this.#debounce);
 				this.#debounce = setTimeout(() => this.rebuild(), 150);
@@ -197,6 +202,8 @@ export class Studio {
 			this.step = null;
 			this.stepsFor = this.path;
 			this.shown = null;
+			this.compareWith = null;
+			this.compare = null;
 			onStep = (e) => {
 				if (seq !== this.#seq) return;
 				taken.push(e);
@@ -258,6 +265,7 @@ export class Studio {
 	/** show the kept step at index i of the kept ones; the last means the latest, following a run along */
 	showKept(i: number) {
 		if (!this.kept.length) return;
+		this.compare = null;
 		const j = Math.max(0, Math.min(this.kept.length - 1, i));
 		this.shown = j === this.kept.length - 1 ? null : this.kept[j].n;
 	}
@@ -265,6 +273,12 @@ export class Studio {
 	/** show the board as it was at step n: the last kept step at or before it */
 	showStep(n: number) {
 		this.showKept(Math.max(0, this.kept.findLastIndex((e) => e.n <= n)));
+	}
+
+	/** compare kept step n with the one picked before: the board at each, a slider between them */
+	compareSteps(n: number) {
+		if (this.compareWith === null || this.compareWith === n) return;
+		this.compare = this.compareWith < n ? [this.compareWith, n] : [n, this.compareWith];
 	}
 
 	/** stop the build that's running */

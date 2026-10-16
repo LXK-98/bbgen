@@ -31,12 +31,18 @@
 		overlay?: Snippet<[number]>;
 		/** over the view: a legend, banners */
 		children?: Snippet;
+		/** another drawing of the same size to compare with: shown left of a divider you drag, this one right of it */
+		before?: string;
+		/** what each side of the divider shows */
+		beforeLabel?: string;
+		afterLabel?: string;
 		/** the minimap's drawing is in currentColor (the schematic): an image draws that black, so invert it in the dark */
 		ink?: boolean;
 		class?: string;
 	}
 
-	let { svg, width, height, name, selectors, under, onleave, quiet, overlay, children, ink = false, class: klass = '' }: Props = $props();
+	let { svg, width, height, name, selectors, under, onleave, quiet, overlay, children, ink = false, before, beforeLabel, afterLabel,
+		class: klass = '' }: Props = $props();
 
 	let viewport = $state<HTMLDivElement>();
 	let content = $state<HTMLDivElement>();
@@ -110,6 +116,15 @@
 		return { x0, y0, x1, y1, all: x0 <= 0 && y0 <= 0 && x1 >= width && y1 >= height };
 	});
 	let miniDrag = false;
+
+	// comparing: where the divider is, as a share of the view's width
+	let split = $state(0.5);
+	let splitting = false;
+	const splitX = $derived(Math.round(split * vw));
+	function splitMove(e: PointerEvent) {
+		const box = viewport!.getBoundingClientRect();
+		split = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
+	}
 
 	/** centre the view on the drawing's point under the pointer on the minimap */
 	function miniMove(e: PointerEvent) {
@@ -198,7 +213,50 @@
 			<div bind:this={content} class="drawing-svg">{@html svg}</div>
 			{@render overlay?.(scale)}
 		</div>
+		{#if before !== undefined}
+			<div class="pointer-events-none absolute inset-0 overflow-hidden" style:clip-path="inset(0 {vw - splitX}px 0 0)">
+				<div
+					class="absolute top-0 left-0 origin-top-left"
+					style:width="{width}px"
+					style:height="{height}px"
+					style:transform="translate({tx}px, {ty}px) scale({scale})"
+				>
+					<div class="drawing-svg">{@html before}</div>
+				</div>
+			</div>
+		{/if}
 	</div>
+
+	{#if before !== undefined && vw}
+		<!-- the divider: drag it (or anywhere on its line) to show more of either drawing -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="absolute top-0 bottom-0 z-[5] w-4 -translate-x-1/2 cursor-ew-resize touch-none"
+			style:left="{splitX}px"
+			onpointerdown={(e) => {
+				e.stopPropagation();
+				splitting = true;
+				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			}}
+			onpointermove={(e) => splitting && splitMove(e)}
+			onpointerup={() => (splitting = false)}
+		>
+			<div class="absolute top-0 bottom-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary shadow-[0_0_0_1px_var(--background)]"></div>
+			<div class="absolute top-1/2 left-1/2 flex h-9 w-6 -translate-1/2 items-center justify-center rounded-md border-2 border-primary bg-background text-primary shadow-md">
+				<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M4 2 0 6l4 4zM8 2l4 4-4 4z" /></svg>
+			</div>
+		</div>
+		{#if beforeLabel}
+			<div class="pointer-events-none absolute bottom-3 z-[6] -translate-x-full pr-3 whitespace-nowrap" style:left="{splitX}px">
+				<span class="rounded-md border bg-background/95 px-2 py-1 text-xs font-medium shadow-sm">{beforeLabel}</span>
+			</div>
+		{/if}
+		{#if afterLabel}
+			<div class="pointer-events-none absolute bottom-3 z-[6] pl-3 whitespace-nowrap" style:left="{splitX}px">
+				<span class="rounded-md border bg-background/95 px-2 py-1 text-xs font-medium shadow-sm">{afterLabel}</span>
+			</div>
+		{/if}
+	{/if}
 
 	{#if tip && pointer}
 		<div
