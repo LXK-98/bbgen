@@ -1,0 +1,19 @@
+[package]
+name = "bbgen-studio"
+version = "0.1.0"
+description = "Load a circuit, build it with bbgen, and inspect the breadboard"
+license = "MIT"
+edition = "2021"
+
+[lib]
+name = "bbgen_studio"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+notify = "8"
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
