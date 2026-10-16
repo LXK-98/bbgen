@@ -27,7 +27,7 @@
 	}
 </script>
 
-<div class="circuit relative h-full w-full overflow-hidden bg-background text-foreground">
+<div class="circuit relative h-full w-full overflow-hidden bg-muted/60 text-foreground">
 	{#if schematic}
 		<Drawing svg={schematic.svg} width={schematic.width} height={schematic.height} name="schematic" {selectors} {under}>
 			<div class="absolute top-3 right-3 z-10 rounded-lg border bg-background/95 p-1 shadow-sm">
