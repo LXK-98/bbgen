@@ -8,6 +8,7 @@ import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneErro
 
 const RECENT = 'bbgen-studio.recent';
 const VIEW = 'bbgen-studio.view';
+const RAILS = 'bbgen-studio.rails';
 
 function load<T>(key: string, fallback: T): T {
 	try {
@@ -46,6 +47,8 @@ export class Studio {
 
 	/** what the centre shows: the board, the circuit's schematic, or both side by side */
 	view = $state<'board' | 'circuit' | 'both'>(load(VIEW, 'board'));
+	/** the circuit's supplies drawn as wires from one power symbol each, rather than a symbol at every pin */
+	rails = $state<boolean>(load(RAILS, false));
 	list = $state<'parts' | 'nets' | 'wires'>('parts');
 	drawer = $state<'checklist' | 'issues' | 'output'>('checklist');
 	filter = $state('');
@@ -92,7 +95,7 @@ export class Studio {
 		this.building = true;
 		let out: BuildOutput;
 		try {
-			out = await this.engine.build(this.path, this.view !== 'board');
+			out = await this.engine.build(this.path, this.view !== 'board', this.rails);
 		} catch (e) {
 			out = { json: null, stderr: String(e), code: null, command: '', ms: 0 };
 		}
@@ -144,6 +147,13 @@ export class Studio {
 		this.view = view;
 		save(VIEW, view);
 		if (view !== 'board' && this.scene && !this.scene.schematic) this.rebuild();
+	}
+
+	/** draw the circuit's supplies as wires, or as power symbols */
+	setRails(on: boolean) {
+		this.rails = on;
+		save(RAILS, on);
+		if (this.view !== 'board') this.rebuild();
 	}
 
 	select(key: Key | null) {

@@ -1,6 +1,6 @@
 //! bbgen: breadboard layouts from YAML: a drawing, a build checklist and a wiring check.
 //!
-//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--video FILE] [--video-all]
+//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--rails] [--video FILE] [--video-all]
 //!     bbgen check circuit.yaml                                  the check only
 //!     bbgen build|check circuit.yaml --json                     what was built, as JSON on stdout (docs/scene-format.md)
 //!     bbgen find WORDS... [--kicad DIR]                         search KiCad's library for a symbol
@@ -11,7 +11,7 @@
 //!     bbgen dev measure FILE OUTDIR [--no-png]                 what benchmarks/run.py tabulates
 //!     bbgen dev frames FILE OUTDIR [--all]                     a video's frames as SVG files
 //!     bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]      every part's schematic symbol, in a grid
-//!     bbgen dev schematic FILE OUT.svg                         the circuit's schematic, and the graph ELK laid out
+//!     bbgen dev schematic FILE OUT.svg [--rails]               the circuit's schematic, and the graph ELK laid out
 //!     bbgen dev elk GRAPH.json [OUT.json] [--repeat N]         a graph laid out by ELK, and how long it took
 //!     bbgen dev kicad-roots | score-lines | yaml-json FILE | pyf-check
 
@@ -24,10 +24,11 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 const USAGE: &str = "usage: bbgen {build,check,find} ...\n\n\
-  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--video FILE] [--video-all]\n\
+  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--rails] [--video FILE] [--video-all]\n\
                                                     write <name>.svg/.png/.md next to the YAML and check the wiring\n\
                                                     (--bare: the drawing without title, legend or background;\n\
-                                                    --schematic: the circuit's schematic too, <name>.schematic.svg)\n\
+                                                    --schematic: the circuit's schematic too, <name>.schematic.svg;\n\
+                                                    --rails: with its supplies drawn as wires)\n\
   check circuit.yaml                                check the wiring only\n\
   build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)\n\
   find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
@@ -112,6 +113,7 @@ fn run(args: &[String]) -> i32 {
     let mut json = false;
     let mut bare = false;
     let mut schematic = false;
+    let mut rails = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -129,6 +131,10 @@ fn run(args: &[String]) -> i32 {
             "--json" => json = true,
             "--bare" if cmd == "build" => bare = true,
             "--schematic" if cmd == "build" => schematic = true,
+            "--rails" if cmd == "build" => {
+                schematic = true;
+                rails = true;
+            }
             a if !a.starts_with('-') && circuit.is_none() => circuit = Some(PathBuf::from(a)),
             a => {
                 eprintln!("bbgen: unrecognised argument {}\n{}", a, USAGE);
@@ -144,15 +150,16 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
+    let style = if rails { bbgen::schematic::Style::Rails } else { bbgen::schematic::Style::Symbols };
     // the schematic needs only the parts and nets: drawn on a thread of its own while the board is placed
     let drawing = if schematic {
         std::fs::read_to_string(&circuit).ok().and_then(|t| Val::load(&t).ok())
-            .map(|data| bbgen::schematic::in_background(&data, &circuit.to_string_lossy()))
+            .map(|data| bbgen::schematic::in_background(&data, &circuit.to_string_lossy(), style))
     } else {
         None
     };
     if json {
-        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)), drawing);
+        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)), drawing.map(|d| (d, style)));
     }
     if video.is_some() {
         bbgen::trace::start(video_all);
@@ -244,7 +251,7 @@ fn run(args: &[String]) -> i32 {
 /// build|check --json: the scene on stdout, nothing else. With -o, the drawing and checklist are written there too.
 type Drawing = std::thread::JoinHandle<(std::result::Result<bbgen::schematic::Schematic, String>, f64)>;
 
-fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: Option<Drawing>) -> i32 {
+fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: Option<(Drawing, bbgen::schematic::Style)>) -> i32 {
     let path = circuit.to_string_lossy().into_owned();
     let start = Instant::now();
     let c = match Circuit::load(&path) {
@@ -258,9 +265,9 @@ fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: 
     let ms = start.elapsed().as_secs_f64() * 1000.0;
     let data = std::fs::read_to_string(&path).ok().and_then(|t| Val::load(&t).ok());
     let mut scene = bbgen::scene::scene(&c, &result, data.as_ref(), ms);
-    if let Some(drawing) = drawing {
+    if let Some((drawing, style)) = drawing {
         scene["schematic"] = match drawing.join() {
-            Ok((Ok(s), ms)) => bbgen::scene::schematic(&s, ms),
+            Ok((Ok(s), ms)) => bbgen::scene::schematic(&s, ms, style),
             Ok((Err(e), _)) => serde_json::json!({"error": e}),
             Err(_) => serde_json::json!({"error": "drawing it failed"}),
         };
@@ -370,7 +377,7 @@ fn dev(args: &[String]) -> i32 {
             0
         }
         _ => {
-            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | elk GRAPH.json [OUT.json] [--repeat N] | schematic FILE OUT.svg | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
+            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | elk GRAPH.json [OUT.json] [--repeat N] | schematic FILE OUT.svg [--rails] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
             2
         }
     }
@@ -629,7 +636,8 @@ fn dev_schematic(args: &[String]) -> i32 {
         Err(e) => { eprintln!("{}: {}", args[0], e); return 2; }
     };
     let start = Instant::now();
-    let s = match bbgen::schematic::draw(&c) {
+    let style = if args.iter().any(|a| a == "--rails") { bbgen::schematic::Style::Rails } else { bbgen::schematic::Style::Symbols };
+    let s = match bbgen::schematic::draw_with(&c, style) {
         Ok(s) => s,
         Err(e) => { eprintln!("{}", e); return 1; }
     };

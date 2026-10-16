@@ -41,14 +41,14 @@ struct Studio {
     watchers: Mutex<HashMap<String, notify::RecommendedWatcher>>,
 }
 
-/// `bbgen build <path> --json` (and `--schematic` when the circuit view wants it): what it printed (a scene or an
+/// `bbgen build <path> --json` (and `--schematic`, or `--rails`, when the circuit view wants it): what it printed (a scene or an
 /// error), its stderr and exit status.
 #[tauri::command]
-async fn build(path: String, schematic: bool, studio: State<'_, Studio>) -> Result<Value, String> {
+async fn build(path: String, schematic: bool, rails: bool, studio: State<'_, Studio>) -> Result<Value, String> {
     let exe = bbgen();
     let mut args = vec!["build", path.as_str(), "--json"];
     if schematic {
-        args.push("--schematic");
+        args.push(if rails { "--rails" } else { "--schematic" });
     }
     let command = format!("bbgen {}", args.join(" "));
     let started = Instant::now();

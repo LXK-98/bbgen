@@ -36,6 +36,7 @@ bbgen check circuit.yaml           # the check only
 bbgen build circuit.yaml --bare    # the drawing without title, legend or background
 bbgen build circuit.yaml --json    # what was built, as JSON on stdout (docs/scene-format.md)
 bbgen build circuit.yaml --schematic   # also circuit.schematic.svg/.png: the circuit's schematic
+bbgen build circuit.yaml --rails       # the schematic with its supplies drawn as wires
 ```
 
 To look at a build rather than read it, [bbgen studio](studio/README.md) opens a circuit, builds it and
@@ -60,12 +61,17 @@ so you can see that at a glance before building.
 - Parts from KiCad's library are drawn with their own symbol (an op-amp's units apart); bbgen's own parts with
   symbols in KiCad's style: resistors, capacitors, diodes, LEDs, a pot named by its footprint, the Pico, a box
   for a DIP given only labels (supplies on top, grounds below), a connector for an off-board part.
-- Supplies and grounds are power symbols, not wires. A resistor or LED between two signals sits in line; one to
-  a supply or ground hangs from its signal. Decoupling caps stand above their chip (`near:` says which).
+- Supplies and grounds are power symbols, not wires, as in most schematics. A resistor or LED between two signals
+  sits in line; one to a supply or ground hangs from its signal. A decoupling cap hangs from its chip's supply line
+  (`near:` says which chip), and parts that only take power (a bench supply's connector, a regulator between two
+  supplies) sit in a row of their own, "Power", above the rest.
+- `--rails` draws supplies and grounds as wires instead, each from one power symbol, like a textbook drawing. It
+  reads well for a circuit of a chip or two and gets busy beyond that.
 - Signals run left to right, from what drives them: outputs (by KiCad's pin types), then the controller, then
   connectors. Symbols are mirrored to face their signals, and connectors go at the edges.
 - A net that would run across the page, one with many pins, and the nets of a big connector are drawn as
-  labels. A bus (`D0`...`D7`) is labelled whole.
+  labels. A bus (`D0`...`D7`) is labelled whole. A long net stays wired if labelling it would leave a part with no
+  wire at all.
 - bbgen reads the drawing back and checks every wired net is in one piece and touches no other.
 
 Placing the symbols and routing the wires is done by [ELK](https://eclipse.dev/elk/), the Eclipse Layout

@@ -31,6 +31,14 @@ struct Node {
     ports: Vec<Port>,
     /// what's drawn, about the symbol's origin: (the group's attributes, its prims)
     groups: Vec<(String, Vec<Prim>)>,
+    /// where the symbol of a supply in `hang` would have gone (build)
+    anchors: Vec<(usize, Xy)>,
+    /// the symbol's body (mm, about its origin)
+    body: (f64, f64, f64, f64),
+    /// whether any of its pins is a net's label
+    labels: bool,
+    /// a supply's power symbol (the rails style), not a part
+    power: bool,
 }
 
 struct Port {
@@ -138,8 +146,53 @@ fn text_beyond(at: Xy, out: (i32, i32), text: &str) -> Prim {
     }
 }
 
-/// The schematic of a circuit.
+/// How supplies and grounds are drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Style {
+    /// a power symbol at every pin, as in most schematics; decoupling caps hang from their chip's supply, and
+    /// parts that only take power sit in a row of their own
+    #[default]
+    Symbols,
+    /// as wires, from one power symbol per supply and ground: a textbook drawing, for small circuits
+    Rails,
+}
+
+/// What every node is made from: the circuit, its symbols, its nets and what drives them.
+struct Ctx<'a> {
+    c: &'a Circuit,
+    syms: Vec<PartSymbol>,
+    classes: Vec<Class>,
+    names: Vec<&'a str>,
+    /// each part's pins' nets
+    net_of: Vec<Vec<Option<usize>>>,
+    /// each net's driving pin: the part's index and its pin's
+    driver: Vec<Option<(usize, usize)>>,
+    style: Style,
+}
+
+impl Ctx<'_> {
+    /// a symbol pin is on the net of any of the part's pins it carries
+    fn pin_net(&self, part: usize, sp: &symbol::SymPin) -> Option<usize> {
+        sp.pins.iter().find_map(|&i| self.net_of[part][i])
+    }
+
+    fn drives(&self, n: usize, part: usize, sp: &symbol::SymPin) -> bool {
+        self.driver[n].map(|(k, i)| k == part && sp.pins.contains(&i)).unwrap_or(false)
+    }
+
+    /// a net drawn as wires: a signal, or in the rails style any net
+    fn wired(&self, n: usize) -> bool {
+        self.classes[n] == Class::Signal || self.style == Style::Rails
+    }
+}
+
+/// The schematic of a circuit, its supplies as power symbols.
 pub fn draw(c: &Circuit) -> Result<Schematic, String> {
+    draw_with(c, Style::Symbols)
+}
+
+/// The schematic of a circuit, its supplies drawn in this style.
+pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
     let library = c.library.as_deref();
     let syms: Vec<PartSymbol> = c.parts.iter().map(|p| symbol::of_part(p, library)).collect();
     let classes: Vec<Class> = c.nets.values().map(|n| match n.polarity {
@@ -148,19 +201,18 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         _ => Class::Signal,
     }).collect();
     let names: Vec<&str> = c.nets.keys().map(String::as_str).collect();
-    // each part's pins' nets
     let mut net_of: Vec<Vec<Option<usize>>> = c.parts.iter().map(|p| vec![None; p.pins.len()]).collect();
     for (n, net) in c.nets.values().enumerate() {
         for &PinId { part, pin } in &net.pins {
             net_of[part as usize][pin as usize] = Some(n);
         }
     }
-    // a symbol pin is on the net of any of the part's pins it carries
-    let pin_net = |part: usize, sp: &symbol::SymPin| sp.pins.iter().find_map(|&i| net_of[part][i]);
+    let mut ctx = Ctx { c, syms, classes, names, net_of, driver: vec![], style };
 
     // how far (in parts, along signal nets) each part is from what drives the circuit
     let strength: Vec<f64> = c.parts.iter().enumerate().map(|(k, p)| {
-        syms[k].drawing.units.iter().flat_map(|u| &u.pins).filter(|sp| pin_net(k, sp).map(|n| classes[n] == Class::Signal).unwrap_or(false))
+        ctx.syms[k].drawing.units.iter().flat_map(|u| &u.pins)
+            .filter(|sp| ctx.pin_net(k, sp).map(|n| ctx.classes[n] == Class::Signal).unwrap_or(false))
             .map(|sp| drive(p.kind, &p.source, &sp.kind)).fold(0.0, f64::max)
     }).collect();
     let top = strength.iter().cloned().fold(0.0, f64::max).min(4.0);
@@ -168,7 +220,7 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
     loop {
         let mut changed = false;
         for (n, net) in c.nets.values().enumerate() {
-            if classes[n] != Class::Signal {
+            if ctx.classes[n] != Class::Signal {
                 continue;
             }
             let best = net.pins.iter().map(|p| dist[p.part as usize]).min().unwrap_or(usize::MAX);
@@ -186,22 +238,23 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
             break;
         }
     }
-
-    // each net's driving pin: (drive, nearness, part order); the part's index and the symbol pin's number
-    let mut driver: Vec<Option<(f64, usize, usize)>> = vec![None; c.nets.len()];
-    let mut driver_key: Vec<(f64, i64, i64)> = vec![(-1.0, 0, 0); c.nets.len()];
+    // each net's driving pin: the strongest (drive), then the nearest the controller, then the first in the file
+    let mut driver: Vec<Option<(usize, usize)>> = vec![None; c.nets.len()];
+    let mut best: Vec<(f64, i64, i64)> = vec![(-1.0, 0, 0); c.nets.len()];
     for (k, p) in c.parts.iter().enumerate() {
-        for sp in syms[k].drawing.units.iter().flat_map(|u| &u.pins) {
-            if let Some(n) = pin_net(k, sp) {
+        for sp in ctx.syms[k].drawing.units.iter().flat_map(|u| &u.pins) {
+            if let Some(n) = ctx.pin_net(k, sp) {
                 let key = (drive(p.kind, &p.source, &sp.kind), -(dist[k].min(1 << 20) as i64), -(k as i64));
-                if driver[n].is_none() || key > driver_key[n] {
-                    driver[n] = Some((key.0, k, sp.pins[0]));
-                    driver_key[n] = key;
+                if driver[n].is_none() || key > best[n] {
+                    driver[n] = Some((k, sp.pins[0]));
+                    best[n] = key;
                 }
             }
         }
     }
-    let drives = |n: usize, part: usize, sp: &symbol::SymPin| driver[n].map(|(_, k, i)| k == part && sp.pins.contains(&i)).unwrap_or(false);
+    ctx.driver = driver;
+    let ctx = ctx;
+    let (names, classes) = (&ctx.names, &ctx.classes);
 
     // nets drawn as labels from the start: one with many pins (a supply without a rail, like 16's VDDIO), and
     // those of a connector with many pins (its wires would run all over the page)
@@ -210,21 +263,114 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         let big_connector = pins.iter().any(|p| {
             let part = &c.parts[p.part as usize];
             part.kind == Kind::Offboard
-                && net_of[p.part as usize].iter().flatten().filter(|&&m| classes[m] == Class::Signal).count() >= BIG_CONNECTOR
+                && ctx.net_of[p.part as usize].iter().flatten().filter(|&&m| classes[m] == Class::Signal).count() >= BIG_CONNECTOR
         });
         classes[n] == Class::Signal && (pins.len() >= MANY_PINS || big_connector)
     }).collect();
     let mut round = 0;
     loop {
-    // decoupling caps (both legs on supplies) go beside a chip: the one they're `near`, else the first part with a
-    // pin on their supply that has fewest so far
-    let lead_nets = |k: usize| -> Vec<Option<usize>> { (0..c.parts[k].pins.len()).map(|i| net_of[k][i]).collect() };
+        let mut nodes = make_nodes(&ctx, &labelled);
+        // parts that only take power (a supply's connector, a cap with no chip to stand by) go in a row of their
+        // own above the drawing, rather than wherever the layout packs them
+        let corner: Vec<Node> = if style == Style::Symbols {
+            let (alone, rest): (Vec<Node>, Vec<Node>) = nodes.into_iter().partition(|n| n.ports.is_empty() && !n.labels && !n.power);
+            nodes = rest;
+            alone
+        } else {
+            vec![]
+        };
+        let graph = graph(&ctx, &nodes, &labelled);
+        let laid_out = crate::elk::layout(&graph)?;
+        // the power row: its nodes side by side under a caption, the laid-out drawing below it
+        let pad = 20.0;
+        let mut at: std::collections::HashMap<String, Xy> = std::collections::HashMap::new();
+        let (mut row_w, mut row_h) = (0.0f64, 0.0f64);
+        let mut caption = None;
+        if !corner.is_empty() {
+            let top = pad + 1.27 * PX * 1.6;
+            let mut x = pad;
+            for n in &corner {
+                at.insert(n.id.clone(), (x, top));
+                x += (n.bounds.2 - n.bounds.0) * PX + 30.0;
+                row_h = row_h.max((n.bounds.3 - n.bounds.1) * PX);
+            }
+            row_w = x - 30.0 + pad;
+            row_h += top + 10.0;
+            caption = Some((pad, pad + 1.27 * PX));
+        }
+        for n in laid_out["children"].as_array().unwrap() {
+            at.insert(n["id"].as_str().unwrap().to_string(), (n["x"].as_f64().unwrap(), n["y"].as_f64().unwrap() + row_h));
+        }
+        nodes.extend(corner);
+        let drawn = route(&nodes, &laid_out, at, row_h);
+        let problems = check(&drawn, names);
+        let width = laid_out["width"].as_f64().unwrap_or(0.0).max(row_w);
+        let height = laid_out["height"].as_f64().unwrap_or(0.0) + row_h;
+        // what to label next: a net the check finds wrong, or one whose wires run across much of the page
+        let long = |n: usize| drawn.length(n) > LONG * (width + height);
+        // a long net stays wired if labelling it would leave a part with no wire at all: a part cut loose from the
+        // circuit (the 555's timing resistors, with all their nets labels) reads worse than a long wire
+        let mut more: Vec<usize> = (0..names.len()).filter(|&n| !labelled[n] && problems.iter().any(|(m, _)| *m == n)).collect();
+        let mut would = labelled.clone();
+        for &n in &more {
+            would[n] = true;
+        }
+        // (in the rails style, supplies stay wires however long: that's the style)
+        let long_ones: Vec<usize> = (0..names.len()).filter(|&n| !would[n] && long(n) && classes[n] == Class::Signal).collect();
+        for n in long_ones {
+            let keeps = c.nets[n].pins.iter().all(|p| {
+                ctx.net_of[p.part as usize].iter().flatten().any(|&m| m != n && ctx.wired(m) && !would[m])
+            });
+            if keeps {
+                would[n] = true;
+                more.push(n);
+            }
+        }
+        round += 1;
+        // BBGEN_SCHEMATIC_DEBUG: what each round found, to see why a net became a label
+        if std::env::var("BBGEN_SCHEMATIC_DEBUG").is_ok() {
+            for (_, p) in &problems {
+                eprintln!("round {}: {}", round, p);
+            }
+            for n in (0..names.len()).filter(|&n| long(n) && !labelled[n]) {
+                eprintln!("round {}: {} is {:.0} px long, the page {:.0} px across and down", round, names[n], drawn.length(n), width + height);
+            }
+        }
+        if more.is_empty() || round == ROUNDS {
+            let mut svg = render(&nodes, &drawn, names);
+            if let Some((x, y)) = caption {
+                svg.insert_str(0, &format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{:.1}\" fill=\"currentColor\" fill-opacity=\"0.6\">Power</text>",
+                                           x, y, 1.27 * PX));
+            }
+            let problems = problems.into_iter().map(|(_, p)| p).collect();
+            let labels = (0..names.len()).filter(|&n| labelled[n]).map(|n| names[n].to_string()).collect();
+            return Ok(Schematic { svg, width, height, graph, laid_out, problems, labelled: labels });
+        }
+        for n in more {
+            labelled[n] = true;
+        }
+        // a bus (BUS0, BUS1, ...) is labelled all together or not at all
+        for n in 0..names.len() {
+            if !labelled[n] && classes[n] == Class::Signal {
+                labelled[n] = (0..names.len()).any(|m| labelled[m] && same_bus(names[m], names[n]));
+            }
+        }
+    }
+}
+
+/// Each part's units as nodes, turned and mirrored as they read best, with decoupling caps hanging from their
+/// chips' supplies; and in the rails style, a node for each supply's power symbol.
+fn make_nodes(ctx: &Ctx, labelled: &[bool]) -> Vec<Node> {
+    let (c, classes) = (ctx.c, &ctx.classes);
+    let rails_style = ctx.style == Style::Rails;
+    // decoupling caps (both legs on supplies) go by a chip: the one they're `near`, else the chip with a pin on their
+    // supply that has fewest so far, chips before modules
     let mut beside: Vec<Option<usize>> = vec![None; c.parts.len()];
     let mut count = vec![0usize; c.parts.len()];
     for (k, p) in c.parts.iter().enumerate() {
-        let legs = lead_nets(k);
+        let legs: Vec<Option<usize>> = ctx.net_of[k].clone();
         let rails = legs.iter().all(|n| n.map(|n| classes[n] != Class::Signal).unwrap_or(false));
-        if !(p.kind.is_lead() && legs.len() == 2 && rails) {
+        if rails_style || !(p.kind.is_lead() && legs.len() == 2 && rails) {
             continue;
         }
         let near = p.near.as_ref().and_then(|r| c.parts.iter().position(|q| &q.r#ref == r));
@@ -232,71 +378,88 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         let host = near.or_else(|| {
             let module = |j: usize| c.parts[j].kind == Kind::Pico || c.parts[j].source.starts_with("MCU_Module");
             (0..c.parts.len()).filter(|&j| !c.parts[j].kind.is_lead() && c.parts[j].kind != Kind::Offboard)
-                .filter(|&j| net_of[j].iter().any(|n| n.is_some() && *n == supply)).min_by_key(|&j| (module(j), count[j], j))
+                .filter(|&j| ctx.net_of[j].iter().any(|n| n.is_some() && *n == supply)).min_by_key(|&j| (module(j), count[j], j))
         });
         if let Some(h) = host {
             beside[k] = Some(h);
             count[h] += 1;
         }
     }
-
     // a unit that only takes power (an op-amp's supply pins), when the part has others
     let power_unit = |k: usize, u: usize| {
-        let pins = &syms[k].drawing.units[u].pins;
-        syms[k].drawing.units.len() > 1 && pins.iter().any(|sp| pin_net(k, sp).is_some())
-            && pins.iter().all(|sp| pin_net(k, sp).map(|n| classes[n] != Class::Signal).unwrap_or(true))
+        let pins = &ctx.syms[k].drawing.units[u].pins;
+        !rails_style && ctx.syms[k].drawing.units.len() > 1 && pins.iter().any(|sp| ctx.pin_net(k, sp).is_some())
+            && pins.iter().all(|sp| ctx.pin_net(k, sp).map(|n| classes[n] != Class::Signal).unwrap_or(true))
     };
+    let supply_of = |j: usize| ctx.net_of[j].iter().flatten().find(|&&n| classes[n] == Class::Supply).copied();
 
-    // the nodes, each unit turned as it reads best
     let mut nodes: Vec<Node> = Vec::new();
     for (k, p) in c.parts.iter().enumerate() {
         if beside[k].is_some() {
             continue;
         }
-        let sym = &syms[k];
+        let sym = &ctx.syms[k];
         for (u, unit) in sym.drawing.units.iter().enumerate() {
-            let connected = unit.pins.iter().any(|sp| pin_net(k, sp).is_some());
+            let connected = unit.pins.iter().any(|sp| ctx.pin_net(k, sp).is_some());
             if (!connected || power_unit(k, u)) && sym.drawing.units.len() > 1 {
                 continue;
             }
             let lead = p.kind.is_lead() && unit.pins.len() == 2;
-            let mut orient = if lead { lead_orient(unit, &|sp| pin_net(k, sp), &classes, &|n, sp| drives(n, k, sp)) } else { Orient::default() };
+            let mut orient = if lead { lead_orient(ctx, k, unit) } else { Orient::default() };
             if sym.source == "potentiometer" {
                 // a pot's ends: the supply on top, the ground below
-                let end = |num: &str| unit.pins.iter().find(|sp| sp.number == num).and_then(|sp| pin_net(k, sp)).map(|n| classes[n]);
+                let end = |num: &str| unit.pins.iter().find(|sp| sp.number == num).and_then(|sp| ctx.pin_net(k, sp)).map(|n| classes[n]);
                 if end("1") == Some(Class::Ground) || end("3") == Some(Class::Supply) {
                     orient.rot = 180;
                 }
             }
-            let mut node = build(c, &syms, k, u, orient, &|sp| pin_net(k, sp), &classes, &labelled, &names, &|n, sp| drives(n, k, sp));
+            // the caps that hang from this unit's supply pins
+            let caps: Vec<usize> = if !nodes.iter().any(|n| n.part == k) {
+                (0..c.parts.len()).filter(|&j| beside[j] == Some(k)).collect()
+            } else {
+                vec![]
+            };
+            let hang: Vec<usize> = caps.iter().filter_map(|&j| supply_of(j)).collect();
+            let mut node = build(ctx, labelled, k, u, orient, &hang, None);
             if !lead && sym.source != "potentiometer" {
                 // a symbol whose driving pins point left, or whose driven ones point right, is mirrored
-                let lean: f64 = node.ports.iter().map(|p| {
-                    let side = p.out.0 as f64;
-                    if p.drive > 0.0 { side } else { -side }
-                }).sum();
+                let lean: f64 = node.ports.iter().map(|p| if p.drive > 0.0 { p.out.0 as f64 } else { -p.out.0 as f64 }).sum();
                 if lean < 0.0 {
                     orient.mirror = true;
-                    node = build(c, &syms, k, u, orient, &|sp| pin_net(k, sp), &classes, &labelled, &names, &|n, sp| drives(n, k, sp));
+                    node = build(ctx, labelled, k, u, orient, &hang, None);
                 }
             }
-            // above it, at its right: its power unit (an op-amp's supply pins) and its decoupling caps
-            let mut extras: Vec<(usize, usize)> = (0..sym.drawing.units.len()).filter(|&v| v != u && power_unit(k, v)).map(|v| (k, v)).collect();
-            extras.extend((0..c.parts.len()).filter(|&j| beside[j] == Some(k)).map(|j| (j, 0)));
-            if u == 0 && !extras.is_empty() {
+            // decoupling caps on a supply line from the chip's pin, each to its own ground; the part's power unit
+            // above its first unit drawn
+            let first = !nodes.iter().any(|n| n.part == k);
+            let mut above: Vec<(usize, usize)> = (0..sym.drawing.units.len()).filter(|&v| first && v != u && power_unit(k, v))
+                .map(|v| (k, v)).collect();
+            let anchors = node.anchors.clone();
+            for &j in &caps {
+                let s = supply_of(j);
+                if !anchors.iter().any(|(n, _)| Some(*n) == s) {
+                    above.push((j, 0));
+                }
+            }
+            for (n, a) in anchors {
+                let mine: Vec<usize> = caps.iter().copied().filter(|&j| supply_of(j) == Some(n)).collect();
+                hang_caps(ctx, labelled, &mut node, n, a, &mine);
+            }
+            // anything else above it, at its right: its power unit, caps it has no supply pin on top for
+            if !above.is_empty() {
                 let mut x = node.bounds.2;
                 let mut placed = Vec::new();
-                for &(j, v) in extras.iter().rev() {
-                    let unit = &syms[j].drawing.units[v];
-                    let o = if j == k { Orient::default() } else { lead_orient(unit, &|sp| pin_net(j, sp), &classes, &|n, sp| drives(n, j, sp)) };
-                    let cap = build(c, &syms, j, v, o, &|sp| pin_net(j, sp), &classes, &labelled, &names, &|n, sp| drives(n, j, sp));
-                    let b = cap.bounds;
+                for &(j, v) in above.iter().rev() {
+                    let unit = &ctx.syms[j].drawing.units[v];
+                    let o = if j == k { Orient::default() } else { lead_orient(ctx, j, unit) };
+                    let extra = build(ctx, labelled, j, v, o, &[], None);
+                    let b = extra.bounds;
                     x -= b.2 - b.0;
-                    placed.push((cap, (x - b.0, node.bounds.1 - 1.27 - b.3)));
+                    placed.push((extra, (x - b.0, node.bounds.1 - 1.27 - b.3)));
                     x -= 2.54;
                 }
-                for (cap, d) in placed {
-                    for (attrs, prims) in cap.groups {
+                for (extra, d) in placed {
+                    for (attrs, prims) in extra.groups {
                         node.groups.push((attrs, shift(&prims, d)));
                     }
                 }
@@ -305,10 +468,80 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
             nodes.push(node);
         }
     }
+    if rails_style {
+        // one power symbol for each supply and ground, the source of its wires
+        for n in (0..ctx.names.len()).filter(|&n| classes[n] != Class::Signal && !labelled[n]) {
+            if !nodes.iter().any(|node| node.ports.iter().any(|p| p.net == n)) {
+                continue;
+            }
+            let ground = classes[n] == Class::Ground;
+            let way = if ground { (0, 1) } else { (0, -1) };
+            let groups = vec![(format!("data-net=\"{}\"", symbol::escape(ctx.names[n])), flag((0.0, 0.0), way, ctx.names[n], ground))];
+            let port = Port { net: n, at: (0.0, 0.0), out: (-way.0, -way.1), drive: 2.0, id: format!("power.{}", ctx.names[n]) };
+            nodes.push(Node { part: usize::MAX, id: format!("power:{}", ctx.names[n]), bounds: bounds_of(&groups), ports: vec![port],
+                              groups, anchors: vec![], body: (0.0, 0.0, 0.0, 0.0), labels: false, power: true });
+        }
+    }
+    nodes
+}
 
-    // the graph
+/// Decoupling caps on the supply line from a chip's top pin(s) at `a`: the line goes up past the top of the caps,
+/// the supply's symbol on its end, and across to the caps, which stand to the right of everything above the chip,
+/// each down to its own ground.
+fn hang_caps(ctx: &Ctx, labelled: &[bool], node: &mut Node, n: usize, a: Xy, caps: &[usize]) {
+    let thin = 0.1524;
+    let mut built = Vec::new();
+    for &j in caps {
+        let unit = &ctx.syms[j].drawing.units[0];
+        let o = lead_orient(ctx, j, unit);
+        let cap = build(ctx, labelled, j, 0, o, &[], Some(n));
+        let top = unit.pins.iter().find(|sp| ctx.pin_net(j, sp) == Some(n)).map(|sp| o.point(sp.at)).unwrap_or((0.0, -3.81));
+        built.push((cap, top));
+    }
+    // right of everything above the chip's body
+    let body_top = node.body.1;
+    let mut right = a.0;
+    for (_, prims) in &node.groups {
+        for p in prims {
+            let b = symbol::bounds(std::slice::from_ref(p));
+            if b.1 < body_top - 0.01 && b.2.is_finite() {
+                right = right.max(b.2);
+            }
+        }
+    }
+    let drop = built.iter().map(|(cap, top)| cap.bounds.3 - top.1).fold(0.0, f64::max);
+    let line_y = (a.1 - 1.27).min(body_top - 1.27 - drop);
+    let t = (a.0, line_y);
+    let attrs = format!("data-net=\"{}\"", symbol::escape(ctx.names[n]));
+    let mut prims = vec![Prim::Line { pts: vec![a, t], width: thin, fill: symbol::Fill::None }];
+    prims.extend(flag(t, (0, -1), ctx.names[n], false));
+    let mut x = right + 2.54;
+    let mut tops = Vec::new();
+    for (cap, top) in built {
+        let b = cap.bounds;
+        let at_x = x + (top.0 - b.0);
+        let d = (at_x - top.0, line_y - top.1);
+        for (attrs, ps) in cap.groups {
+            node.groups.push((attrs, shift(&ps, d)));
+        }
+        tops.push((at_x, line_y));
+        x += b.2 - b.0 + 2.54;
+    }
+    if let Some(&last) = tops.last() {
+        prims.push(Prim::Line { pts: vec![t, last], width: thin, fill: symbol::Fill::None });
+        for p in std::iter::once(&t).chain(&tops[..tops.len() - 1]) {
+            prims.push(Prim::Circle { c: *p, r: 0.38, width: thin, fill: symbol::Fill::Outline });
+        }
+    }
+    node.groups.push((attrs, prims));
+    node.bounds = bounds_of(&node.groups);
+}
+
+/// The graph ELK lays out: the nodes, their ports fixed where their pins are, and each wired net's edges from its
+/// driving pin.
+fn graph(ctx: &Ctx, nodes: &[Node], labelled: &[bool]) -> Value {
     let mut children = Vec::new();
-    for node in &nodes {
+    for node in nodes {
         let b = node.bounds;
         let ports: Vec<Value> = node.ports.iter().map(|p| {
             let edge = edge_point(p.at, p.out, b);
@@ -323,7 +556,10 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         }).collect();
         let mut options = json!({"elk.portConstraints": "FIXED_POS"});
         // a connector at the edge its signals come in from or go out to
-        if c.parts[node.part].kind == Kind::Offboard && !node.ports.is_empty() {
+        let offboard = node.part != usize::MAX && ctx.c.parts[node.part].kind == Kind::Offboard;
+        // (not in the rails style: ELK allows no edge into its first layer, and there supplies' symbols wire to
+        // connectors' pins)
+        if ctx.style == Style::Symbols && offboard && !node.ports.is_empty() {
             let driving = node.ports.iter().filter(|p| p.drive > 0.0).count();
             let place = if 2 * driving >= node.ports.len() { "FIRST" } else { "LAST" };
             options["elk.layered.layering.layerConstraint"] = json!(place);
@@ -333,22 +569,23 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         }));
     }
     let mut edges = Vec::new();
-    for (n, name) in names.iter().enumerate() {
-        if classes[n] != Class::Signal || labelled[n] {
+    for (n, name) in ctx.names.iter().enumerate() {
+        if !ctx.wired(n) || labelled[n] {
             continue;
         }
         let ports: Vec<&Port> = nodes.iter().flat_map(|node| &node.ports).filter(|p| p.net == n).collect();
         if ports.len() < 2 {
             continue;
         }
-        let from = ports.iter().position(|p| p.drive > 0.0).unwrap_or(0);
+        // from the supply's symbol, else the pin that drives the net
+        let from = ports.iter().position(|p| p.drive > 1.0).or_else(|| ports.iter().position(|p| p.drive > 0.0)).unwrap_or(0);
         for (j, p) in ports.iter().enumerate() {
             if j != from {
                 edges.push(json!({"id": format!("{}#{}", name, j), "sources": [ports[from].id], "targets": [p.id]}));
             }
         }
     }
-    let graph = json!({
+    json!({
         "id": "root",
         "layoutOptions": {
             "elk.algorithm": "layered",
@@ -365,40 +602,7 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
         },
         "children": children,
         "edges": edges,
-    });
-        let laid_out = crate::elk::layout(&graph)?;
-        let drawn = route(&nodes, &laid_out);
-        let problems = check(&drawn, &names);
-        let (width, height) = (laid_out["width"].as_f64().unwrap_or(0.0), laid_out["height"].as_f64().unwrap_or(0.0));
-        // what to label next: a net the check finds wrong, or one whose wires run across much of the page
-        let long = |n: usize| drawn.length(n) > LONG * (width + height);
-        let more: Vec<usize> = (0..names.len()).filter(|&n| !labelled[n] && (problems.iter().any(|(m, _)| *m == n) || long(n))).collect();
-        round += 1;
-        // BBGEN_SCHEMATIC_DEBUG: what each round found, to see why a net became a label
-        if std::env::var("BBGEN_SCHEMATIC_DEBUG").is_ok() {
-            for (_, p) in &problems {
-                eprintln!("round {}: {}", round, p);
-            }
-            for n in (0..names.len()).filter(|&n| long(n) && !labelled[n]) {
-                eprintln!("round {}: {} is {:.0} px long, the page {:.0} px across and down", round, names[n], drawn.length(n), width + height);
-            }
-        }
-        if more.is_empty() || round == ROUNDS {
-            let svg = render(&nodes, &drawn, &names);
-            let problems = problems.into_iter().map(|(_, p)| p).collect();
-            let labels = (0..names.len()).filter(|&n| labelled[n]).map(|n| names[n].to_string()).collect();
-            return Ok(Schematic { svg, width, height, graph, laid_out, problems, labelled: labels });
-        }
-        for n in more {
-            labelled[n] = true;
-        }
-        // a bus (BUS0, BUS1, ...) is labelled all together or not at all
-        for n in 0..names.len() {
-            if !labelled[n] && classes[n] == Class::Signal {
-                labelled[n] = (0..names.len()).any(|m| labelled[m] && same_bus(names[m], names[n]));
-            }
-        }
-    }
+    })
 }
 
 /// Whether two nets are lines of one bus: the same name but for a number at the end (BUS0 and BUS7, D0 and D17).
@@ -437,10 +641,9 @@ impl Drawn {
 }
 
 /// The wires ELK routed, and each pin drawn on from its symbol to its port.
-fn route(nodes: &[Node], laid_out: &Value) -> Drawn {
-    let at: std::collections::HashMap<String, Xy> = laid_out["children"].as_array().unwrap().iter()
-        .map(|n| (n["id"].as_str().unwrap().to_string(), (n["x"].as_f64().unwrap(), n["y"].as_f64().unwrap()))).collect();
-    let xy = |v: &Value| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap());
+fn route(nodes: &[Node], laid_out: &Value, at: std::collections::HashMap<String, Xy>, down: f64) -> Drawn {
+    // ELK's points, moved down by `down` (the power row above the layout)
+    let xy = |v: &Value| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap() + down);
     let mut d = Drawn { lines: vec![], dots: vec![], pins: vec![], at };
     let net_of_port: std::collections::HashMap<&str, usize> = nodes.iter().flat_map(|n| &n.ports).map(|p| (p.id.as_str(), p.net)).collect();
     for e in laid_out["edges"].as_array().unwrap() {
@@ -585,13 +788,12 @@ fn render(nodes: &[Node], d: &Drawn, names: &[&str]) -> String {
 
 /// How a two-lead part stands: in line (pin 1 left, unless its other leg is the one fed), hanging from its signal
 /// (down to a ground, up to a supply), or upright between two supplies (the supply on top).
-fn lead_orient(unit: &symbol::Unit, pin_net: &dyn Fn(&symbol::SymPin) -> Option<usize>, classes: &[Class],
-               drives: &dyn Fn(usize, &symbol::SymPin) -> bool) -> Orient {
-    let legs: Vec<Option<usize>> = unit.pins.iter().map(pin_net).collect();
-    let class = |i: usize| legs[i].map(|n| classes[n]);
+fn lead_orient(ctx: &Ctx, k: usize, unit: &symbol::Unit) -> Orient {
+    let legs: Vec<Option<usize>> = unit.pins.iter().map(|sp| ctx.pin_net(k, sp)).collect();
+    let class = |i: usize| legs[i].map(|n| ctx.classes[n]);
     let signal = |i: usize| class(i) == Some(Class::Signal);
     let rot = if signal(0) && signal(1) {
-        let fed = |i: usize| !drives(legs[i].unwrap(), &unit.pins[i]);
+        let fed = |i: usize| !ctx.drives(legs[i].unwrap(), k, &unit.pins[i]);
         if fed(0) || !fed(1) { 270 } else { 90 }
     } else if signal(0) || signal(1) {
         let s = if signal(0) { 0 } else { 1 };
@@ -608,12 +810,13 @@ fn lead_orient(unit: &symbol::Unit, pin_net: &dyn Fn(&symbol::SymPin) -> Option<
 /// How far apart (mm) two side pins on one supply may be and still share a power symbol: two pins' pitch.
 const GAP: f64 = 5.08;
 
-/// A unit of a part's symbol as a node: drawn about its origin, its power symbols added, its ports found.
-#[allow(clippy::too_many_arguments)]
-fn build(c: &Circuit, syms: &[PartSymbol], k: usize, u: usize, orient: Orient, pin_net: &dyn Fn(&symbol::SymPin) -> Option<usize>,
-         classes: &[Class], labelled: &[bool], names: &[&str], drives: &dyn Fn(usize, &symbol::SymPin) -> bool) -> Node {
-    let p = &c.parts[k];
-    let sym = &syms[k];
+/// A unit of a part's symbol as a node: drawn about its origin, its power symbols added, its ports found. For a
+/// supply in `hang`, top pins get no symbol: where it would go is left in `anchors`, for decoupling caps to hang
+/// from. A pin on `quiet` gets nothing (a cap's supply leg, wired to its chip's).
+fn build(ctx: &Ctx, labelled: &[bool], k: usize, u: usize, orient: Orient, hang: &[usize], quiet: Option<usize>) -> Node {
+    let (classes, names) = (&ctx.classes, &ctx.names);
+    let p = &ctx.c.parts[k];
+    let sym = &ctx.syms[k];
     let unit = &sym.drawing.units[u];
     let in_line = p.kind.is_lead() && orient.rot % 180 != 0;
     let prims = if in_line {
@@ -640,22 +843,23 @@ fn build(c: &Circuit, syms: &[PartSymbol], k: usize, u: usize, orient: Orient, p
     let mut rails: Vec<(Xy, (i32, i32), usize)> = Vec::new();
     let mut flags: Vec<(String, Vec<Prim>)> = Vec::new();
     let mut labels: Vec<(String, Vec<Prim>)> = Vec::new();
+    let mut anchors: Vec<(usize, Xy)> = Vec::new();
     for sp in unit.pins.iter().filter(|sp| !sp.hidden) {
-        let n = match pin_net(sp) {
-            Some(n) => n,
-            None => continue,
+        let n = match ctx.pin_net(k, sp) {
+            Some(n) if Some(n) != quiet => n,
+            _ => continue,
         };
         let at = orient.point(sp.at);
         let d = orient.dir(sp.dir);
         let out = (-d.0, -d.1);
         if classes[n] == Class::Signal && labelled[n] {
             labels.push((format!("data-net=\"{}\"", symbol::escape(names[n])), label(at, out, names[n])));
-        } else if classes[n] == Class::Signal {
+        } else if ctx.wired(n) && !labelled[n] {
             if ports.iter().any(|q: &Port| q.at == at) {
                 continue;
             }
             let id = format!("{}.{}.{}", p.r#ref, u, sp.number);
-            ports.push(Port { net: n, at, out, drive: if drives(n, sp) { 1.0 } else { 0.0 }, id });
+            ports.push(Port { net: n, at, out, drive: if ctx.drives(n, k, sp) { 1.0 } else { 0.0 }, id });
         } else {
             rails.push((at, out, n));
         }
@@ -712,7 +916,10 @@ fn build(c: &Circuit, syms: &[PartSymbol], k: usize, u: usize, orient: Orient, p
                 prims.push(Prim::Circle { c: *c, r: 0.38, width: thin, fill: symbol::Fill::Outline });
             }
         }
-        if out.0 == 0 {
+        if out.0 == 0 && out == way && hang.contains(&n) {
+            // decoupling caps hang from here (hang_caps), the symbol above them
+            anchors.push((n, corners[corners.len() / 2]));
+        } else if out.0 == 0 {
             // along the top or bottom: one symbol from the middle
             prims.extend(flag(corners[corners.len() / 2], way, names[n], ground));
         } else {
@@ -734,11 +941,28 @@ fn build(c: &Circuit, syms: &[PartSymbol], k: usize, u: usize, orient: Orient, p
     } else {
         String::new()
     };
+    // the body: its shapes, else (a unit of pins only) where its pins end
+    let mut pts: Vec<Xy> = Vec::new();
+    for shape in &unit.shapes {
+        match shape {
+            symbol::Shape::Rect { a, b, .. } => pts.extend([*a, *b]),
+            symbol::Shape::Poly { pts: ps, .. } => pts.extend(ps.iter().copied()),
+            symbol::Shape::Circle { c, r, .. } => pts.extend([(c.0 - r, c.1 - r), (c.0 + r, c.1 + r)]),
+            _ => {}
+        }
+    }
+    if pts.is_empty() {
+        pts.extend(unit.pins.iter().map(|sp| add(sp.at, along(sp.dir, sp.len))));
+    }
+    let pts: Vec<Xy> = pts.iter().map(|q| orient.point(*q)).collect();
+    let body = pts.iter().fold((f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+                               |b, q| (b.0.min(q.0), b.1.min(q.1), b.2.max(q.0), b.3.max(q.1)));
+    let has_labels = !labels.is_empty();
     let mut groups = vec![(format!("data-part=\"{}\"{}", symbol::escape(&sym.r#ref), unit_attr), prims)];
     groups.extend(flags);
     groups.extend(labels);
     let bounds = bounds_of(&groups);
-    Node { part: k, id: sym.unit_ref(u), bounds, ports, groups }
+    Node { part: k, id: sym.unit_ref(u), bounds, ports, groups, anchors, body, labels: has_labels, power: false }
 }
 
 fn bounds_of(groups: &[(String, Vec<Prim>)]) -> (f64, f64, f64, f64) {
@@ -787,11 +1011,11 @@ pub fn svg_page(s: &Schematic, background: bool) -> String {
 
 /// The schematic of the circuit in this file, drawn on a thread of its own (it needs only the parts and nets, so a
 /// build can place and wire meanwhile). The thread gives back the schematic and how long it took, or why not.
-pub fn in_background(data: &crate::val::Val, source: &str) -> std::thread::JoinHandle<(Result<Schematic, String>, f64)> {
+pub fn in_background(data: &crate::val::Val, source: &str, style: Style) -> std::thread::JoinHandle<(Result<Schematic, String>, f64)> {
     let (data, source) = (data.clone(), source.to_string());
     std::thread::spawn(move || {
         let start = std::time::Instant::now();
-        let s = Circuit::netlist(&data, &source).and_then(|c| draw(&c));
+        let s = Circuit::netlist(&data, &source).and_then(|c| draw_with(&c, style));
         (s, start.elapsed().as_secs_f64() * 1000.0)
     })
 }

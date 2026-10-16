@@ -313,6 +313,17 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    inspector shows a pin's part, net, hole and strip. `lookup.spec.ts` checks every part, net and pin of the
    eeprom example lights something in its schematic. Checked by hand in a browser, both themes: hovering SDA in
    the circuit lights W6, W8 and their parts on the board, and dims the rest in both.
+   **After step 7** (October 2026), from looking at the 555 example:
+   - A long net is no longer labelled when that would leave a part with no wire: the example's DIS and TIMING
+     nets had become labels and RA, RB and C1 floated free.
+   - A decoupling cap hangs from its chip's supply line (the line from the chip's top supply pin goes up past
+     the cap, the supply's symbol on its end, and across), so it reads as the chip's. Where the chip has no supply
+     pin on top (an op-amp unit, a regulator), it stands above the chip as before.
+   - Parts that only take power (no signal wires, no labels) sit in a row of their own, "Power", above the layout,
+     instead of wherever ELK packs them.
+   - `--rails` (and "Supplies as wires" in the studio's circuit view) draws supplies and grounds as wires from one
+     power symbol each, a textbook drawing for small circuits. Supplies stay wires however long. Both styles are
+     held to the read-back check for every benchmark; the rails style is recorded for the examples.
 8. **Later.** Write a `.kicad_sch`: the positions and KiCad symbols are already there, so a circuit can be
    opened in KiCad and carried on with. Hints in the YAML if a layout needs a nudge (which side a connector
    goes, a symbol flipped), the way `at:` pins a part on the board; then dragging a symbol in the studio

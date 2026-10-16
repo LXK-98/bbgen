@@ -1,5 +1,6 @@
-//! Every example's and benchmark's schematic: drawn without a problem when read back (each wired net in one piece,
-//! nothing of one net on another), and as recorded in benchmarks/golden/schematics/. A change meant to move them
+//! Every example's and benchmark's schematic, in both styles: drawn without a problem when read back (each wired net
+//! in one piece, nothing of one net on another), and as recorded in benchmarks/golden/schematics/ (the rails style
+//! for the examples only). A change meant to move them
 //! fails here by design: look at the new drawings, then record them with `BBGEN_RECORD=1 cargo test --release
 //! --test schematic`.
 
@@ -29,20 +30,29 @@ fn schematics_read_back_right_and_are_as_recorded() {
     }
     let all = circuits();
     let results = common::parallel(&all, |(name, path)| {
+        use bbgen::schematic::Style;
         let c = bbgen::circuit::Circuit::load(path.to_str().unwrap()).unwrap();
-        let s = bbgen::schematic::draw(&c).unwrap_or_else(|e| panic!("{}: {}", name, e));
-        let mut problems: Vec<String> = s.problems.iter().map(|p| format!("{}: {}", name, p)).collect();
-        for part in &c.parts {
-            if !s.svg.contains(&format!("data-part=\"{}\"", part.r#ref)) {
-                problems.push(format!("{}: {} isn't drawn", name, part.r#ref));
+        let mut problems: Vec<String> = Vec::new();
+        // both styles drawn right; the rails style recorded for the examples (it's meant for small circuits)
+        let example = path.starts_with(common::root().join("examples"));
+        for (style, suffix) in [(Style::Symbols, ""), (Style::Rails, ".rails")] {
+            let s = bbgen::schematic::draw_with(&c, style).unwrap_or_else(|e| panic!("{}{}: {}", name, suffix, e));
+            problems.extend(s.problems.iter().map(|p| format!("{}{}: {}", name, suffix, p)));
+            for part in &c.parts {
+                if !s.svg.contains(&format!("data-part=\"{}\"", part.r#ref)) {
+                    problems.push(format!("{}{}: {} isn't drawn", name, suffix, part.r#ref));
+                }
             }
-        }
-        let page = bbgen::schematic::page(&s);
-        let file = dir.join(format!("{}.svg", name));
-        if record {
-            std::fs::write(&file, &page).unwrap();
-        } else if std::fs::read_to_string(&file).ok().as_deref() != Some(page.as_str()) {
-            problems.push(format!("{}: the schematic isn't as recorded in {}", name, file.display()));
+            if style == Style::Rails && !example {
+                continue;
+            }
+            let page = bbgen::schematic::page(&s);
+            let file = dir.join(format!("{}{}.svg", name, suffix));
+            if record {
+                std::fs::write(&file, &page).unwrap();
+            } else if std::fs::read_to_string(&file).ok().as_deref() != Some(page.as_str()) {
+                problems.push(format!("{}{}: the schematic isn't as recorded in {}", name, suffix, file.display()));
+            }
         }
         problems
     });

@@ -5,8 +5,8 @@ import type { BuildOutput } from './scene';
 
 export interface Engine {
 	kind: 'tauri' | 'web';
-	/** run `bbgen build <path> --json`, with `--schematic` when asked */
-	build(path: string, schematic: boolean): Promise<BuildOutput>;
+	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--rails`: its supplies as wires) */
+	build(path: string, schematic: boolean, rails: boolean): Promise<BuildOutput>;
 	/** circuit files that come with bbgen (its examples and benchmarks), when it can find them */
 	examples(): Promise<string[]>;
 	/** call onChange when the file is saved; returns a function that stops watching */
@@ -25,7 +25,7 @@ async function tauriEngine(): Promise<Engine> {
 	const { open } = await import('@tauri-apps/plugin-dialog');
 	return {
 		kind: 'tauri',
-		build: (path, schematic) => invoke<BuildOutput>('build', { path, schematic }),
+		build: (path, schematic, rails) => invoke<BuildOutput>('build', { path, schematic, rails }),
 		examples: () => invoke<string[]>('examples'),
 		watch(path, onChange) {
 			let stop: (() => void) | null = null;
@@ -56,7 +56,8 @@ function webEngine(): Engine {
 	};
 	return {
 		kind: 'web',
-		build: (path, schematic) => get<BuildOutput>(`/api/build?path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}`),
+		build: (path, schematic, rails) =>
+			get<BuildOutput>(`/api/build?path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}&rails=${rails ? 1 : 0}`),
 		examples: () => get<string[]>('/api/examples').catch(() => []),
 		watch(path, onChange) {
 			const source = new EventSource(`/api/watch?path=${encodeURIComponent(path)}`);

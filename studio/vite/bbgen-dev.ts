@@ -20,9 +20,9 @@ function isCircuit(path: string): boolean {
 	return /\.ya?ml$/i.test(path) && existsSync(path);
 }
 
-function run(path: string, schematic: boolean): Promise<object> {
+function run(path: string, schematic: boolean, rails: boolean): Promise<object> {
 	const started = Date.now();
-	const args = ['build', path, '--json', ...(schematic ? ['--schematic'] : [])];
+	const args = ['build', path, '--json', ...(schematic ? [rails ? '--rails' : '--schematic'] : [])];
 	return new Promise((done) => {
 		const child = spawn(bbgen(), args);
 		let out = '';
@@ -68,7 +68,7 @@ export function bbgenDev(): Plugin {
 				if (url.pathname === '/api/examples') return json(200, examples());
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
-					return json(200, await run(path, url.searchParams.get('schematic') === '1'));
+					return json(200, await run(path, url.searchParams.get('schematic') === '1', url.searchParams.get('rails') === '1'));
 				}
 				if (url.pathname === '/api/watch') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
