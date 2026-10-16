@@ -414,5 +414,5 @@ length so they compare directly. What's still open, what was tried and where to 
 
 ## Licence
 
-bbgen is MIT-licensed ([LICENSE](LICENSE)). It contains elkjs, the Eclipse Layout Kernel compiled to JavaScript,
-under the Eclipse Public License 2.0 ([vendor/elkjs](vendor/elkjs/README.md)).
+bbgen is MIT-licensed ([LICENSE](LICENSE)). Built, it contains [elk-rs](https://github.com/openedges/elk-rs), the
+Eclipse Layout Kernel ported to Rust, under the Eclipse Public License 2.0; its source is at that link.

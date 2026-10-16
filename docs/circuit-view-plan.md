@@ -324,6 +324,19 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - `--rails` (and "Supplies as wires" in the studio's circuit view) draws supplies and grounds as wires from one
      power symbol each, a textbook drawing for small circuits. Supplies stay wires however long. Both styles are
      held to the read-back check for every benchmark; the rails style is recorded for the examples.
+   **ELK in Rust** (October 2026). bbgen now lays schematics out with
+   [elk-rs](https://github.com/openedges/elk-rs) (EPL-2.0, pinned to `v0.11.0+rs.3`), a Rust port of ELK checked
+   against Java ELK, in place of elkjs in QuickJS; `build.rs` and `vendor/elkjs` are gone.
+   - Same layouts: the 62 layouts the 25 circuits make, in both styles, came out as elkjs's to 2e-5 px, junction
+     points included; the three fixtures in `tests/elk/` to 1e-14 px, and their records are now elk-rs's. No
+     schematic record moved.
+   - Speed: 14.9 s of ELK for those 62 layouts became 0.37 s. The 555 example's schematic takes 4 ms instead of
+     410, benchmark 16's 24 ms instead of 2 s.
+   - Costs: only the layered algorithm is registered (elk-rs's own entry point registers all of ELK's, 12 MB);
+     even so the stripped binary is 9.9 MB, from 6.2, and a clean build 54 s, from 38.
+   - ELK's junction points still miss where a pin's lead meets a wire (one each in 07, 15, 16 and the 555
+     example), as elkjs's did: they're ELK's merged edges parting, not every T. The dots stay bbgen's own,
+     found in the drawn lines.
 8. **Later.** Write a `.kicad_sch`: the positions and KiCad symbols are already there, so a circuit can be
    opened in KiCad and carried on with. Hints in the YAML if a layout needs a nudge (which side a connector
    goes, a symbol flipped), the way `at:` pins a part on the board; then dragging a symbol in the studio
@@ -344,7 +357,6 @@ change did. But a change is kept only when the drawings look better.
   parts may have to be placed after layout (step 4).
 - **Generic boxes read worse than KiCad symbols.** A `type: dip` with labels has no pin types, so signal
   direction is guessed from its sides. The skill can prefer `symbol:` where KiCad has the part.
-- **Speed.** 0.2–0.85 s per schematic in QuickJS. A flag until bytecode loading and the drawings are
-  settled; a native port if it's ever the slow part.
-- **ELK's version is part of the records**, like KiCad's library: upgrading elkjs means recording again and
+- **Speed.** 0.2–0.85 s per schematic in QuickJS; a few milliseconds since the move to elk-rs (below).
+- **ELK's version is part of the records**, like KiCad's library: upgrading elk-rs means recording again and
   looking at what moved.

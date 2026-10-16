@@ -1,115 +1,57 @@
 //! ELK's layered layout, for the circuit view: symbols placed and wires routed by the Eclipse Layout Kernel.
 //!
-//! ELK is Java; elkjs is ELK compiled to JavaScript. It's vendored in vendor/elkjs and run here in QuickJS (the
-//! rquickjs crate), so bbgen needs neither Node nor Java. build.rs compiles it to QuickJS bytecode, which loads in a
-//! few milliseconds; a thread loads it the first time it lays something out, and keeps it.
+//! ELK is Java; elk-rs (https://github.com/openedges/elk-rs) is ELK ported to Rust, checked against Java ELK's
+//! layouts, and lays a schematic out in milliseconds. Its layouts are elkjs's (ELK compiled to JavaScript, which bbgen
+//! ran in QuickJS before) to within a few millionths of a pixel. Only the layered algorithm is registered: elk-rs's
+//! own entry point registers all of ELK's, which doubled bbgen's size.
 //!
 //! A graph goes in and comes back in ELK's JSON format, with positions and wire routes filled in:
 //! https://eclipse.dev/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html. Its options are ELK's
 //! own (https://eclipse.dev/elk/reference.html). The same graph always gets the same layout.
-//!
-//! elkjs runs ELK in a worker: here, the fake one it ships, which passes its messages with `setTimeout`. `layout`
-//! runs the promise jobs and the timeouts until the result comes back.
 
-use rquickjs::{Context, Ctx, Module, Runtime};
+use org_eclipse_elk_alg_layered::org::eclipse::elk::alg::layered::layered_layout_provider::LayeredLayoutProvider;
+use org_eclipse_elk_alg_layered::org::eclipse::elk::alg::layered::options::LayeredMetaDataProvider;
+use org_eclipse_elk_alg_layered::org::eclipse::elk::alg::layered::plain_java_initialization::initialize_plain_java_layout;
+use org_eclipse_elk_core::org::eclipse::elk::core::abstract_layout_provider::AbstractLayoutProvider;
+use org_eclipse_elk_core::org::eclipse::elk::core::data::LayoutMetaDataService;
+use org_eclipse_elk_core::org::eclipse::elk::core::graph_layout_engine::IGraphLayoutEngine;
+use org_eclipse_elk_core::org::eclipse::elk::core::recursive_graph_layout_engine::RecursiveGraphLayoutEngine;
+use org_eclipse_elk_core::org::eclipse::elk::core::util::{AlgorithmFactory, BasicProgressMonitor, InstancePool, Maybe};
+use org_eclipse_elk_graph_json::org::eclipse::elk::graph::json::{ElkGraphJson, JsonImporter};
 use serde_json::Value;
 use std::cell::RefCell;
+use std::panic::{self, AssertUnwindSafe};
+use std::rc::Rc;
+use std::sync::{Arc, OnceLock};
 
-static BYTECODE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/elk.qbc"));
-
-/// What elkjs expects around it: a CommonJS `module`, a `global`, a quiet `console`, and a `setTimeout` whose
-/// callbacks `layout` runs.
-const PRELUDE: &str = "var module = {exports: {}}; var exports = module.exports; var global = globalThis;
-var console = {log: function () {}, warn: function () {}, error: function () {}};
-var timeouts = [];
-globalThis.setTimeout = function (f) { timeouts.push(f); return timeouts.length; };";
-
-/// Lays out `input`, leaving the result in `done` (without `$H`, the object ids ELK's compiled Java adds) or why
-/// not in `failed`.
-const RUN: &str = "var done = null, failed = null;
-new module.exports().layout(JSON.parse(input)).then(
-  function (g) { done = JSON.stringify(g, function (k, v) { return k === '$H' ? undefined : v; }); },
-  function (e) { failed = String(e && e.message || e); });";
-
-struct Engine {
-    rt: Runtime,
-    ctx: Context,
-}
-
-thread_local! {
-    static ENGINE: RefCell<Option<Result<Engine, String>>> = const { RefCell::new(None) };
-}
-
-/// What went wrong, with the JavaScript exception's message when there is one.
-fn why(ctx: &Ctx, e: rquickjs::Error) -> String {
-    if !e.is_exception() {
-        return e.to_string();
-    }
-    let thrown = ctx.catch();
-    match thrown.as_exception() {
-        Some(ex) => ex.message().unwrap_or_else(|| format!("{:?}", ex)),
-        None => format!("{:?}", thrown),
-    }
-}
-
-fn load() -> Result<Engine, String> {
-    let rt = Runtime::new().map_err(|e| e.to_string())?;
-    let ctx = Context::full(&rt).map_err(|e| e.to_string())?;
-    ctx.with(|ctx| {
-        let run = || -> rquickjs::Result<()> {
-            ctx.eval::<(), _>(PRELUDE)?;
-            // Safety: the bytecode is build.rs's, made by this same QuickJS
-            let module = unsafe { Module::load(ctx.clone(), BYTECODE) }?;
-            let (_, evaluated) = module.eval()?;
-            evaluated.finish::<()>()
-        };
-        run().map_err(|e| format!("can't load ELK: {}", why(&ctx, e)))
-    })?;
-    Ok(Engine { rt, ctx })
-}
-
-impl Engine {
-    fn run(&self, input: String) -> Result<Value, String> {
-        let fail = |what: &str, e: String| format!("ELK {}: {}", what, e);
-        self.ctx.with(|ctx| {
-            ctx.globals().set("input", input).and_then(|_| ctx.eval::<(), _>(RUN)).map_err(|e| fail("didn't start", why(&ctx, e)))
-        })?;
-        // the worker's messages and the promises' jobs, until there are none left
-        loop {
-            while self.rt.is_job_pending() {
-                self.rt.execute_pending_job().map_err(|e| fail("failed", e.to_string()))?;
-            }
-            let more = self.ctx.with(|ctx| {
-                ctx.eval::<bool, _>("timeouts.length > 0 && (timeouts.shift()(), true)").map_err(|e| fail("failed", why(&ctx, e)))
-            })?;
-            if !more && !self.rt.is_job_pending() {
-                break;
-            }
-        }
-        let (done, failed) = self.ctx.with(|ctx| {
-            let g = ctx.globals();
-            Ok::<_, String>((g.get::<_, Option<String>>("done").map_err(|e| why(&ctx, e))?,
-                             g.get::<_, Option<String>>("failed").map_err(|e| why(&ctx, e))?))
-        })?;
-        match (done, failed) {
-            (Some(json), _) => serde_json::from_str(&json).map_err(|e| fail("returned something odd", e.to_string())),
-            (None, Some(e)) => Err(format!("ELK: {}", e)),
-            (None, None) => Err("ELK never finished".into()),
-        }
-    }
-}
-
-/// Load ELK on this thread now, rather than with the first layout (to time the two apart).
-pub fn ready() -> Result<(), String> {
-    ENGINE.with(|cell| cell.borrow_mut().get_or_insert_with(load).as_ref().map(|_| ()).map_err(Clone::clone))
+fn ready() {
+    static READY: OnceLock<()> = OnceLock::new();
+    READY.get_or_init(|| {
+        initialize_plain_java_layout();
+        let service = LayoutMetaDataService::get_instance();
+        service.register_layout_meta_data_provider(&LayeredMetaDataProvider);
+        let make = || Box::new(LayeredLayoutProvider::new()) as Box<dyn AbstractLayoutProvider>;
+        service.override_algorithm_provider_pool("org.eclipse.elk.layered",
+            Arc::new(InstancePool::new(Box::new(AlgorithmFactory::new(make)))));
+    });
 }
 
 /// The graph laid out by ELK: the same graph, with each node's `x` and `y`, each port's, and each edge's `sections`
 /// (its route: start, bend points, end) and `junctionPoints` filled in.
 pub fn layout(graph: &Value) -> Result<Value, String> {
-    ENGINE.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        let engine = slot.get_or_insert_with(load).as_ref().map_err(Clone::clone)?;
-        engine.run(graph.to_string())
-    })
+    ready();
+    // ELK's exceptions are panics in elk-rs
+    panic::catch_unwind(AssertUnwindSafe(|| {
+        let shared = Rc::new(RefCell::new(graph.clone()));
+        let mut importer: Maybe<JsonImporter> = Maybe::default();
+        let root = ElkGraphJson::for_graph_shared(shared.clone()).remember_importer(&mut importer).lenient(false)
+            .to_elk().map_err(|e| e.to_string())?;
+        RecursiveGraphLayoutEngine::new().layout(&root, &mut BasicProgressMonitor::new());
+        importer.get_mut().ok_or("no importer")?.transfer_layout(&root).map_err(|e| e.to_string())?;
+        let out = shared.borrow().clone();
+        Ok(out)
+    }))
+    .unwrap_or_else(|p| Err(p.downcast_ref::<String>().cloned()
+        .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "it failed".into())))
+    .map_err(|e: String| format!("ELK: {}", e))
 }

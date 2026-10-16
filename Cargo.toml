@@ -14,12 +14,12 @@ foldhash = "0.2"
 indexmap = "2"
 md-5 = "0.10"
 rayon = "1"
-rquickjs = "0.14"
+# ELK (the Eclipse Layout Kernel) ported to Rust, for the schematic's layout (src/elk.rs); EPL-2.0
+org-eclipse-elk-alg-layered = { git = "https://github.com/openedges/elk-rs", tag = "v0.11.0+rs.3" }
+org-eclipse-elk-core = { git = "https://github.com/openedges/elk-rs", tag = "v0.11.0+rs.3" }
+org-eclipse-elk-graph-json = { git = "https://github.com/openedges/elk-rs", tag = "v0.11.0+rs.3" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 unsafe-libyaml = "0.2"
-
-[build-dependencies]
-rquickjs = "0.14"
 
 [profile.release]
 debug = 1

@@ -601,17 +601,11 @@ fn dev_elk(args: &[String]) -> i32 {
         Err(e) => { eprintln!("{}: {}", args[0], e); return 2; }
     };
     let start = Instant::now();
-    if let Err(e) = bbgen::elk::ready() {
-        eprintln!("{}", e);
-        return 2;
-    }
-    let loaded = start.elapsed();
-    let start = Instant::now();
     let out = match bbgen::elk::layout(&graph) {
         Ok(g) => g,
         Err(e) => { eprintln!("{}", e); return 1; }
     };
-    eprintln!("ELK loaded in {:.1} ms, laid out in {:.1} ms", loaded.as_secs_f64() * 1000.0, start.elapsed().as_secs_f64() * 1000.0);
+    eprintln!("laid out in {:.1} ms", start.elapsed().as_secs_f64() * 1000.0);
     if repeat > 0 {
         let start = Instant::now();
         for _ in 0..repeat {
