@@ -142,12 +142,12 @@ pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value
 
 /// A circuit file that couldn't be read, with where, when the message says (`... (line 3, column 1)`).
 /// The scene's `schematic`: the drawing (on nothing, in `currentColor`, with `data-part`, `data-net` and `data-pin`
-/// groups), its size, its style (`symbols` or `rails`), the nets drawn as labels, what the check found wrong in it (nothing, unless bbgen has a bug),
+/// groups), its size, its style (`symbols` or `wires`), the nets drawn as labels, what the check found wrong in it (nothing, unless bbgen has a bug),
 /// and how long it took.
 pub fn schematic(s: &crate::schematic::Schematic, ms: f64, style: crate::schematic::Style) -> Value {
     let style = match style {
         crate::schematic::Style::Symbols => "symbols",
-        crate::schematic::Style::Rails => "rails",
+        crate::schematic::Style::Wires => "wires",
     };
     json!({"svg": crate::schematic::svg_page(s, false), "width": s.width, "height": s.height, "style": style,
            "labels": s.labelled, "problems": s.problems, "ms": (ms * 10.0).round() / 10.0})

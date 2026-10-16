@@ -117,8 +117,8 @@ export interface Schematic {
 	svg: string;
 	width: number;
 	height: number;
-	/** `symbols`: a power symbol at every pin; `rails`: supplies as wires from one symbol each */
-	style: 'symbols' | 'rails';
+	/** `symbols`: a power symbol at every pin, long nets as labels; `wires`: every net a wire, supplies from one symbol each */
+	style: 'symbols' | 'wires';
 	/** the nets drawn as labels */
 	labels: string[];
 	/** what reading the drawing back found wrong (nothing, unless bbgen has a bug) */

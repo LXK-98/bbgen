@@ -1,5 +1,5 @@
 //! Every example's and benchmark's schematic, in both styles: drawn without a problem when read back (each wired net
-//! in one piece, nothing of one net on another), and as recorded in benchmarks/golden/schematics/ (the rails style
+//! in one piece, nothing of one net on another), and as recorded in benchmarks/golden/schematics/ (the wires style
 //! for the examples only). A change meant to move them
 //! fails here by design: look at the new drawings, then record them with `BBGEN_RECORD=1 cargo test --release
 //! --test schematic`.
@@ -33,9 +33,9 @@ fn schematics_read_back_right_and_are_as_recorded() {
         use bbgen::schematic::Style;
         let c = bbgen::circuit::Circuit::load(path.to_str().unwrap()).unwrap();
         let mut problems: Vec<String> = Vec::new();
-        // both styles drawn right; the rails style recorded for the examples (it's meant for small circuits)
+        // both styles drawn right; the wires style recorded for the examples (it's meant for small circuits)
         let example = path.starts_with(common::root().join("examples"));
-        for (style, suffix) in [(Style::Symbols, ""), (Style::Rails, ".rails")] {
+        for (style, suffix) in [(Style::Symbols, ""), (Style::Wires, ".wires")] {
             let s = bbgen::schematic::draw_with(&c, style).unwrap_or_else(|e| panic!("{}{}: {}", name, suffix, e));
             problems.extend(s.problems.iter().map(|p| format!("{}{}: {}", name, suffix, p)));
             for part in &c.parts {
@@ -43,7 +43,7 @@ fn schematics_read_back_right_and_are_as_recorded() {
                     problems.push(format!("{}{}: {} isn't drawn", name, suffix, part.r#ref));
                 }
             }
-            if style == Style::Rails && !example {
+            if style == Style::Wires && !example {
                 continue;
             }
             let page = bbgen::schematic::page(&s);

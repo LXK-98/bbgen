@@ -36,7 +36,7 @@ bbgen check circuit.yaml           # the check only
 bbgen build circuit.yaml --bare    # the drawing without title, legend or background
 bbgen build circuit.yaml --json    # what was built, as JSON on stdout (docs/scene-format.md)
 bbgen build circuit.yaml --schematic   # also circuit.schematic.svg/.png: the circuit's schematic
-bbgen build circuit.yaml --rails       # the schematic with its supplies drawn as wires
+bbgen build circuit.yaml --wires       # the schematic with every net a wire, no labels
 ```
 
 To look at a build rather than read it, [bbgen studio](studio/README.md) opens a circuit, builds it and
@@ -65,12 +65,12 @@ so you can see that at a glance before building.
   sits in line; one to a supply or ground hangs from its signal. A decoupling cap hangs from its chip's supply line
   (`near:` says which chip), and parts that only take power (a bench supply's connector, a regulator between two
   supplies) sit in a row of their own, "Power", above the rest.
-- `--rails` draws supplies and grounds as wires instead, each from one power symbol, like a textbook drawing. It
-  reads well for a circuit of a chip or two and gets busy beyond that.
+- `--wires` draws every net as a wire, supplies and grounds too (each from one power symbol), with no labels at
+  all, like a textbook drawing. It reads well for a circuit of a chip or two and gets busy beyond that.
 - Signals run left to right, from what drives them: outputs (by KiCad's pin types), then the controller, then
   connectors. Symbols are mirrored to face their signals, and connectors go at the edges.
-- A net that would run across the page, one with many pins, and the nets of a big connector are drawn as
-  labels. A bus (`D0`...`D7`) is labelled whole. A long net stays wired if labelling it would leave a part with no
+- Otherwise, a net that would run across the page, one with many pins, and the nets of a big connector are drawn
+  as labels. A bus (`D0`...`D7`) is labelled whole. A long net stays wired if labelling it would leave a part with no
   wire at all.
 - bbgen reads the drawing back and checks every wired net is in one piece and touches no other.
 

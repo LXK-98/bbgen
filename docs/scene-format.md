@@ -28,7 +28,7 @@ this; so can scripts. `tests/scene.rs` holds every example and benchmark to what
 | `nets` | `name`, `color` (hex), `pins`, `rails` (as the file asks), `polarity` (`+`, `-` or null), `guessed` |
 | `issues` | `level`, `code`, `message`, and what it's about: `parts`, `pins`, `holes` |
 | `checklist` | the build's steps in order: `section` (`parts`, a wire group, `raised`, `flex`), `item` (`part:U1`, `wire:W6`), `text` |
-| `schematic` | with `--schematic` or `--rails` only: `svg` (the circuit's schematic, on nothing, in `currentColor`), `width`, `height`, `style` (`symbols`, or `rails`: supplies as wires), `labels` (the nets drawn as labels), `problems` (what reading the drawing back found wrong: nothing, unless bbgen has a bug), `ms`. `{"error": ...}` when it couldn't be drawn |
+| `schematic` | with `--schematic` or `--wires` only: `svg` (the circuit's schematic, on nothing, in `currentColor`), `width`, `height`, `style` (`symbols`, or `wires`: every net a wire, no labels), `labels` (the nets drawn as labels), `problems` (what reading the drawing back found wrong: nothing, unless bbgen has a bug), `ms`. `{"error": ...}` when it couldn't be drawn |
 | `stats` | `errors`, `warnings`, `parts`, `wires`, `nets`, `ms` (load, place, wire and check) |
 
 Positions (`rect`, `holes`, `xy`, `points`, `body`) are in the drawing's pixels: `[x, y]`, or

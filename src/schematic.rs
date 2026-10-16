@@ -37,7 +37,7 @@ struct Node {
     body: (f64, f64, f64, f64),
     /// whether any of its pins is a net's label
     labels: bool,
-    /// a supply's power symbol (the rails style), not a part
+    /// a supply's power symbol (the wires style), not a part
     power: bool,
 }
 
@@ -170,8 +170,9 @@ pub enum Style {
     /// parts that only take power sit in a row of their own
     #[default]
     Symbols,
-    /// as wires, from one power symbol per supply and ground: a textbook drawing, for small circuits
-    Rails,
+    /// every net as wires, supplies and grounds from one power symbol each, and no labels: a textbook drawing, for
+    /// small circuits
+    Wires,
 }
 
 /// What every node is made from: the circuit, its symbols, its nets and what drives them.
@@ -197,9 +198,9 @@ impl Ctx<'_> {
         self.driver[n].map(|(k, i)| k == part && sp.pins.contains(&i)).unwrap_or(false)
     }
 
-    /// a net drawn as wires: a signal, or in the rails style any net
+    /// a net drawn as wires: a signal, or in the wires style any net
     fn wired(&self, n: usize) -> bool {
-        self.classes[n] == Class::Signal || self.style == Style::Rails
+        self.classes[n] == Class::Signal || self.style == Style::Wires
     }
 }
 
@@ -284,6 +285,8 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
         });
         classes[n] == Class::Signal && (pins.len() >= MANY_PINS || big_connector)
     }).collect();
+    // (the wires style has no labels at all)
+    let whole = if style == Style::Wires { vec![false; names.len()] } else { whole };
     let mut labelled = Labels { whole, apart: Default::default() };
     let mut round = 0;
     loop {
@@ -342,7 +345,6 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
         for &n in &more {
             would[n] = true;
         }
-        // (in the rails style, supplies stay wires however long: that's the style)
         // (a net wired at some pins only is long past SHORT for each wire joining two of them: it was split to keep
         // those close together)
         let joins = |n: usize| c.nets[n].pins.iter().filter(|p| !labelled.apart.contains(&(p.part as usize, p.pin as usize))).count()
@@ -390,7 +392,7 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
                 eprintln!("round {}: {} labelled at {}.{} only", round, names[ctx.net_of[k][i].unwrap()], c.parts[k].r#ref, c.parts[k].pins[i].num);
             }
         }
-        if (more.is_empty() && apart.is_empty()) || round == ROUNDS {
+        if (more.is_empty() && apart.is_empty()) || round == ROUNDS || style == Style::Wires {
             let mut svg = render(&nodes, &drawn, names);
             if let Some((x, y)) = caption {
                 svg.insert_str(0, &format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{:.1}\" fill=\"currentColor\" fill-opacity=\"0.6\">Power</text>",
@@ -499,10 +501,10 @@ fn far_pins(ctx: &Ctx, nodes: &[Node], at: &std::collections::HashMap<String, Xy
 }
 
 /// Each part's units as nodes, turned and mirrored as they read best, with decoupling caps hanging from their
-/// chips' supplies; and in the rails style, a node for each supply's power symbol.
+/// chips' supplies; and in the wires style, a node for each supply's power symbol.
 fn make_nodes(ctx: &Ctx, labelled: &Labels) -> Vec<Node> {
     let (c, classes) = (ctx.c, &ctx.classes);
-    let rails_style = ctx.style == Style::Rails;
+    let wires_style = ctx.style == Style::Wires;
     // decoupling caps (both legs on supplies) go by a chip: the one they're `near`, else the chip with a pin on their
     // supply that has fewest so far, chips before modules
     let mut beside: Vec<Option<usize>> = vec![None; c.parts.len()];
@@ -510,7 +512,7 @@ fn make_nodes(ctx: &Ctx, labelled: &Labels) -> Vec<Node> {
     for (k, p) in c.parts.iter().enumerate() {
         let legs: Vec<Option<usize>> = ctx.net_of[k].clone();
         let rails = legs.iter().all(|n| n.map(|n| classes[n] != Class::Signal).unwrap_or(false));
-        if rails_style || !(p.kind.is_lead() && legs.len() == 2 && rails) {
+        if wires_style || !(p.kind.is_lead() && legs.len() == 2 && rails) {
             continue;
         }
         let near = p.near.as_ref().and_then(|r| c.parts.iter().position(|q| &q.r#ref == r));
@@ -528,7 +530,7 @@ fn make_nodes(ctx: &Ctx, labelled: &Labels) -> Vec<Node> {
     // a unit that only takes power (an op-amp's supply pins), when the part has others
     let power_unit = |k: usize, u: usize| {
         let pins = &ctx.syms[k].drawing.units[u].pins;
-        !rails_style && ctx.syms[k].drawing.units.len() > 1 && pins.iter().any(|sp| ctx.pin_net(k, sp).is_some())
+        !wires_style && ctx.syms[k].drawing.units.len() > 1 && pins.iter().any(|sp| ctx.pin_net(k, sp).is_some())
             && pins.iter().all(|sp| ctx.pin_net(k, sp).map(|n| classes[n] != Class::Signal).unwrap_or(true))
     };
     let supply_of = |j: usize| ctx.net_of[j].iter().flatten().find(|&&n| classes[n] == Class::Supply).copied();
@@ -608,7 +610,7 @@ fn make_nodes(ctx: &Ctx, labelled: &Labels) -> Vec<Node> {
             nodes.push(node);
         }
     }
-    if rails_style {
+    if wires_style {
         // one power symbol for each supply and ground, the source of its wires
         for n in (0..ctx.names.len()).filter(|&n| classes[n] != Class::Signal && !labelled.whole[n]) {
             if !nodes.iter().any(|node| node.ports.iter().any(|p| p.net == n)) {
@@ -698,7 +700,7 @@ fn graph(ctx: &Ctx, nodes: &[Node], labelled: &Labels) -> Value {
         let mut options = json!({"elk.portConstraints": "FIXED_POS"});
         // a connector at the edge its signals come in from or go out to
         let offboard = node.part != usize::MAX && ctx.c.parts[node.part].kind == Kind::Offboard;
-        // (not in the rails style: ELK allows no edge into its first layer, and there supplies' symbols wire to
+        // (not in the wires style: ELK allows no edge into its first layer, and there supplies' symbols wire to
         // connectors' pins)
         if ctx.style == Style::Symbols && offboard && !node.ports.is_empty() {
             let driving = node.ports.iter().filter(|p| p.drive > 0.0).count();

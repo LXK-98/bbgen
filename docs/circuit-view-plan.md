@@ -344,6 +344,9 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - ELK's junction points still miss where a pin's lead meets a wire (one each in 07, 15, 16 and the 555
      example), as elkjs's did: they're ELK's merged edges parting, not every T. The dots stay bbgen's own,
      found in the drawn lines.
+   **No labels** (October 2026): the rails style became the wires style, `--wires` and "No labels" in the studio:
+   every net a wire, supplies too, and no labels at all, rather than only supplies as wires. All 25 circuits
+   still read back right with no labels, the biggest (16) included.
 8. **Later.** Write a `.kicad_sch`: the positions and KiCad symbols are already there, so a circuit can be
    opened in KiCad and carried on with. Hints in the YAML if a layout needs a nudge (which side a connector
    goes, a symbol flipped), the way `at:` pins a part on the board; then dragging a symbol in the studio

@@ -8,7 +8,7 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Drawing from './Drawing.svelte';
 	import { Toggle } from '#lib/components/ui/toggle/index.js';
-	import Cable from '@lucide/svelte/icons/cable';
+	import TagX from '@lucide/svelte/icons/tag-x';
 
 	const scene = $derived(studio.scene);
 	const schematic = $derived(hasSchematic(scene) ? scene.schematic : null);
@@ -31,9 +31,9 @@
 	{#if schematic}
 		<Drawing svg={schematic.svg} width={schematic.width} height={schematic.height} name="schematic" {selectors} {under}>
 			<div class="absolute top-3 right-3 z-10 rounded-lg border bg-background/95 p-1 shadow-sm">
-				<Toggle size="sm" pressed={studio.rails} onPressedChange={(on) => studio.setRails(on)}
-					aria-label="Draw supplies as wires, from one power symbol each">
-					<Cable /> Supplies as wires
+				<Toggle size="sm" pressed={studio.wires} onPressedChange={(on) => studio.setWires(on)}
+					aria-label="Draw every net as a wire, supplies from one power symbol each, with no labels">
+					<TagX /> No labels
 				</Toggle>
 			</div>
 			{#if schematic.problems.length}
