@@ -1,7 +1,8 @@
 //! bbgen: breadboard layouts from YAML: a drawing, a build checklist and a wiring check.
 //!
-//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--video FILE] [--video-all]
+//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--video FILE] [--video-all]
 //!     bbgen check circuit.yaml                                  the check only
+//!     bbgen build|check circuit.yaml --json                     what was built, as JSON on stdout (docs/scene-format.md)
 //!     bbgen find WORDS... [--kicad DIR]                         search KiCad's library for a symbol
 //!
 //! For bbgen's own tests and benchmarks (benchmarks/README.md):
@@ -20,9 +21,11 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 const USAGE: &str = "usage: bbgen {build,check,find} ...\n\n\
-  build circuit.yaml [-o DIR] [--no-png] [--steps] [--video FILE] [--video-all]\n\
+  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--video FILE] [--video-all]\n\
                                                     write <name>.svg/.png/.md next to the YAML and check the wiring\n\
+                                                    (--bare: the drawing without title, legend or background)\n\
   check circuit.yaml                                check the wiring only\n\
+  build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)\n\
   find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
 
 fn main() -> ExitCode {
@@ -102,6 +105,8 @@ fn run(args: &[String]) -> i32 {
     let cmd = args[0].as_str();
     let (mut circuit, mut out_dir, mut no_png, mut steps) = (None, None, false, false);
     let (mut video, mut video_all): (Option<PathBuf>, bool) = (None, false);
+    let mut json = false;
+    let mut bare = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -116,6 +121,8 @@ fn run(args: &[String]) -> i32 {
                 i += 1;
             }
             "--video-all" if cmd == "build" => video_all = true,
+            "--json" => json = true,
+            "--bare" if cmd == "build" => bare = true,
             a if !a.starts_with('-') && circuit.is_none() => circuit = Some(PathBuf::from(a)),
             a => {
                 eprintln!("bbgen: unrecognised argument {}\n{}", a, USAGE);
@@ -131,6 +138,9 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
+    if json {
+        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)));
+    }
     if video.is_some() {
         bbgen::trace::start(video_all);
     }
@@ -168,7 +178,11 @@ fn run(args: &[String]) -> i32 {
             }
         }
         for (svg, highlight) in views {
-            let (text, _) = bbgen::render::draw(&c, &result, highlight.as_deref());
+            let (text, _) = if bare {
+                bbgen::render::draw_bare(&c, &result, highlight.as_deref())
+            } else {
+                bbgen::render::draw(&c, &result, highlight.as_deref())
+            };
             if let Err(e) = std::fs::write(&svg, text) {
                 eprintln!("bbgen: {}: {}", svg.display(), e);
                 return 2;
@@ -187,6 +201,41 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
         println!("wrote {}", md.display());
+    }
+    if result.errors() > 0 { 1 } else { 0 }
+}
+
+/// build|check --json: the scene on stdout, nothing else. With -o, the drawing and checklist are written there too.
+fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>) -> i32 {
+    let path = circuit.to_string_lossy().into_owned();
+    let start = Instant::now();
+    let c = match Circuit::load(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("{}", bbgen::scene::error(&e));
+            return 2;
+        }
+    };
+    let result = check(&c);
+    let ms = start.elapsed().as_secs_f64() * 1000.0;
+    let data = std::fs::read_to_string(&path).ok().and_then(|t| Val::load(&t).ok());
+    println!("{}", bbgen::scene::scene(&c, &result, data.as_ref(), ms));
+    if let (Some((out, no_png)), "build") = (files, cmd) {
+        let out = clean(&out);
+        if !out.as_os_str().is_empty() {
+            std::fs::create_dir_all(&out).ok();
+        }
+        let stem = circuit.file_stem().unwrap().to_string_lossy().into_owned();
+        let svg = out.join(format!("{}.svg", stem));
+        let written = std::fs::write(&svg, bbgen::render::draw(&c, &result, None).0)
+            .and_then(|_| std::fs::write(out.join(format!("{}.md", stem)), bbgen::checklist::checklist(&c, &result)));
+        if let Err(e) = written {
+            eprintln!("bbgen: {}: {}", out.display(), e);
+            return 2;
+        }
+        if !no_png {
+            png(&svg);
+        }
     }
     if result.errors() > 0 { 1 } else { 0 }
 }

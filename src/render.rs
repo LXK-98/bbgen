@@ -64,6 +64,11 @@ fn escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+/// `data-<key>="value"`, the value escaped for an attribute.
+fn data(key: &str, value: &str) -> String {
+    format!("data-{}=\"{}\"", key, escape(value).replace('"', "&quot;"))
+}
+
 fn ohms_match(s: &str) -> Option<(String, String, String)> {
     // ^(\d*)(?:[.,](\d+))?([rkm]?)$  |  ^(\d+)([rkm])(\d+)$
     let digits = |t: &str| t.chars().take_while(|c| c.is_ascii_digit()).count();
@@ -174,6 +179,11 @@ pub struct Canvas {
     pub labels: Vec<((f64, f64, f64, f64), String)>,
     spots: Vec<Xy>,
     segs: Vec<(Xy, Xy, String)>,
+    /// group what's drawn by what it belongs to (`data-part`, `data-wire`, ...), for `--json`
+    annotate: bool,
+    tag: Option<String>,
+    /// no background behind the drawing: text off the board gets a halo, to read on any page
+    bare: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -257,6 +267,26 @@ impl Canvas {
         self.out.push(svg);
     }
 
+    /// The drawing's pixels for a point in grid units.
+    pub fn px(&self, p: Xy) -> [f64; 2] {
+        [self.x(p.0), self.y(p.1)]
+    }
+
+    /// Start a group of what's drawn for one thing (`data-part="U1"`); only when annotating.
+    fn begin(&mut self, attrs: String) {
+        if self.annotate {
+            self.out.push(format!("<g {}>", attrs));
+            self.tag = Some(attrs);
+        }
+    }
+
+    fn end(&mut self) {
+        if self.annotate {
+            self.out.push("</g>".into());
+            self.tag = None;
+        }
+    }
+
     fn text(&mut self, gx: f64, gy: f64, s: &str, t: T) {
         if t.late {
             self.labels.push((text_box(gx, gy, s, t.size.0, t.anchor, t.vertical), s.to_string()));
@@ -275,7 +305,16 @@ impl Canvas {
         };
         let svg = format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{}\" text-anchor=\"{}\" fill=\"{}\" font-weight=\"{}\"{}{}>{}</text>",
                           x, y, t.size.s(), t.anchor, t.fill, t.weight, tr, extra, escape(s));
-        if t.late { self.late.push(svg) } else { self.out.push(svg) }
+        if t.late {
+            // drawn after everything else, so it gets a group of its own
+            let svg = match (&self.tag, self.annotate) {
+                (Some(attrs), true) => format!("<g {}>{}</g>", attrs, svg),
+                _ => svg,
+            };
+            self.late.push(svg)
+        } else {
+            self.out.push(svg)
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -584,7 +623,8 @@ fn offboard(cv: &mut Canvas, part: &Part) {
     let (x0, y0, x1, _) = part.r#box.unwrap();
     let bx = part.r#box.unwrap();
     cv.rect(bx.0, bx.1, bx.2, bx.3, "#2b2b2b", "#111", i(1), 0.12, "");
-    cv.text((x0 + x1) / 2.0, y0 - 0.7, &part.title, T::new(i(7)).bold());
+    let halo = if cv.bare { Some("#ffffff") } else { None };
+    cv.text((x0 + x1) / 2.0, y0 - 0.7, &part.title, T::new(i(7)).bold().halo(halo));
     for pin in &part.pins {
         let (x, y) = pin.xy.unwrap();
         cv.rect(x - 0.18, y - 0.18, x + 0.18, y + 0.18, "#d9b44a", "#8a6d1c", f(0.6), 0.0, "");
@@ -674,6 +714,7 @@ fn wires(cv: &mut Canvas, c: &Circuit, result: &Result, highlight: Option<&str>)
         let dim = highlight.is_some() && Some(w.group.as_str()) != highlight;
         let color = color_hex(&result.wire_color(c, w));
         let (d, pts, mid) = wire_d(cv, c, w);
+        cv.begin(format!("{} {}", data("wire", &format!("W{}", w.num)), data("net", &result.wire_nets(c, w).join(" "))));
         cv.add(format!("<g opacity=\"{}\">", if dim { "0.14" } else { "1" }));
         for (stroke, width) in [(outline(&color), 0.34), (color.as_str(), 0.24)] {
             cv.add(format!("<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.1}\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
@@ -687,6 +728,7 @@ fn wires(cv: &mut Canvas, c: &Circuit, result: &Result, highlight: Option<&str>)
             }
         }
         cv.add("</g>".into());
+        cv.end();
         if !dim {
             drawn.push((w, mid, color));
         }
@@ -713,20 +755,24 @@ fn wires(cv: &mut Canvas, c: &Circuit, result: &Result, highlight: Option<&str>)
             }
         }
         let (x, y) = spots[best];
+        cv.begin(format!("{} {}", data("wire", &label), data("label", "")));
         cv.rect(x - half, y - 0.24, x + half, y + 0.24, "#ffffff", &color, i(1), 0.1, " opacity=\"0.92\"");
         cv.labels.push(((x - half, y - 0.24, x + half, y + 0.24), label.clone()));
         cv.text(x, y, &label, T::new(f(5.2)).bold());
+        cv.end();
     }
 }
 
 fn marks(cv: &mut Canvas, c: &Circuit, result: &Result) {
-    for issue in &result.issues {
+    for (k, issue) in result.issues.iter().enumerate() {
+        cv.begin(data("issue", &k.to_string()));
         let color = if issue.level == "error" { "#e01b1b" } else { "#f08a00" };
         let mut spots: Vec<Xy> = issue.pins.iter().filter_map(|&p| c.pin(p).xy).collect();
         spots.extend(issue.holes.iter().flatten().map(|&h| c.xy(h)));
         for (x, y) in spots {
             cv.circle(x, y, 0.5, "none", color, f(2.2));
         }
+        cv.end();
     }
 }
 
@@ -770,6 +816,24 @@ pub fn draw(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, C
 
 /// draw(), with a video frame's caption and the parts and wires the step changed.
 pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption: Option<&str>, focus: &[String]) -> (String, Canvas) {
+    draw_with(c, result, highlight, caption, focus, false, false)
+}
+
+/// The drawing with what each piece belongs to marked on it (`data-part`, `data-wire`, `data-net`, `data-issue`),
+/// for the scene `--json` prints. It's the bare drawing (see draw_bare).
+pub fn draw_annotated(c: &Circuit, result: &Result) -> (String, Canvas) {
+    draw_with(c, result, None, None, &[], true, true)
+}
+
+/// Only the boards and what's on them: no title, legend or background, for a program that shows those itself
+/// (`--json`, `build --bare`).
+pub fn draw_bare(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, Canvas) {
+    draw_with(c, result, highlight, None, &[], false, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_with(c: &Circuit, result: &Result, highlight: Option<&str>, caption: Option<&str>, focus: &[String], annotate: bool,
+             bare: bool) -> (String, Canvas) {
     let mut xs: Vec<f64> = Vec::new();
     let mut ys: Vec<f64> = Vec::new();
     for b in &c.boards {
@@ -793,11 +857,11 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
         ys.push(bx.3);
     }
     let (minx, maxx) = (crate::parts::min(&xs) - 1.0, crate::parts::max(&xs) + 1.0);
-    let (miny, maxy) = (crate::parts::min(&ys) - HEADER, crate::parts::max(&ys) + 1.0);
-    let mut cv = Canvas { x0: minx, y0: miny, out: vec![], late: vec![], labels: vec![], spots: vec![], segs: vec![] };
+    let (miny, maxy) = (crate::parts::min(&ys) - if bare { 1.0 } else { HEADER }, crate::parts::max(&ys) + 1.0);
+    let mut cv = Canvas { x0: minx, y0: miny, out: vec![], late: vec![], labels: vec![], spots: vec![], segs: vec![], annotate, tag: None, bare };
     let legend_y = maxy + 0.6;
-    let mut entries: Vec<(&str, String)> = c.nets.values().map(|n| ("net", n.name.clone())).collect();
-    if c.wires.iter().any(|w| w.flex) {
+    let mut entries: Vec<(&str, String)> = if bare { vec![] } else { c.nets.values().map(|n| ("net", n.name.clone())).collect() };
+    if c.wires.iter().any(|w| w.flex) && !bare {
         entries.push(("flex", "flexible jumper (plug in last)".into()));
     }
     let mut legend: Vec<(f64, i64, &str, String)> = Vec::new();
@@ -812,7 +876,7 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
         x += size;
     }
     let width = (maxx - minx) * P;
-    let height = (legend_y + 1.6 + 0.8 * line as f64 - miny) * P;
+    let height = if bare { (maxy - miny) * P } else { (legend_y + 1.6 + 0.8 * line as f64 - miny) * P };
     let (errors, warnings) = (result.errors(), result.warnings());
     let mut status = if errors == 0 { "wiring check passed".to_string() } else { format!("{} error{}", errors, if errors != 1 { "s" } else { "" }) };
     if warnings > 0 {
@@ -822,9 +886,11 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
     if let Some(h) = highlight {
         sub += &format!(" · step: {}", h);
     }
-    cv.text(minx + 0.8, miny + 1.1, &c.title, T::new(i(15)).anchor("start").bold());
-    cv.text(minx + 0.8, miny + 2.3, &sub, T::new(i(8)).anchor("start").fill(if errors > 0 { "#c62828" } else { "#555" }));
-    if let Some(cap) = caption.filter(|s| !s.is_empty()) {
+    if !bare {
+        cv.text(minx + 0.8, miny + 1.1, &c.title, T::new(i(15)).anchor("start").bold());
+        cv.text(minx + 0.8, miny + 2.3, &sub, T::new(i(8)).anchor("start").fill(if errors > 0 { "#c62828" } else { "#555" }));
+    }
+    if let Some(cap) = caption.filter(|s| !s.is_empty() && !bare) {
         cv.text(maxx - 0.8, miny + 1.1, cap, T::new(i(11)).anchor("end").fill("#b35c00").bold());
     }
     for w in &c.wires {
@@ -842,26 +908,34 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
         board(&mut cv, c, result, b);
     }
     for part in &c.parts {
+        cv.begin(format!("{} {}", data("part", &part.r#ref), data("keepout", "")));
         keepouts(&mut cv, c, part);
+        cv.end();
     }
     for part in &c.parts {
+        cv.begin(data("part", &part.r#ref));
         if part.kind.is_footprint() && !part.raised {
             footprint(&mut cv, part);
         } else if part.kind == Kind::Offboard {
             offboard(&mut cv, part);
         }
+        cv.end();
     }
     for part in &c.parts {
         if part.kind.is_lead() {
+            cv.begin(data("part", &part.r#ref));
             lead(&mut cv, part);
+            cv.end();
         }
     }
     wires(&mut cv, c, result, highlight);
     for part in &c.parts {
         if part.kind.is_footprint() && part.raised {
+            cv.begin(data("part", &part.r#ref));
             cv.add("<g opacity=\"0.78\">".into());
             footprint(&mut cv, part);
             cv.add("</g>".into());
+            cv.end();
         }
     }
     focus_rings(&mut cv, c, focus);
@@ -870,6 +944,7 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
     marks(&mut cv, c, result);
     for (x, line, kind, text) in &legend {
         let y = legend_y + 0.8 * *line as f64;
+        cv.begin(if *kind == "net" { data("net", text) } else { data("legend", kind) });
         if *kind == "net" {
             let swatch = color_hex(&c.nets[text.as_str()].color);
             cv.rect(*x, y - 0.25, x + 0.9, y + 0.25, &swatch, outline(&swatch), i(1), 0.1, "");
@@ -882,12 +957,14 @@ pub fn draw_full(c: &Circuit, result: &Result, highlight: Option<&str>, caption:
             }
         }
         cv.text(x + 1.4, y, text, T::new(f(6.5)).anchor("start"));
+        cv.end();
     }
     let svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\" font-family=\"{}\">\n\
                        <defs><pattern id=\"keepout\" width=\"8\" height=\"8\" patternUnits=\"userSpaceOnUse\" patternTransform=\"rotate(45)\">\
                        <rect width=\"8\" height=\"8\" fill=\"#efe9dc\"/><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"8\" stroke=\"#d3c9b1\" stroke-width=\"3\"/>\
-                       </pattern></defs>\n<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n{}\n</svg>\n",
-                      width, height, width, height, FONT, cv.out.join("\n"));
+                       </pattern></defs>\n{}{}\n</svg>\n",
+                      width, height, width, height, FONT, if bare { "" } else { "<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n" },
+                      cv.out.join("\n"));
     (svg, cv)
 }
 

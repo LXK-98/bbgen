@@ -33,7 +33,13 @@ bbgen build circuit.yaml           # circuit.svg/.png/.md next to the YAML, and 
 bbgen build circuit.yaml --steps   # also one image per wire group, that group highlighted
 bbgen build circuit.yaml --video build.mp4   # also a video of bbgen placing and wiring it
 bbgen check circuit.yaml           # the check only
+bbgen build circuit.yaml --bare    # the drawing without title, legend or background
+bbgen build circuit.yaml --json    # what was built, as JSON on stdout (docs/scene-format.md)
 ```
+
+To look at a build rather than read it, [bbgen studio](studio/README.md) opens a circuit, builds it and
+lets you inspect the board: hover a part, wire or net to light it up, click it for what matters about it.
+It rebuilds whenever the file is saved.
 
 The video (`.mp4`, or `.gif`) has a frame per step: each starting layout that beat the one before,
 each chip turned round, each move that improved the layout, then each wire as it goes in. A caption

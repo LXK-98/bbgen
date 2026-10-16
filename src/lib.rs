@@ -14,6 +14,7 @@ pub mod parts;
 pub mod pyf;
 pub mod pyrand;
 pub mod render;
+pub mod scene;
 pub mod search;
 pub mod trace;
 pub mod val;

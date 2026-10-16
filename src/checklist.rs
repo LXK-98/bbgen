@@ -102,11 +102,54 @@ fn end(c: &Circuit, result: &Result, e: &End) -> String {
     if s.is_empty() { "jumper junction".into() } else { s }
 }
 
-fn part_line(c: &Circuit, part: &Part) -> String {
+/// A part's checklist line after its ref: `24LC256: pin 1 in `f30`, notch ...`.
+pub fn part_text(c: &Circuit, part: &Part) -> String {
     let name = [part.title.as_str(), part.value.as_str()].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" ");
     let name = if name.is_empty() { part.kind.name().to_string() } else { name };
     let raised = if part.raised { "; it stands on its headers, over the wires that run under it" } else { "" };
-    format!("- [ ] **{}** {}: {}{}", part.r#ref, name, where_(c, part), raised)
+    format!("{}: {}{}", name, where_(c, part), raised)
+}
+
+fn part_line(c: &Circuit, part: &Part) -> String {
+    format!("- [ ] **{}** {}", part.r#ref, part_text(c, part))
+}
+
+/// A wire's checklist line after its number: `blue: `b22` → `b33` · SDA (Pico.21 GP16 ↔ U1.5 SDA)`.
+pub fn wire_text(c: &Circuit, result: &Result, w: &Wire) -> String {
+    let (a, b) = match (&w.a, &w.b) {
+        (Some(a), Some(b)) => (a, b),
+        _ => return format!("`{}` → `{}`: could not be placed (see Check)", w.spec.0, w.spec.1),
+    };
+    let name = |e: &End| e.hole.map(|h| c.hole_name(h)).unwrap_or_else(|| c.pin_str(e.pin.unwrap()));
+    let nets = result.wire_nets(c, w).join(" / ");
+    let nets = if nets.is_empty() { "no net".to_string() } else { nets };
+    let mut bends = if w.via.is_empty() { String::new() } else {
+        format!(", bent over {}", w.via.iter().map(|v| format!("`{}`", v)).collect::<Vec<_>>().join(", "))
+    };
+    if w.flex {
+        bends = format!(", {} flexible jumper", jumper_length(c, w));
+    }
+    let under = c.under_of(w);
+    let beneath = if under.is_empty() { String::new() } else {
+        format!(" · runs under {}: lay it flat, before {} in", under.join(" and "), if under.len() > 1 { "they go" } else { "it goes" })
+    };
+    format!("{}: `{}` → `{}`{} · {} ({} ↔ {}){}", result.wire_color(c, w), name(a), name(b), bends,
+            nets, end(c, result, a), end(c, result, b), beneath)
+}
+
+/// The checklist as steps, in building order: (section, what it's about, its text). Parts are `part:<ref>`, wires
+/// `wire:W<num>`; sections are `parts`, each wire group, `raised` and `flex`.
+pub fn steps(c: &Circuit, result: &Result) -> Vec<(String, String, String)> {
+    let raised = |p: &Part| p.raised && p.kind != Kind::Offboard;
+    let part = |p: &Part, section: &str| (section.to_string(), format!("part:{}", p.r#ref), part_text(c, p));
+    let wire = |w: &Wire, section: &str| (section.to_string(), format!("wire:W{}", w.num), wire_text(c, result, w));
+    let mut out: Vec<(String, String, String)> = c.parts.iter().filter(|p| !raised(p)).map(|p| part(p, "parts")).collect();
+    for g in &c.groups {
+        out.extend(c.wires.iter().filter(|w| w.group == *g && !w.flex).map(|w| wire(w, g)));
+    }
+    out.extend(c.parts.iter().filter(|p| raised(p)).map(|p| part(p, "raised")));
+    out.extend(c.wires.iter().filter(|w| w.flex).map(|w| wire(w, "flex")));
+    out
 }
 
 /// The stock length of flexible jumper that reaches.
@@ -186,28 +229,7 @@ pub fn checklist(c: &Circuit, result: &Result) -> String {
         out.push(if head.starts_with("###") { format!("{} ({})", head, wires.len()) } else { head.clone() });
         out.push(String::new());
         for w in wires {
-            let (a, b) = match (&w.a, &w.b) {
-                (Some(a), Some(b)) => (a, b),
-                _ => {
-                    out.push(format!("- [ ] **W{}** `{}` → `{}`: could not be placed (see Check)", w.num, w.spec.0, w.spec.1));
-                    continue;
-                }
-            };
-            let name = |e: &End| e.hole.map(|h| c.hole_name(h)).unwrap_or_else(|| c.pin_str(e.pin.unwrap()));
-            let nets = result.wire_nets(c, w).join(" / ");
-            let nets = if nets.is_empty() { "no net".to_string() } else { nets };
-            let mut bends = if w.via.is_empty() { String::new() } else {
-                format!(", bent over {}", w.via.iter().map(|v| format!("`{}`", v)).collect::<Vec<_>>().join(", "))
-            };
-            if w.flex {
-                bends = format!(", {} flexible jumper", jumper_length(c, w));
-            }
-            let under = c.under_of(w);
-            let beneath = if under.is_empty() { String::new() } else {
-                format!(" · runs under {}: lay it flat, before {} in", under.join(" and "), if under.len() > 1 { "they go" } else { "it goes" })
-            };
-            out.push(format!("- [ ] **W{}** {}: `{}` → `{}`{} · {} ({} ↔ {}){}", w.num, result.wire_color(c, w), name(a), name(b), bends,
-                             nets, end(c, result, a), end(c, result, b), beneath));
+            out.push(format!("- [ ] **W{}** {}", w.num, wire_text(c, result, w)));
         }
     }
     out.join("\n") + "\n"
