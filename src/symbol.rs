@@ -288,6 +288,11 @@ fn name_len(name: &str, size: f64) -> f64 {
     plain(name).chars().count() as f64 * size * CHAR
 }
 
+/// About how long a name is drawn at this size (mm).
+pub fn text_len(name: &str, size: f64) -> f64 {
+    name_len(name, size)
+}
+
 fn up_to(x: f64, step: f64) -> f64 {
     (x / step - 1e-9).ceil() * step
 }

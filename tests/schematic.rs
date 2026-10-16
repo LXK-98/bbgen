@@ -1,19 +1,51 @@
-//! Every example draws a schematic: each part's units placed, each signal net with two pins or more wired.
+//! Every example's and benchmark's schematic: drawn without a problem when read back (each wired net in one piece,
+//! nothing of one net on another), and as recorded in benchmarks/golden/schematics/. A change meant to move them
+//! fails here by design: look at the new drawings, then record them with `BBGEN_RECORD=1 cargo test --release
+//! --test schematic`.
 
 mod common;
 
-#[test]
-fn the_examples_draw() {
-    let mut files: Vec<_> = std::fs::read_dir(common::root().join("examples")).unwrap().filter_map(|e| e.ok()).map(|e| e.path())
-        .filter(|p| p.extension().map(|x| x == "yaml").unwrap_or(false)).collect();
-    files.sort();
-    for path in files {
-        let c = bbgen::circuit::Circuit::load(path.to_str().unwrap()).unwrap();
-        let s = bbgen::schematic::draw(&c).unwrap_or_else(|e| panic!("{}: {}", path.display(), e));
-        for part in &c.parts {
-            assert!(s.svg.contains(&format!("data-part=\"{}\"", part.r#ref)), "{}: {} isn't drawn", path.display(), part.r#ref);
-        }
-        let edges = s.laid_out["edges"].as_array().unwrap();
-        assert!(edges.iter().all(|e| e["sections"].as_array().map(|a| !a.is_empty()).unwrap_or(false)), "{}: an unrouted wire", path.display());
+use std::path::PathBuf;
+
+/// (name, file): the examples, and the benchmarks as placement left them (the schematic depends only on the parts
+/// and nets, and these load without placing).
+fn circuits() -> Vec<(String, PathBuf)> {
+    let mut out = Vec::new();
+    for dir in ["examples", "benchmarks/golden/placed"] {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(common::root().join(dir)).unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "yaml").unwrap_or(false)).collect();
+        files.sort();
+        out.extend(files.into_iter().map(|p| (p.file_stem().unwrap().to_string_lossy().into_owned(), p)));
     }
+    out
+}
+
+#[test]
+fn schematics_read_back_right_and_are_as_recorded() {
+    let record = std::env::var("BBGEN_RECORD").is_ok();
+    let dir = common::root().join("benchmarks/golden/schematics");
+    if record {
+        std::fs::create_dir_all(&dir).unwrap();
+    }
+    let all = circuits();
+    let results = common::parallel(&all, |(name, path)| {
+        let c = bbgen::circuit::Circuit::load(path.to_str().unwrap()).unwrap();
+        let s = bbgen::schematic::draw(&c).unwrap_or_else(|e| panic!("{}: {}", name, e));
+        let mut problems: Vec<String> = s.problems.iter().map(|p| format!("{}: {}", name, p)).collect();
+        for part in &c.parts {
+            if !s.svg.contains(&format!("data-part=\"{}\"", part.r#ref)) {
+                problems.push(format!("{}: {} isn't drawn", name, part.r#ref));
+            }
+        }
+        let page = bbgen::schematic::page(&s);
+        let file = dir.join(format!("{}.svg", name));
+        if record {
+            std::fs::write(&file, &page).unwrap();
+        } else if std::fs::read_to_string(&file).ok().as_deref() != Some(page.as_str()) {
+            problems.push(format!("{}: the schematic isn't as recorded in {}", name, file.display()));
+        }
+        problems
+    });
+    let problems: Vec<String> = results.into_iter().flatten().collect();
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }

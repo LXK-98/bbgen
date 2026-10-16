@@ -590,7 +590,11 @@ fn dev_schematic(args: &[String]) -> i32 {
         Ok(s) => s,
         Err(e) => { eprintln!("{}", e); return 1; }
     };
-    eprintln!("schematic in {:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
+    eprintln!("schematic in {:.0} ms; labels: {}", start.elapsed().as_secs_f64() * 1000.0,
+              if s.labelled.is_empty() { "none".into() } else { s.labelled.join(" ") });
+    for p in &s.problems {
+        eprintln!("problem: {}", p);
+    }
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir).ok();
     }

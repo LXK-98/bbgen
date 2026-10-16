@@ -280,8 +280,22 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - **A potentiometer** between a supply and a ground has the supply on top.
    - Still to do: 13 and 16 need labels for their buses and long nets (step 5); 16's caps are spread over the
      page beside their chips, but the page is large; 08's relay wiring takes detours.
-5. **Labels and the self-check.** Long nets as labels; the read-back check; records of each benchmark's
-   and example's schematic in `benchmarks/golden/` and `tests/`, held like the board's.
+5. **Labels and the self-check.** Done (October 2026).
+   - **Labels**: a labelled net's pins each get a short wire and a tag with its name, drawn inside the node's room
+     like power symbols, and ELK doesn't route it. Labelled from the start: a net with 6 pins or more (16's
+     VDDIO), and the nets of an off-board part with 12 or more signal pins (16's interposer). After each layout,
+     a net longer than 0.75 × the page's width and height together, or one the check finds wrong, becomes a label
+     and the layout runs again (at most 3 times). A bus (BUS0…BUS7, D0…D17) is labelled together or not at all.
+     13 now reads as Ben Eater draws it: the bus as labels, the control lines and LEDs wired. 16 reads as Pico →
+     three level shifters → labels at the connector, with the regulators and op-amp in a corner. 17 of the 21
+     benchmarks need no label at all.
+   - **The check** reads the drawn wires back: each wired net must be one piece (lines joined where an end lies on
+     another), with every pin on it, and no wire may end on another net's or run along it. Unit-tested on
+     made-up drawings; none of the 25 drawings has a problem (`BBGEN_SCHEMATIC_DEBUG=1` prints what each round
+     found).
+   - **Records**: `tests/schematic.rs` holds every example and benchmark (as placed, which loads without placing)
+     to its SVG in `benchmarks/golden/schematics/` (944 KB, diffable). Record again with
+     `BBGEN_RECORD=1 cargo test --release --test schematic` after looking at the new drawings.
 6. **The command line and the scene.** `--schematic`, the `schematic` field, `bbgen dev schematic`; README,
    [scene-format.md](scene-format.md), and the skill (look at the schematic to check the nets against the
    circuit you meant, before building).
