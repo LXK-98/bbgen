@@ -23,14 +23,14 @@ use serde_json::{json, Value};
 /// A unit of a part's symbol, as a node of the graph.
 struct Node {
     part: usize,
-    unit: usize,
-    orient: Orient,
-    /// the symbol's box (mm, with the symbol's origin at 0,0, turned), power symbols and text included
+    /// U1, or U1A for a unit
+    id: String,
+    /// what it covers (mm, about the symbol's origin, turned): power symbols, text and caps beside it included
     bounds: (f64, f64, f64, f64),
-    /// signal pins: (index of the symbol's pin in its unit, net, where it attaches, which way it points out)
+    /// its pins on signal nets
     ports: Vec<Port>,
-    /// pins on supplies and grounds: (where, which way out, net)
-    flags: Vec<(Xy, (i32, i32), usize)>,
+    /// what's drawn, about the symbol's origin: (the group's attributes, its prims)
+    groups: Vec<(String, Vec<Prim>)>,
 }
 
 struct Port {
@@ -80,23 +80,25 @@ fn along(d: (i32, i32), k: f64) -> Xy {
     (d.0 as f64 * k, d.1 as f64 * k)
 }
 
-/// A power symbol at the end of a pin: a short line out, then a bar with the supply's name, or the ground sign.
-fn flag(at: Xy, out: (i32, i32), name: &str, ground: bool) -> Vec<Prim> {
+/// A power symbol pointing `dir` from `at`: a short line, then a bar with the supply's name, or the ground sign
+/// (named unless it's GND).
+fn flag(at: Xy, dir: (i32, i32), name: &str, ground: bool) -> Vec<Prim> {
     let thin = 0.1524;
-    let stem = add(at, along(out, 1.27));
-    let across = (out.1.abs(), out.0.abs());
+    let stem = add(at, along(dir, 1.27));
+    // narrower pointing sideways, so the symbols of neighbouring pins (a pitch apart) don't touch
+    let half = if dir.0 != 0 { 0.95 } else { 1.27 };
+    let side = |k: f64| (dir.1.abs() as f64 * k * half / 1.27, dir.0.abs() as f64 * k * half / 1.27);
     let mut prims = vec![Prim::Line { pts: vec![at, stem], width: thin, fill: symbol::Fill::None }];
-    let side = |k: f64| (across.0 as f64 * k, across.1 as f64 * k);
     if ground {
-        let tip = add(stem, along(out, 1.27));
+        let tip = add(stem, along(dir, 1.27));
         prims.push(Prim::Line { pts: vec![add(stem, side(-1.27)), add(stem, side(1.27)), tip, add(stem, side(-1.27))], width: thin,
                                 fill: symbol::Fill::None });
         if name != "GND" {
-            prims.push(text_beyond(add(tip, along(out, 0.5)), out, name));
+            prims.push(text_beyond(add(tip, along(dir, 0.5)), dir, name));
         }
     } else {
         prims.push(Prim::Line { pts: vec![add(stem, side(-1.27)), add(stem, side(1.27))], width: 0.254, fill: symbol::Fill::None });
-        prims.push(text_beyond(add(stem, along(out, 0.6)), out, name));
+        prims.push(text_beyond(add(stem, along(dir, 0.6)), dir, name));
     }
     prims
 }
@@ -177,59 +179,93 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
     }
     let drives = |n: usize, part: usize, sp: &symbol::SymPin| driver[n].map(|(_, k, i)| k == part && sp.pins.contains(&i)).unwrap_or(false);
 
+    // decoupling caps (both legs on supplies) go beside a chip: the one they're `near`, else the first part with a
+    // pin on their supply that has fewest so far
+    let lead_nets = |k: usize| -> Vec<Option<usize>> { (0..c.parts[k].pins.len()).map(|i| net_of[k][i]).collect() };
+    let mut beside: Vec<Option<usize>> = vec![None; c.parts.len()];
+    let mut count = vec![0usize; c.parts.len()];
+    for (k, p) in c.parts.iter().enumerate() {
+        let legs = lead_nets(k);
+        let rails = legs.iter().all(|n| n.map(|n| classes[n] != Class::Signal).unwrap_or(false));
+        if !(p.kind.is_lead() && legs.len() == 2 && rails) {
+            continue;
+        }
+        let near = p.near.as_ref().and_then(|r| c.parts.iter().position(|q| &q.r#ref == r));
+        let supply = legs.iter().flatten().find(|&&n| classes[n] == Class::Supply).copied();
+        let host = near.or_else(|| {
+            let module = |j: usize| c.parts[j].kind == Kind::Pico || c.parts[j].source.starts_with("MCU_Module");
+            (0..c.parts.len()).filter(|&j| !c.parts[j].kind.is_lead() && c.parts[j].kind != Kind::Offboard)
+                .filter(|&j| net_of[j].iter().any(|n| n.is_some() && *n == supply)).min_by_key(|&j| (module(j), count[j], j))
+        });
+        if let Some(h) = host {
+            beside[k] = Some(h);
+            count[h] += 1;
+        }
+    }
+
+    // a unit that only takes power (an op-amp's supply pins), when the part has others
+    let power_unit = |k: usize, u: usize| {
+        let pins = &syms[k].drawing.units[u].pins;
+        syms[k].drawing.units.len() > 1 && pins.iter().any(|sp| pin_net(k, sp).is_some())
+            && pins.iter().all(|sp| pin_net(k, sp).map(|n| classes[n] != Class::Signal).unwrap_or(true))
+    };
+
     // the nodes, each unit turned as it reads best
     let mut nodes: Vec<Node> = Vec::new();
     for (k, p) in c.parts.iter().enumerate() {
+        if beside[k].is_some() {
+            continue;
+        }
         let sym = &syms[k];
         for (u, unit) in sym.drawing.units.iter().enumerate() {
             let connected = unit.pins.iter().any(|sp| pin_net(k, sp).is_some());
-            if !connected && sym.drawing.units.len() > 1 {
+            if (!connected || power_unit(k, u)) && sym.drawing.units.len() > 1 {
                 continue;
             }
-            let mut orient = Orient::default();
-            if p.kind.is_lead() && unit.pins.len() == 2 {
-                let legs: Vec<Option<usize>> = unit.pins.iter().map(|sp| pin_net(k, sp)).collect();
-                let class = |i: usize| legs[i].map(|n| classes[n]);
-                let signal = |i: usize| class(i) == Some(Class::Signal);
-                orient.rot = if signal(0) && signal(1) {
-                    // in line, the leg whose net something else drives on the left
-                    let fed = |i: usize| !drives(legs[i].unwrap(), k, &unit.pins[i]);
-                    if fed(0) || !fed(1) { 270 } else { 90 }
-                } else if signal(0) || signal(1) {
-                    // hanging from its signal: down to a ground, up to a supply
-                    let s = if signal(0) { 0 } else { 1 };
-                    let to_ground = class(1 - s) != Some(Class::Supply);
-                    if (s == 0) == to_ground { 0 } else { 180 }
-                } else if class(1) == Some(Class::Supply) && class(0) != Some(Class::Supply) {
-                    180
-                } else {
-                    0
-                };
-            }
-            let mut prims = symbol::prims(sym, u, orient, (0.0, 0.0));
-            let mut ports = Vec::new();
-            let mut flags = Vec::new();
-            for sp in unit.pins.iter().filter(|sp| !sp.hidden) {
-                let n = match pin_net(k, sp) {
-                    Some(n) => n,
-                    None => continue,
-                };
-                let at = orient.point(sp.at);
-                let d = orient.dir(sp.dir);
-                let out = (-d.0, -d.1);
-                if classes[n] == Class::Signal {
-                    if ports.iter().any(|q: &Port| q.at == at) {
-                        continue;
-                    }
-                    let id = format!("{}.{}.{}", p.r#ref, u, sp.number);
-                    ports.push(Port { net: n, at, out, drive: if drives(n, k, sp) { 1.0 } else { 0.0 }, id });
-                } else {
-                    prims.extend(flag(at, out, names[n], classes[n] == Class::Ground));
-                    flags.push((at, out, n));
+            let lead = p.kind.is_lead() && unit.pins.len() == 2;
+            let mut orient = if lead { lead_orient(unit, &|sp| pin_net(k, sp), &classes, &|n, sp| drives(n, k, sp)) } else { Orient::default() };
+            if sym.source == "potentiometer" {
+                // a pot's ends: the supply on top, the ground below
+                let end = |num: &str| unit.pins.iter().find(|sp| sp.number == num).and_then(|sp| pin_net(k, sp)).map(|n| classes[n]);
+                if end("1") == Some(Class::Ground) || end("3") == Some(Class::Supply) {
+                    orient.rot = 180;
                 }
             }
-            let bounds = symbol::bounds(&prims);
-            nodes.push(Node { part: k, unit: u, orient, bounds, ports, flags });
+            let mut node = build(c, &syms, k, u, orient, &|sp| pin_net(k, sp), &classes, &names, &|n, sp| drives(n, k, sp));
+            if !lead && sym.source != "potentiometer" {
+                // a symbol whose driving pins point left, or whose driven ones point right, is mirrored
+                let lean: f64 = node.ports.iter().map(|p| {
+                    let side = p.out.0 as f64;
+                    if p.drive > 0.0 { side } else { -side }
+                }).sum();
+                if lean < 0.0 {
+                    orient.mirror = true;
+                    node = build(c, &syms, k, u, orient, &|sp| pin_net(k, sp), &classes, &names, &|n, sp| drives(n, k, sp));
+                }
+            }
+            // above it, at its right: its power unit (an op-amp's supply pins) and its decoupling caps
+            let mut extras: Vec<(usize, usize)> = (0..sym.drawing.units.len()).filter(|&v| v != u && power_unit(k, v)).map(|v| (k, v)).collect();
+            extras.extend((0..c.parts.len()).filter(|&j| beside[j] == Some(k)).map(|j| (j, 0)));
+            if u == 0 && !extras.is_empty() {
+                let mut x = node.bounds.2;
+                let mut placed = Vec::new();
+                for &(j, v) in extras.iter().rev() {
+                    let unit = &syms[j].drawing.units[v];
+                    let o = if j == k { Orient::default() } else { lead_orient(unit, &|sp| pin_net(j, sp), &classes, &|n, sp| drives(n, j, sp)) };
+                    let cap = build(c, &syms, j, v, o, &|sp| pin_net(j, sp), &classes, &names, &|n, sp| drives(n, j, sp));
+                    let b = cap.bounds;
+                    x -= b.2 - b.0;
+                    placed.push((cap, (x - b.0, node.bounds.1 - 1.27 - b.3)));
+                    x -= 2.54;
+                }
+                for (cap, d) in placed {
+                    for (attrs, prims) in cap.groups {
+                        node.groups.push((attrs, shift(&prims, d)));
+                    }
+                }
+                node.bounds = bounds_of(&node.groups);
+            }
+            nodes.push(node);
         }
     }
 
@@ -248,10 +284,15 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
             json!({"id": p.id, "x": (edge.0 - b.0) * PX, "y": (edge.1 - b.1) * PX, "width": 0, "height": 0,
                    "layoutOptions": {"elk.port.side": side}})
         }).collect();
-        let sym = &syms[node.part];
+        let mut options = json!({"elk.portConstraints": "FIXED_POS"});
+        // a connector at the edge its signals come in from or go out to
+        if c.parts[node.part].kind == Kind::Offboard && !node.ports.is_empty() {
+            let driving = node.ports.iter().filter(|p| p.drive > 0.0).count();
+            let place = if 2 * driving >= node.ports.len() { "FIRST" } else { "LAST" };
+            options["elk.layered.layering.layerConstraint"] = json!(place);
+        }
         children.push(json!({
-            "id": sym.unit_ref(node.unit), "width": (b.2 - b.0) * PX, "height": (b.3 - b.1) * PX, "ports": ports,
-            "layoutOptions": {"elk.portConstraints": "FIXED_POS"},
+            "id": node.id, "width": (b.2 - b.0) * PX, "height": (b.3 - b.1) * PX, "ports": ports, "layoutOptions": options,
         }));
     }
     let mut edges = Vec::new();
@@ -313,27 +354,19 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
     }
     let mut parts_svg = String::new();
     for node in &nodes {
-        let sym = &syms[node.part];
-        let (x, y) = at_of[&sym.unit_ref(node.unit)];
+        let (x, y) = at_of[&node.id];
         let b = node.bounds;
-        let origin = (x / PX - b.0, y / PX - b.1);
+        let d = (x / PX - b.0, y / PX - b.1);
         // a pin drawn on to its port, on the node's edge
         for p in &node.ports {
-            let (a, e) = (add(origin, p.at), add(origin, edge_point(p.at, p.out, b)));
+            let (a, e) = (add(d, p.at), add(d, edge_point(p.at, p.out, b)));
             if a != e {
                 wires[p.net].push_str(&format!("<polyline points=\"{} {}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"/>",
                                                px((a.0 * PX, a.1 * PX)), px((e.0 * PX, e.1 * PX))));
             }
         }
-        let prims = symbol::prims(sym, node.unit, node.orient, origin);
-        let mut flags = Vec::new();
-        for &(at, out, n) in &node.flags {
-            flags.push((n, symbol::svg(&flag(add(origin, at), out, names[n], classes[n] == Class::Ground))));
-        }
-        let unit = if sym.drawing.units.len() > 1 { format!(" data-unit=\"{}\"", symbol::unit_letter(sym.drawing.units[node.unit].unit)) } else { String::new() };
-        parts_svg.push_str(&format!("<g data-part=\"{}\"{}>{}</g>", symbol::escape(&sym.r#ref), unit, symbol::svg(&prims)));
-        for (n, svg) in flags {
-            parts_svg.push_str(&format!("<g data-net=\"{}\">{}</g>", symbol::escape(names[n]), svg));
+        for (attrs, prims) in &node.groups {
+            parts_svg.push_str(&format!("<g {}>{}</g>", attrs, symbol::svg(&shift(prims, d))));
         }
     }
     let mut body = String::new();
@@ -345,6 +378,177 @@ pub fn draw(c: &Circuit) -> Result<Schematic, String> {
     body.push_str(&parts_svg);
     let (width, height) = (laid_out["width"].as_f64().unwrap_or(0.0), laid_out["height"].as_f64().unwrap_or(0.0));
     Ok(Schematic { svg: body, width, height, graph, laid_out })
+}
+
+/// How a two-lead part stands: in line (pin 1 left, unless its other leg is the one fed), hanging from its signal
+/// (down to a ground, up to a supply), or upright between two supplies (the supply on top).
+fn lead_orient(unit: &symbol::Unit, pin_net: &dyn Fn(&symbol::SymPin) -> Option<usize>, classes: &[Class],
+               drives: &dyn Fn(usize, &symbol::SymPin) -> bool) -> Orient {
+    let legs: Vec<Option<usize>> = unit.pins.iter().map(pin_net).collect();
+    let class = |i: usize| legs[i].map(|n| classes[n]);
+    let signal = |i: usize| class(i) == Some(Class::Signal);
+    let rot = if signal(0) && signal(1) {
+        let fed = |i: usize| !drives(legs[i].unwrap(), &unit.pins[i]);
+        if fed(0) || !fed(1) { 270 } else { 90 }
+    } else if signal(0) || signal(1) {
+        let s = if signal(0) { 0 } else { 1 };
+        let to_ground = class(1 - s) != Some(Class::Supply);
+        if (s == 0) == to_ground { 0 } else { 180 }
+    } else if class(1) == Some(Class::Supply) && class(0) != Some(Class::Supply) {
+        180
+    } else {
+        0
+    };
+    Orient { rot, mirror: false }
+}
+
+/// How far apart (mm) two side pins on one supply may be and still share a power symbol: two pins' pitch.
+const GAP: f64 = 5.08;
+
+/// A unit of a part's symbol as a node: drawn about its origin, its power symbols added, its ports found.
+#[allow(clippy::too_many_arguments)]
+fn build(c: &Circuit, syms: &[PartSymbol], k: usize, u: usize, orient: Orient, pin_net: &dyn Fn(&symbol::SymPin) -> Option<usize>,
+         classes: &[Class], names: &[&str], drives: &dyn Fn(usize, &symbol::SymPin) -> bool) -> Node {
+    let p = &c.parts[k];
+    let sym = &syms[k];
+    let unit = &sym.drawing.units[u];
+    let in_line = p.kind.is_lead() && orient.rot % 180 != 0;
+    let prims = if in_line {
+        // a part lying in line: its ref and value above it, across
+        let mut quiet = sym.clone();
+        for f in [&mut quiet.drawing.reference, &mut quiet.drawing.value].into_iter().flatten() {
+            f.hidden = true;
+        }
+        let mut prims = symbol::prims(&quiet, u, orient, (0.0, 0.0));
+        let b = symbol::bounds(&prims);
+        let mid = (b.0 + b.2) / 2.0;
+        let mut y = b.1 - 0.5;
+        for text in [sym.value.clone(), sym.unit_ref(u)] {
+            if !text.is_empty() {
+                prims.push(Prim::Text { at: (mid, y), up: false, text, size: 1.27, anchor: "middle" });
+                y -= 1.5;
+            }
+        }
+        prims
+    } else {
+        symbol::prims(sym, u, orient, (0.0, 0.0))
+    };
+    let mut ports = Vec::new();
+    let mut rails: Vec<(Xy, (i32, i32), usize)> = Vec::new();
+    let mut flags: Vec<(String, Vec<Prim>)> = Vec::new();
+    for sp in unit.pins.iter().filter(|sp| !sp.hidden) {
+        let n = match pin_net(sp) {
+            Some(n) => n,
+            None => continue,
+        };
+        let at = orient.point(sp.at);
+        let d = orient.dir(sp.dir);
+        let out = (-d.0, -d.1);
+        if classes[n] == Class::Signal {
+            if ports.iter().any(|q: &Port| q.at == at) {
+                continue;
+            }
+            let id = format!("{}.{}.{}", p.r#ref, u, sp.number);
+            ports.push(Port { net: n, at, out, drive: if drives(n, sp) { 1.0 } else { 0.0 }, id });
+        } else {
+            rails.push((at, out, n));
+        }
+    }
+    // power symbols, supplies pointing up and grounds down. Neighbouring pins on one supply, on one side, share one,
+    // their wires joined. A side pin's symbol turns up or down only where no other pin on that side is in its way.
+    let mut done = vec![false; rails.len()];
+    for i in 0..rails.len() {
+        if done[i] {
+            continue;
+        }
+        done[i] = true;
+        let (at, out, n) = rails[i];
+        let ground = classes[n] == Class::Ground;
+        let way = if ground { (0, 1) } else { (0, -1) };
+        let attrs = format!("data-net=\"{}\"", symbol::escape(names[n]));
+        if out == (-way.0, -way.1) {
+            flags.push((attrs, flag(at, out, names[n], ground)));
+            continue;
+        }
+        // pins line up along `axis` (y for a side, x for the top or bottom); `across` is the other
+        let axis = if out.0 != 0 { 1 } else { 0 };
+        let get = |p: Xy, k: usize| if k == 0 { p.0 } else { p.1 };
+        let same_line = |p: Xy| (get(p, 1 - axis) - get(at, 1 - axis)).abs() < 1e-6;
+        let mut run: Vec<Xy> = vec![at];
+        loop {
+            let (lo, hi) = run.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), p| (l.min(get(*p, axis)), h.max(get(*p, axis))));
+            let gap = |p: Xy| (get(p, axis) - lo).abs().min((get(p, axis) - hi).abs());
+            let blocked = |v: f64| ports.iter().any(|q: &Port| q.out == out && same_line(q.at) && {
+                let w = get(q.at, axis);
+                (w - v) * (w - lo) < 0.0 || (w - v) * (w - hi) < 0.0
+            });
+            let next = (0..rails.len()).filter(|&j| !done[j] && rails[j].2 == n && rails[j].1 == out && same_line(rails[j].0))
+                .filter(|&j| gap(rails[j].0) <= GAP && !blocked(get(rails[j].0, axis)))
+                .min_by(|&x, &y| gap(rails[x].0).total_cmp(&gap(rails[y].0)));
+            match next {
+                Some(j) => {
+                    done[j] = true;
+                    run.push(rails[j].0);
+                }
+                None => break,
+            }
+        }
+        run.sort_by(|p, q| get(*p, axis).total_cmp(&get(*q, axis)));
+        let reach = if out.0 != 0 { 2.54 } else { 1.27 };
+        let corners: Vec<Xy> = run.iter().map(|p| add(*p, along(out, reach))).collect();
+        let thin = 0.1524;
+        let mut prims: Vec<Prim> = run.iter().zip(&corners).map(|(a, b)| Prim::Line { pts: vec![*a, *b], width: thin, fill: symbol::Fill::None })
+            .collect();
+        let (first, last) = (corners[0], corners[corners.len() - 1]);
+        if first != last {
+            prims.push(Prim::Line { pts: vec![first, last], width: thin, fill: symbol::Fill::None });
+            for c in &corners[1..corners.len() - 1] {
+                prims.push(Prim::Circle { c: *c, r: 0.38, width: thin, fill: symbol::Fill::Outline });
+            }
+        }
+        if out.0 == 0 {
+            // along the top or bottom: one symbol from the middle
+            prims.extend(flag(corners[corners.len() / 2], way, names[n], ground));
+        } else {
+            let end = if ground { last } else { first };
+            // anything else on this side within reach of a symbol turned up or down?
+            let reach_to = end.1 + way.1 as f64 * 3.81;
+            let others = ports.iter().map(|q| (q.at, q.out)).chain(rails.iter().filter(|r| !run.contains(&r.0)).map(|r| (r.0, r.1)));
+            let in_way = others.filter(|(p, o)| *o == out && same_line(*p)).any(|(p, _)| (p.1 - end.1) * (p.1 - reach_to) <= 0.0);
+            if in_way {
+                prims.extend(flag(corners[corners.len() / 2], out, names[n], ground));
+            } else {
+                prims.extend(flag(end, way, names[n], ground));
+            }
+        }
+        flags.push((attrs, prims));
+    }
+    let unit_attr = if sym.drawing.units.len() > 1 {
+        format!(" data-unit=\"{}\"", symbol::unit_letter(unit.unit))
+    } else {
+        String::new()
+    };
+    let mut groups = vec![(format!("data-part=\"{}\"{}", symbol::escape(&sym.r#ref), unit_attr), prims)];
+    groups.extend(flags);
+    let bounds = bounds_of(&groups);
+    Node { part: k, id: sym.unit_ref(u), bounds, ports, groups }
+}
+
+fn bounds_of(groups: &[(String, Vec<Prim>)]) -> (f64, f64, f64, f64) {
+    let all: Vec<Prim> = groups.iter().flat_map(|(_, p)| p.iter().cloned()).collect();
+    symbol::bounds(&all)
+}
+
+/// Prims moved by d (mm).
+fn shift(prims: &[Prim], d: Xy) -> Vec<Prim> {
+    let m = |p: &Xy| add(*p, d);
+    prims.iter().map(|p| match p {
+        Prim::Line { pts, width, fill } => Prim::Line { pts: pts.iter().map(m).collect(), width: *width, fill: *fill },
+        Prim::Circle { c, r, width, fill } => Prim::Circle { c: m(c), r: *r, width: *width, fill: *fill },
+        Prim::Arc { a, mid, b, width } => Prim::Arc { a: m(a), mid: m(mid), b: m(b), width: *width },
+        Prim::Text { at, up, text, size, anchor } => Prim::Text { at: m(at), up: *up, text: text.clone(), size: *size, anchor },
+        other => other.clone(),
+    }).collect()
 }
 
 /// Where a pin pointing `out` from `at` meets the edge of the box `b`.

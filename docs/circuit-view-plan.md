@@ -265,8 +265,21 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - **Long nets.** 16's VDDIO (17 pins, no rail) is a wire tree over the whole page, and the nets to its 34-pin
      connector and 13's bus cross everything: these want labels (step 5).
    - **Connectors in the middle**: 13's Bus connector sits between the chips; connectors belong at the edges.
-4. **The rules.** Hanging two-lead parts, decoupling caps beside their chips, connectors at the edge,
-   multi-unit symbols, generic boxes. One at a time, each judged before and after on the drawings.
+4. **The rules.** First pass done (October 2026), each judged on the drawings of all 21 benchmarks:
+   - **Mirroring**: a symbol is mirrored when its driving pins point left or its driven ones right, more than
+     the other way (the Pico in 09, 18; the connectors in 07; the 24LC256). 09 now reads Pico → 595 → LEDs.
+   - **Connectors at the edges**: an off-board part goes in ELK's first layer when it mostly drives, its last
+     when it's mostly driven (`layerConstraint`).
+   - **In-line parts** have their ref and value above them, across.
+   - **Power symbols**: supplies point up and grounds down, after a short wire from a side pin. Neighbouring
+     pins on one supply, on one side, share a symbol, their wires joined (the 74LS173's OE1/OE2, the
+     ATmega's VCC/AVCC). A side pin's symbol points straight out when another pin on that side is in the way
+     (the FTDI header's GND and 5V); pointing sideways it's narrower, so neighbours don't touch.
+   - **Decoupling caps** (both legs on supplies) stand above the chip they're `near`, else the chip with a pin
+     on their supply that has fewest so far, chips before modules. An op-amp's power unit stands there too.
+   - **A potentiometer** between a supply and a ground has the supply on top.
+   - Still to do: 13 and 16 need labels for their buses and long nets (step 5); 16's caps are spread over the
+     page beside their chips, but the page is large; 08's relay wiring takes detours.
 5. **Labels and the self-check.** Long nets as labels; the read-back check; records of each benchmark's
    and example's schematic in `benchmarks/golden/` and `tests/`, held like the board's.
 6. **The command line and the scene.** `--schematic`, the `schematic` field, `bbgen dev schematic`; README,
