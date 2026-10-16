@@ -28,6 +28,7 @@ this; so can scripts. `tests/scene.rs` holds every example and benchmark to what
 | `nets` | `name`, `color` (hex), `pins`, `rails` (as the file asks), `polarity` (`+`, `-` or null), `guessed` |
 | `issues` | `level`, `code`, `message`, and what it's about: `parts`, `pins`, `holes` |
 | `checklist` | the build's steps in order: `section` (`parts`, a wire group, `raised`, `flex`), `item` (`part:U1`, `wire:W6`), `text` |
+| `schematic` | with `--schematic` only: `svg` (the circuit's schematic, on nothing, in `currentColor`), `width`, `height`, `labels` (the nets drawn as labels), `problems` (what reading the drawing back found wrong: nothing, unless bbgen has a bug), `ms`. `{"error": ...}` when it couldn't be drawn |
 | `stats` | `errors`, `warnings`, `parts`, `wires`, `nets`, `ms` (load, place, wire and check) |
 
 Positions (`rect`, `holes`, `xy`, `points`, `body`) are in the drawing's pixels: `[x, y]`, or
@@ -66,6 +67,10 @@ Every piece of the drawing that belongs to something is inside a group saying wh
 | `<g data-part="U1">` | a part's body, pins, legs and label. A part has several: its label is drawn last so it sits over wires, and a raised module is drawn over the wires under it. `data-keepout=""` marks its keep-out zones. |
 | `<g data-wire="W6" data-net="SDA">` | a wire. `data-net` lists its nets, space-separated. Its number tag is a second group with `data-label=""`. |
 | `<g data-issue="3">` | the rings for `issues[3]` |
+
+In `schematic.svg`: `<g data-part="U1">` around a symbol (with `data-unit="A"` for one unit of several),
+`<g data-net="SDA">` around a net's wires, branch dots, labels and power symbols, and `<g data-pin="U1.5">` around
+a pin, named by the symbol's pin number.
 
 Without `--json` there are no groups. Without `--json` or `--bare`, the drawing is byte for byte what it was:
 title, status line, legend and a white background.

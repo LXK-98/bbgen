@@ -1,6 +1,6 @@
 //! bbgen: breadboard layouts from YAML: a drawing, a build checklist and a wiring check.
 //!
-//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--video FILE] [--video-all]
+//!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--video FILE] [--video-all]
 //!     bbgen check circuit.yaml                                  the check only
 //!     bbgen build|check circuit.yaml --json                     what was built, as JSON on stdout (docs/scene-format.md)
 //!     bbgen find WORDS... [--kicad DIR]                         search KiCad's library for a symbol
@@ -24,9 +24,10 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 const USAGE: &str = "usage: bbgen {build,check,find} ...\n\n\
-  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--video FILE] [--video-all]\n\
+  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--video FILE] [--video-all]\n\
                                                     write <name>.svg/.png/.md next to the YAML and check the wiring\n\
-                                                    (--bare: the drawing without title, legend or background)\n\
+                                                    (--bare: the drawing without title, legend or background;\n\
+                                                    --schematic: the circuit's schematic too, <name>.schematic.svg)\n\
   check circuit.yaml                                check the wiring only\n\
   build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)\n\
   find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
@@ -110,6 +111,7 @@ fn run(args: &[String]) -> i32 {
     let (mut video, mut video_all): (Option<PathBuf>, bool) = (None, false);
     let mut json = false;
     let mut bare = false;
+    let mut schematic = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -126,6 +128,7 @@ fn run(args: &[String]) -> i32 {
             "--video-all" if cmd == "build" => video_all = true,
             "--json" => json = true,
             "--bare" if cmd == "build" => bare = true,
+            "--schematic" if cmd == "build" => schematic = true,
             a if !a.starts_with('-') && circuit.is_none() => circuit = Some(PathBuf::from(a)),
             a => {
                 eprintln!("bbgen: unrecognised argument {}\n{}", a, USAGE);
@@ -141,8 +144,15 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
+    // the schematic needs only the parts and nets: drawn on a thread of its own while the board is placed
+    let drawing = if schematic {
+        std::fs::read_to_string(&circuit).ok().and_then(|t| Val::load(&t).ok())
+            .map(|data| bbgen::schematic::in_background(&data, &circuit.to_string_lossy()))
+    } else {
+        None
+    };
     if json {
-        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)));
+        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)), drawing);
     }
     if video.is_some() {
         bbgen::trace::start(video_all);
@@ -204,12 +214,37 @@ fn run(args: &[String]) -> i32 {
             return 2;
         }
         println!("wrote {}", md.display());
+        if let Some(drawing) = drawing {
+            match drawing.join().map(|(s, _)| s) {
+                Ok(Ok(s)) => {
+                    let svg = out.join(format!("{}.schematic.svg", stem));
+                    if let Err(e) = std::fs::write(&svg, bbgen::schematic::page(&s)) {
+                        eprintln!("bbgen: {}: {}", svg.display(), e);
+                        return 2;
+                    }
+                    let mut written = vec![svg.display().to_string()];
+                    if !no_png {
+                        if let Some(p) = png(&svg) {
+                            written.push(p.display().to_string());
+                        }
+                    }
+                    println!("wrote {}", written.join(", "));
+                    for p in &s.problems {
+                        eprintln!("bbgen: the schematic is drawn wrong (a bug): {}", p);
+                    }
+                }
+                Ok(Err(e)) => eprintln!("bbgen: no schematic: {}", e),
+                Err(_) => eprintln!("bbgen: no schematic: drawing it failed"),
+            }
+        }
     }
     if result.errors() > 0 { 1 } else { 0 }
 }
 
 /// build|check --json: the scene on stdout, nothing else. With -o, the drawing and checklist are written there too.
-fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>) -> i32 {
+type Drawing = std::thread::JoinHandle<(std::result::Result<bbgen::schematic::Schematic, String>, f64)>;
+
+fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: Option<Drawing>) -> i32 {
     let path = circuit.to_string_lossy().into_owned();
     let start = Instant::now();
     let c = match Circuit::load(&path) {
@@ -222,7 +257,15 @@ fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>) -> i32 {
     let result = check(&c);
     let ms = start.elapsed().as_secs_f64() * 1000.0;
     let data = std::fs::read_to_string(&path).ok().and_then(|t| Val::load(&t).ok());
-    println!("{}", bbgen::scene::scene(&c, &result, data.as_ref(), ms));
+    let mut scene = bbgen::scene::scene(&c, &result, data.as_ref(), ms);
+    if let Some(drawing) = drawing {
+        scene["schematic"] = match drawing.join() {
+            Ok((Ok(s), ms)) => bbgen::scene::schematic(&s, ms),
+            Ok((Err(e), _)) => serde_json::json!({"error": e}),
+            Err(_) => serde_json::json!({"error": "drawing it failed"}),
+        };
+    }
+    println!("{}", scene);
     if let (Some((out, no_png)), "build") = (files, cmd) {
         let out = clean(&out);
         if !out.as_os_str().is_empty() {

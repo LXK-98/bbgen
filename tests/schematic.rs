@@ -49,3 +49,21 @@ fn schematics_read_back_right_and_are_as_recorded() {
     let problems: Vec<String> = results.into_iter().flatten().collect();
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
+
+/// What `bbgen build --schematic` draws, from the file's parts and nets without placing it (while placement runs),
+/// is the schematic of the placed circuit.
+#[test]
+fn drawn_from_the_netlist_as_from_the_placed_circuit() {
+    let mut files: Vec<PathBuf> = common::benchmarks();
+    files.extend(circuits().into_iter().filter(|(_, p)| p.starts_with(common::root().join("examples"))).map(|(_, p)| p));
+    let dir = common::root().join("benchmarks/golden/schematics");
+    let problems: Vec<String> = common::parallel(&files, |path| {
+        let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let data = bbgen::val::Val::load(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let c = bbgen::circuit::Circuit::netlist(&data, path.to_str().unwrap()).unwrap();
+        let page = bbgen::schematic::page(&bbgen::schematic::draw(&c).unwrap());
+        (std::fs::read_to_string(dir.join(format!("{}.svg", name))).ok().as_deref() != Some(page.as_str()))
+            .then(|| format!("{}: drawn from its netlist, the schematic isn't as recorded", name))
+    }).into_iter().flatten().collect();
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}

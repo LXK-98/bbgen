@@ -329,10 +329,20 @@ impl Circuit {
     }
 
     pub fn new(data: &Val, source: &str) -> Result<Circuit, String> {
+        Circuit::read(data, source, true)
+    }
+
+    /// The circuit's parts and nets only: not placed, wired or checked. Enough for its schematic, which doesn't
+    /// depend on the board, and quick, so a build can draw the schematic while it places.
+    pub fn netlist(data: &Val, source: &str) -> Result<Circuit, String> {
+        Circuit::read(data, source, false)
+    }
+
+    fn read(data: &Val, source: &str, build: bool) -> Result<Circuit, String> {
         if data.as_map().is_none() {
             return Err("the file must be a mapping with title, boards, parts, wires and nets".into());
         }
-        if needs_placing(data) {
+        if build && needs_placing(data) {
             let placed = crate::trace::placing(|| crate::dump::placing(|| crate::search::autoplace(data, source)))?;
             if crate::dump::active() {
                 crate::dump::event("placed", vec![("data", placed.to_json())]);
@@ -373,6 +383,10 @@ impl Circuit {
                     c.parts[i as usize].auto = true;
                 }
             }
+        }
+        if !build {
+            c.load_nets(data.at("nets"))?;
+            return Ok(c);
         }
         c.load_wires(data.at("wires"))?;
         c.load_nets(data.at("nets"))?;

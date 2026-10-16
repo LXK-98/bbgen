@@ -28,9 +28,13 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    `boards: [full, full]` puts them side by side, `{type: full, below: 1}` snaps the second under
    the first. bbgen places parts on any of them; a wire between two boards is always a flexible
    jumper. See "Wide modules" below for a module too wide for one board.
-3. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
+3. **Check the nets against the circuit you meant.** Run `bbgen build <file> --schematic` and look at
+   `<file>.schematic.png` with the Read tool: it's the circuit drawn from your nets. Compare it with the
+   design (or the datasheet's application circuit): every pin where it should be, supplies and grounds right,
+   nothing missing. The wiring check can't catch a wrong net; this is where you do.
+4. **Run `bbgen build <file>`.** Fix *every* error. The check is the point: never hand over a
    layout with errors, and never silence one by dropping a pin from `nets`.
-4. **Work through the warnings.** Each says how to fix it:
+5. **Work through the warnings.** Each says how to fix it:
    - `DIAGONAL`: take the hole it suggests, or move the part it names. "Every straight route is
      blocked" usually means parts are crowded on one side: move them to make room before you
      settle for the slant. If a slant really is the best option, record why with
@@ -44,9 +48,9 @@ parts land" and the rail columns under "Holes": placing parts needs both.
      many between the same parts mean those parts should sit closer, so place them yourself.
 
    Rebuild after each round.
-5. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each
+6. **Look at the PNG** with the Read tool, for what the check can't see: parts crowding each
    other, labels you can't read. Trust the check over your eye for which hole a wire is in.
-6. Hand over the `.png`/`.svg` and the `.md` checklist. Say what you assumed, and list any
+7. Hand over the `.png`/`.svg`, the schematic and the `.md` checklist. Say what you assumed, and list any
    `slant` reasons you gave.
 
 ## Rules

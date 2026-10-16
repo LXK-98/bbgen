@@ -296,9 +296,16 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - **Records**: `tests/schematic.rs` holds every example and benchmark (as placed, which loads without placing)
      to its SVG in `benchmarks/golden/schematics/` (944 KB, diffable). Record again with
      `BBGEN_RECORD=1 cargo test --release --test schematic` after looking at the new drawings.
-6. **The command line and the scene.** `--schematic`, the `schematic` field, `bbgen dev schematic`; README,
-   [scene-format.md](scene-format.md), and the skill (look at the schematic to check the nets against the
-   circuit you meant, before building).
+6. **The command line and the scene.** Done (October 2026).
+   - `bbgen build FILE --schematic` writes `FILE.schematic.svg` (and `.png`); with `--json`, the scene gets a
+     `schematic` field ([scene-format.md](scene-format.md)). Still a flag, as planned; making it the default is
+     a decision for when the drawings have been looked at by more than me.
+   - The schematic is drawn on a thread of its own from `Circuit::netlist` (the file's parts and nets, not
+     placed), while the main thread places and wires. With `--no-png`: 16 takes 2.62 s without and 2.69 s with
+     it; 13 0.49 s and 0.79 s (its schematic takes longer than its placement); 09 0.27 s and 0.32 s.
+     `tests/schematic.rs` checks the netlist gives every benchmark's recorded schematic.
+   - README ("The schematic"), the scene format, and the skill: a new step 3 looks at the schematic to check the
+     nets against the circuit meant, before building.
 7. **The studio.** Circuit and Both views, the shared drawing component, `pin:` keys, linked hover; lookup
    tests over the schematic's groups.
 8. **Later.** Write a `.kicad_sch`: the positions and KiCad symbols are already there, so a circuit can be

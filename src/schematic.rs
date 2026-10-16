@@ -770,9 +770,30 @@ fn edge_point(at: Xy, out: (i32, i32), b: (f64, f64, f64, f64)) -> Xy {
 
 /// The schematic as a file: on white, in ink, with the board's font.
 pub fn page(s: &Schematic) -> String {
-    format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w:.0}\" height=\"{h:.0}\" viewBox=\"0 0 {w:.0} {h:.0}\" font-family=\"{}\" \
-             color=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"white\"/>{}</svg>\n",
-            crate::render::FONT, crate::render::INK, s.svg, w = s.width, h = s.height)
+    svg_page(s, true)
+}
+
+/// The schematic as an SVG: on white (`background`), or on nothing, in `currentColor`, for a page to style (the
+/// scene's).
+pub fn svg_page(s: &Schematic, background: bool) -> String {
+    let (color, back) = if background {
+        (format!(" color=\"{}\"", crate::render::INK), "<rect width=\"100%\" height=\"100%\" fill=\"white\"/>")
+    } else {
+        (String::new(), "")
+    };
+    format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w:.0}\" height=\"{h:.0}\" viewBox=\"0 0 {w:.0} {h:.0}\" font-family=\"{}\"{}>{}{}</svg>\n",
+            crate::render::FONT, color, back, s.svg, w = s.width, h = s.height)
+}
+
+/// The schematic of the circuit in this file, drawn on a thread of its own (it needs only the parts and nets, so a
+/// build can place and wire meanwhile). The thread gives back the schematic and how long it took, or why not.
+pub fn in_background(data: &crate::val::Val, source: &str) -> std::thread::JoinHandle<(Result<Schematic, String>, f64)> {
+    let (data, source) = (data.clone(), source.to_string());
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let s = Circuit::netlist(&data, &source).and_then(|c| draw(&c));
+        (s, start.elapsed().as_secs_f64() * 1000.0)
+    })
 }
 
 #[cfg(test)]

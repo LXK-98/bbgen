@@ -35,6 +35,7 @@ bbgen build circuit.yaml --video build.mp4   # also a video of bbgen placing and
 bbgen check circuit.yaml           # the check only
 bbgen build circuit.yaml --bare    # the drawing without title, legend or background
 bbgen build circuit.yaml --json    # what was built, as JSON on stdout (docs/scene-format.md)
+bbgen build circuit.yaml --schematic   # also circuit.schematic.svg/.png: the circuit's schematic
 ```
 
 To look at a build rather than read it, [bbgen studio](studio/README.md) opens a circuit, builds it and
@@ -49,6 +50,27 @@ tried and threw away, which shows where its time goes. It needs ImageMagick and 
 
 The exit status is 0 when the check passes, 1 when it finds errors (the files are still written so
 you can see them), and 2 when the file itself can't be read.
+
+### The schematic
+
+The check holds the board to the nets, but nothing holds the nets to the circuit you meant: a pin in the
+wrong net builds a board that passes and doesn't work. `--schematic` draws the circuit from the same file,
+so you can see that at a glance before building.
+
+- Parts from KiCad's library are drawn with their own symbol (an op-amp's units apart); bbgen's own parts with
+  symbols in KiCad's style: resistors, capacitors, diodes, LEDs, a pot named by its footprint, the Pico, a box
+  for a DIP given only labels (supplies on top, grounds below), a connector for an off-board part.
+- Supplies and grounds are power symbols, not wires. A resistor or LED between two signals sits in line; one to
+  a supply or ground hangs from its signal. Decoupling caps stand above their chip (`near:` says which).
+- Signals run left to right, from what drives them: outputs (by KiCad's pin types), then the controller, then
+  connectors. Symbols are mirrored to face their signals, and connectors go at the edges.
+- A net that would run across the page, one with many pins, and the nets of a big connector are drawn as
+  labels. A bus (`D0`...`D7`) is labelled whole.
+- bbgen reads the drawing back and checks every wired net is in one piece and touches no other.
+
+Placing the symbols and routing the wires is done by [ELK](https://eclipse.dev/elk/), the Eclipse Layout
+Kernel, inside bbgen. The schematic needs only the parts and nets, so bbgen draws it while it places the board:
+on a big circuit it costs almost nothing extra, on a small one a tenth of a second or two.
 
 ## The circuit file
 
