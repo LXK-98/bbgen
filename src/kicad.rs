@@ -5,9 +5,10 @@
 //! for where KiCad installs it (system packages, Flatpak, macOS) and where its environment variables point;
 //! $BBGEN_KICAD or a circuit's `kicad:` names it outright.
 
+use crate::symbol::{Drawing, Field, Fill, Shape, SymPin, Text, Unit, Xy};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const MM: f64 = 2.54;
 
@@ -366,6 +367,202 @@ fn symbol_uncached(r: &str, roots: &[PathBuf]) -> Result<Symbol, String> {
     }
     let get = |k: &str| props.iter().find(|(k2, _)| k2 == k).map(|(_, v)| v.clone()).unwrap_or_default();
     Ok(Symbol { name: name.to_string(), pins, footprint: get("Footprint"), description: get("Description") })
+}
+
+// ---- symbols as drawn, for the circuit view ----
+
+static DRAWINGS: OnceLock<Mutex<HashMap<String, Result<Arc<Drawing>, String>>>> = OnceLock::new();
+
+/// A symbol as KiCad draws it: each unit's lines, shapes, text and pins, and where its reference and value go,
+/// in millimetres with y down. Apart from `symbol`, which every build of a circuit reads: placement doesn't
+/// need the graphics.
+pub fn drawing(r: &str, roots: &[PathBuf]) -> Result<Arc<Drawing>, String> {
+    let key = format!("{}|{:?}", r, roots);
+    cache(&DRAWINGS, &key, || drawing_uncached(r, roots).map(Arc::new))
+}
+
+/// (x, y) of a child like (at x y) or (start x y), y turned down.
+fn xy(node: &Sx, head: &str) -> Option<Xy> {
+    node.child(head).map(|c| (num(c.s(1)), -num(c.s(2))))
+}
+
+/// `(hide yes)`, or a bare `hide` as older files write it, on the node or in its effects.
+fn hidden(node: &Sx) -> bool {
+    let here = |n: &Sx| n.list().map(|l| l.iter().any(|c| c.atom() == Some("hide") || (c.head() == Some("hide") && c.s(1) != Some("no"))))
+        .unwrap_or(false);
+    here(node) || node.child("effects").map(here).unwrap_or(false)
+}
+
+fn font_size(node: &Sx) -> f64 {
+    node.child("effects").and_then(|e| e.child("font")).and_then(|f| f.child("size")).map(|s| num(s.s(1)))
+        .filter(|s| s.is_finite()).unwrap_or(1.27)
+}
+
+/// (along, across) from `(justify left|right top|bottom)`: -1 start or top, 1 end or bottom, 0 centred.
+fn justify(node: &Sx) -> (i8, i8) {
+    let words: Vec<&str> = node.child("effects").and_then(|e| e.child("justify"))
+        .map(|j| j.list().unwrap()[1..].iter().filter_map(Sx::atom).collect()).unwrap_or_default();
+    let h = if words.contains(&"left") { -1 } else if words.contains(&"right") { 1 } else { 0 };
+    let v = if words.contains(&"top") { -1 } else if words.contains(&"bottom") { 1 } else { 0 };
+    (h, v)
+}
+
+/// The way text at this angle (KiCad's, counter-clockwise) reads on the page.
+fn reading(angle: f64) -> (i32, i32) {
+    match (angle.rem_euclid(360.0) / 90.0).round() as i32 % 4 {
+        1 => (0, -1),
+        2 => (-1, 0),
+        3 => (0, 1),
+        _ => (1, 0),
+    }
+}
+
+fn stroke_fill(node: &Sx) -> (f64, Fill) {
+    let width = node.child("stroke").and_then(|s| s.child("width")).map(|w| num(w.s(1))).filter(|w| w.is_finite()).unwrap_or(0.0);
+    let fill = match node.child("fill").and_then(|f| f.child("type")).and_then(|t| t.s(1)) {
+        Some("outline") => Fill::Outline,
+        Some("background") | Some("color") => Fill::Background,
+        _ => Fill::None,
+    };
+    (width, fill)
+}
+
+fn shapes_of(unit: &Sx) -> Vec<Shape> {
+    let mut out = Vec::new();
+    for item in unit.list().map(|l| l.as_slice()).unwrap_or(&[]) {
+        let (width, fill) = stroke_fill(item);
+        let shape = match item.head() {
+            Some("rectangle") => match (xy(item, "start"), xy(item, "end")) {
+                (Some(a), Some(b)) => Shape::Rect { a, b, width, fill },
+                _ => continue,
+            },
+            Some("polyline") | Some("bezier") => {
+                let pts: Vec<Xy> = item.child("pts").map(|p| p.children("xy").iter().map(|q| (num(q.s(1)), -num(q.s(2)))).collect())
+                    .unwrap_or_default();
+                if pts.len() < 2 {
+                    continue;
+                }
+                Shape::Poly { pts, width, fill }
+            }
+            Some("circle") => match (xy(item, "center"), item.child("radius").map(|r| num(r.s(1)))) {
+                (Some(c), Some(r)) => Shape::Circle { c, r, width, fill },
+                _ => continue,
+            },
+            Some("arc") => match (xy(item, "start"), xy(item, "mid"), xy(item, "end")) {
+                (Some(a), Some(mid), Some(b)) => Shape::Arc { a, mid, b, width },
+                _ => continue,
+            },
+            Some("text") => {
+                let at = match item.child("at") {
+                    Some(at) => at,
+                    None => continue,
+                };
+                // a symbol's text angles are in tenths of a degree
+                let mut angle = num(at.s(3));
+                if angle.abs() >= 360.0 {
+                    angle /= 10.0;
+                }
+                let (h, v) = justify(item);
+                Shape::Text(Text { at: (num(at.s(1)), -num(at.s(2))), dir: reading(if angle.is_finite() { angle } else { 0.0 }),
+                                   text: item.s(1).unwrap_or("").to_string(), size: font_size(item), h, v })
+            }
+            _ => continue,
+        };
+        out.push(shape);
+    }
+    out
+}
+
+fn pins_of(unit: &Sx) -> Vec<SymPin> {
+    let mut out = Vec::new();
+    for p in unit.children("pin") {
+        let at = match p.child("at") {
+            Some(at) => at,
+            None => continue,
+        };
+        let name = p.child("name");
+        let number = p.child("number");
+        out.push(SymPin {
+            number: number.and_then(|n| n.s(1)).unwrap_or("").to_string(),
+            name: name.and_then(|n| n.s(1)).unwrap_or("").to_string(),
+            kind: p.s(1).unwrap_or("").to_string(),
+            shape: p.s(2).unwrap_or("line").to_string(),
+            at: (num(at.s(1)), -num(at.s(2))),
+            dir: reading(num(at.s(3))),
+            len: p.child("length").map(|l| num(l.s(1))).filter(|l| l.is_finite()).unwrap_or(2.54),
+            hidden: hidden(p),
+            name_size: name.map(font_size).unwrap_or(1.27),
+            number_size: number.map(font_size).unwrap_or(1.27),
+            pins: vec![],
+        });
+    }
+    out
+}
+
+fn field_of(node: &Sx) -> Option<Field> {
+    let at = node.child("at")?;
+    let (h, v) = justify(node);
+    Some(Field { at: (num(at.s(1)), -num(at.s(2))), dir: reading(num(at.s(3))), h, v, size: font_size(node), hidden: hidden(node) })
+}
+
+fn drawing_uncached(r: &str, roots: &[PathBuf]) -> Result<Drawing, String> {
+    let (lib, name) = split(r, "symbol")?;
+    let text = symbol_text(&find(roots, "symbols", lib)?)?;
+    let node = symbol_node(&text, name)?.ok_or(format!("no symbol '{}' in KiCad's {} library", name, lib))?;
+    // a derived symbol (`extends`) is drawn as its base; its own fields win
+    let mut chain = vec![node];
+    while let Some(ext) = chain.last().unwrap().child("extends") {
+        let parent = ext.s(1).unwrap_or("").to_string();
+        if chain.len() > 8 {
+            return Err(format!("symbol '{}' extends itself", name));
+        }
+        chain.push(symbol_node(&text, &parent)?.ok_or(format!("symbol '{}' extends '{}', which isn't in {}", name, parent, lib))?);
+    }
+    let base = chain.last().unwrap();
+    let field = |key: &str| chain.iter().find_map(|n| n.children("property").into_iter().find(|p| p.s(1) == Some(key)))
+        .and_then(field_of);
+    let names = base.child("pin_names");
+    let numbers = base.child("pin_numbers");
+    let name_offset = names.and_then(|n| n.child("offset")).map(|o| num(o.s(1))).filter(|o| o.is_finite()).unwrap_or(0.508);
+    // units are named NAME_<unit>_<style>: unit 0 belongs to every unit, style 2 is De Morgan's (not drawn)
+    let mut common: (Vec<Shape>, Vec<SymPin>) = (vec![], vec![]);
+    let mut units: Vec<Unit> = Vec::new();
+    for sub in base.children("symbol") {
+        let full = sub.s(1).unwrap_or("");
+        let mut tail = full.rsplitn(3, '_');
+        let style: i64 = tail.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+        let unit: i64 = tail.next().and_then(|s| s.parse().ok()).unwrap_or(1);
+        if style == 2 {
+            continue;
+        }
+        let (shapes, pins) = (shapes_of(sub), pins_of(sub));
+        if unit == 0 {
+            common.0.extend(shapes);
+            common.1.extend(pins);
+        } else if let Some(u) = units.iter_mut().find(|u| u.unit == unit) {
+            u.shapes.extend(shapes);
+            u.pins.extend(pins);
+        } else {
+            units.push(Unit { unit, shapes, pins });
+        }
+    }
+    if units.is_empty() {
+        units.push(Unit { unit: 1, shapes: vec![], pins: vec![] });
+    }
+    units.sort_by_key(|u| u.unit);
+    for u in &mut units {
+        let mut shapes = common.0.clone();
+        shapes.append(&mut u.shapes);
+        u.shapes = shapes;
+        u.pins.extend(common.1.iter().cloned());
+    }
+    Ok(Drawing {
+        units, name_offset,
+        names: !names.map(hidden).unwrap_or(false),
+        numbers: !numbers.map(hidden).unwrap_or(false),
+        reference: field("Reference"),
+        value: field("Value"),
+    })
 }
 
 // ---- footprints ----

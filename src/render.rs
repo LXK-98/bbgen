@@ -7,10 +7,10 @@ use crate::parts::{body_rect, placed_box, rotate, Kind, Part};
 use crate::pyf;
 
 const P: f64 = 20.0;
-const FONT: &str = "DejaVu Sans, Helvetica, Arial, sans-serif";
+pub const FONT: &str = "DejaVu Sans, Helvetica, Arial, sans-serif";
 const HEADER: f64 = 3.4;
-const INK: &str = "#262626";
-const MUTED: &str = "#9a917f";
+pub const INK: &str = "#262626";
+pub const MUTED: &str = "#9a917f";
 const BOARD: &str = "#f6f3ec";
 const TRENCH_Y: (f64, f64) = (7.6, 9.4);
 const BAND: [&str; 10] = ["#1a1a1a", "#7a4a2a", "#d0281c", "#f07c12", "#f4d21a", "#2e9a3a", "#2152c4", "#7d3fb0", "#8c8c8c", "#f9f9f9"];

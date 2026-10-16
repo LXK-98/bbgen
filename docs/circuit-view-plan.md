@@ -214,9 +214,21 @@ none of these.
 Each step ends with drawings to look at: the examples and all 21 benchmarks, before and after.
 
 0. **Spike.** Done: elkjs in QuickJS from Rust, same output as Node, timings above.
-1. **Symbols.** KiCad symbol graphics in kicad.rs; built-in symbols; a renderer for both.
-   `bbgen dev symbols FILE` draws every part's symbol in a grid. Check every part of the 21 benchmarks against
-   KiCad's own drawing of it.
+1. **Symbols.** Done (October 2026). [src/symbol.rs](../src/symbol.rs) has the symbols and draws them, turned and
+   mirrored; `kicad::drawing` reads KiCad's (cached apart from `kicad::symbol`, so placement is no slower).
+   `bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]` draws every part's symbol in a grid. Checked by eye on all
+   21 benchmarks, and against `kicad-cli sym export svg` for the 74HC595, NE555P, LM358, DS18B20 and AP2112K:
+   same pins, fields and units. `tests/symbols.rs` holds every pin in a net to a pin you can see on its symbol.
+   Found on the way:
+   - Every symbol the benchmarks use is drawn with rectangles, polylines, circles, arcs, text and pins (line,
+     inverted, clock); KiCad's extra GND pins are hidden and stacked on the visible one.
+   - A part with only a potentiometer's footprint (the four trimmers) gets a potentiometer symbol.
+   - Buttons are written as 4-pin DIPs with a title, so they stay boxes: which pins the switch joins isn't
+     known. The skill could give them `symbol: Switch:SW_Push` instead.
+   - A symbol turned to lie flat keeps its fields where the library put them, as vertical text. KiCad moves
+     them beside the part when it's placed; that belongs to step 3.
+   - The pins a symbol has no pin for are real gaps: the empty pin of a 5-pin chip on a 6-pin adapter, and two
+     pins of the relay's footprint. None is in a net.
 2. **The engine.** `vendor/elkjs/` (the file, its licence, its version and checksum); `src/elk.rs`: QuickJS
    with the shims, `layout(serde_json::Value) -> Result<Value, String>`, the bundle loaded once per process.
    Try precompiled bytecode for the load time.

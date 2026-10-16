@@ -123,6 +123,10 @@ pub struct Part {
     pub body: Option<Rect>,
     pub source: String,
     pub adapter: String,
+    /// the KiCad symbol it's named by (`symbol:`), for the circuit view
+    pub symbol: String,
+    /// on an adapter: (adapter pin, the chip pad on it), every pad the symbol numbers
+    pub adapter_pads: Vec<(i64, i64)>,
     pub cols: i64,
     pub numbering: String,
     pub place: String,
@@ -135,8 +139,8 @@ impl Part {
         Part {
             r#ref: r.to_string(), kind, title, value, color, pins: Vec::new(), buses: Vec::new(), at: None, rot: 0,
             width: 0, legs: Vec::new(), slant: None, near: None, raised: false, auto: false, keepouts: Vec::new(),
-            body: None, source: String::new(), adapter: String::new(), cols: 1, numbering: "row".into(),
-            place: "right".into(), r#box: None, extent: None,
+            body: None, source: String::new(), adapter: String::new(), symbol: String::new(), adapter_pads: Vec::new(),
+            cols: 1, numbering: "row".into(), place: "right".into(), r#box: None, extent: None,
         }
     }
 
@@ -554,6 +558,9 @@ fn from_kicad_part(part: &mut Part, spec: &Val, lib: Option<&[PathBuf]>) -> Resu
         part.title = sym.as_ref().map(|s| s.name.clone()).unwrap_or(fp.name.clone());
     }
     part.source = if sym.is_some() { format!("{} on {}", spec.at("symbol").py_str(), fp_ref) } else { fp_ref };
+    if sym.is_some() {
+        part.symbol = spec.at("symbol").py_str();
+    }
     Ok(())
 }
 
@@ -596,5 +603,10 @@ fn adapter(part: &mut Part, spec: &Val, lib: Option<&[PathBuf]>) -> Result<(i64,
     part.adapter = format!("{} on a {}-pin adapter: chip pad n on adapter pin n{}. Check this against your adapter",
                            fp_ref.rsplit(':').next().unwrap(), n, if shown.is_empty() { String::new() } else { format!(", except {}", shown) });
     part.source = if sym.is_some() { format!("{} on {}", spec.at("symbol").py_str(), fp_ref) } else { fp_ref };
+    if sym.is_some() {
+        part.symbol = spec.at("symbol").py_str();
+        taken.sort();
+        part.adapter_pads = taken;
+    }
     Ok((n, names))
 }

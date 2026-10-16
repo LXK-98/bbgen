@@ -16,6 +16,7 @@ pub mod pyrand;
 pub mod render;
 pub mod scene;
 pub mod search;
+pub mod symbol;
 pub mod trace;
 pub mod val;
 pub mod yaml;

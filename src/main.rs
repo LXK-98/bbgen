@@ -10,6 +10,7 @@
 //!     bbgen dev build FILE [--dump OUT.jsonl] [--repeat N]     build, record its events, time it
 //!     bbgen dev measure FILE OUTDIR [--no-png]                 what benchmarks/run.py tabulates
 //!     bbgen dev frames FILE OUTDIR [--all]                     a video's frames as SVG files
+//!     bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]      every part's schematic symbol, in a grid
 //!     bbgen dev kicad-roots | score-lines | yaml-json FILE | pyf-check
 
 use bbgen::check::{check, Result};
@@ -295,6 +296,7 @@ fn dev(args: &[String]) -> i32 {
             0
         }
         Some("measure") => dev_measure(&args[1..]),
+        Some("symbols") if args.len() >= 3 => dev_symbols(&args[1..]),
         Some("kicad-roots") => {
             // the KiCad library folders parts are read from, one a line
             for r in bbgen::kicad::library_roots(None) {
@@ -321,7 +323,7 @@ fn dev(args: &[String]) -> i32 {
             0
         }
         _ => {
-            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
+            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
             2
         }
     }
@@ -466,5 +468,70 @@ fn dev_measure(args: &[String]) -> i32 {
         "score": num(bbgen::pyf::round(bbgen::autoplace::score(&c, &r), 1)),
         "expect": expect,
     }));
+    0
+}
+
+/// dev symbols FILE OUT.svg [--rot N] [--mirror]: every part's symbol (each unit of one with several) in a grid,
+/// turned by N degrees (and mirrored), with the PNG beside it; and which of a part's pins its symbol doesn't carry.
+fn dev_symbols(args: &[String]) -> i32 {
+    use bbgen::symbol::{self, Orient, PX};
+    let (path, out) = (&args[0], Path::new(&args[1]));
+    let rot = args.iter().position(|a| a == "--rot").and_then(|i| args.get(i + 1)).and_then(|r| r.parse().ok()).unwrap_or(0);
+    let mirror = args.iter().any(|a| a == "--mirror");
+    let data = match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|t| Val::load(&t)) {
+        Ok(d) => d,
+        Err(e) => { eprintln!("{}: {}", path, e); return 2; }
+    };
+    let library = bbgen::circuit::library_for(&data);
+    let mut cells: Vec<(String, Vec<symbol::Prim>, (f64, f64, f64, f64))> = Vec::new();
+    for (r, spec) in data.at("parts").as_map().map(|m| m.as_slice()).unwrap_or(&[]) {
+        let r = r.py_str();
+        let part = match bbgen::parts::make_part(&r, spec, library.as_deref()) {
+            Ok(p) => p,
+            Err(e) => { eprintln!("{}", e); return 2; }
+        };
+        let sym = symbol::of_part(&part, library.as_deref());
+        if let Some(note) = &sym.note {
+            println!("{}: {}", r, note);
+        }
+        if !sym.unmapped.is_empty() {
+            let pins: Vec<String> = sym.unmapped.iter().map(|&i| part.pin_str(i)).collect();
+            println!("{}: no pin on its symbol for {}", r, pins.join(", "));
+        }
+        for u in 0..sym.drawing.units.len() {
+            let prims = symbol::prims(&sym, u, Orient { rot, mirror }, (0.0, 0.0));
+            let b = symbol::bounds(&prims);
+            cells.push((format!("{} · {}", sym.unit_ref(u), sym.source), prims, b));
+        }
+    }
+    // rows of cells, each its symbol's size plus room for its caption
+    let (pad, caption, row_width) = (4.0, 4.0, 250.0);
+    let (mut x, mut y, mut row_h, mut width) = (pad, pad, 0.0f64, 0.0f64);
+    let mut body = String::new();
+    for (name, prims, b) in &cells {
+        let (w, h) = (b.2 - b.0, b.3 - b.1);
+        let cell_w = w.max(name.chars().count() as f64 * 1.0 * 0.55) + 2.0 * pad;
+        if x > pad && x + cell_w > row_width {
+            x = pad;
+            y += row_h;
+            row_h = 0.0;
+        }
+        let (ox, oy) = (x + pad - b.0, y + caption + pad - b.1);
+        body.push_str(&format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" fill=\"{}\">{}</text>",
+                               (x + pad) * PX, (y + caption) * PX, bbgen::render::MUTED, symbol::escape(name)));
+        body.push_str(&format!("<g transform=\"translate({:.2} {:.2})\">{}</g>", ox * PX, oy * PX, symbol::svg(prims)));
+        x += cell_w;
+        width = width.max(x);
+        row_h = row_h.max(h + caption + 2.0 * pad);
+    }
+    let height = y + row_h + pad;
+    let svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w:.0}\" height=\"{h:.0}\" viewBox=\"0 0 {w:.0} {h:.0}\" \
+                       font-family=\"{}\" color=\"{}\"><rect width=\"100%\" height=\"100%\" fill=\"white\"/>{}</svg>\n",
+                      bbgen::render::FONT, bbgen::render::INK, body, w = (width + pad) * PX, h = height * PX);
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir).ok();
+    }
+    std::fs::write(out, svg).unwrap();
+    png(out);
     0
 }
