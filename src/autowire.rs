@@ -157,6 +157,7 @@ pub fn autowire(c: &mut Circuit) {
     let rails = rails(c, &mut dsu, &node_pins);
     let first = c.wires.len();
     crate::trace::step(c, "parts placed: wiring next", true, &[], Some(1.5), true);
+    lay_planned_leads(c, &mut dsu, &rails, &node_pins);
     let mut order: Vec<String> = c.nets.keys().cloned().collect();
     let spans: HashMap<String, f64> = order.iter().map(|n| (n.clone(), span(c, &c.nets[n]))).collect();
     let has = |n: &String| rails.get(n).map(|r| !r.is_empty()).unwrap_or(false);
@@ -270,8 +271,10 @@ fn settle_leads(c: &mut Circuit, node_pins: &NodePins, first: usize) {
     };
     for _ in 0..LEAD_PASSES {
         let mut moved = false;
+        let planned = |w: &Wire| [&w.a, &w.b].into_iter().flatten().any(|e| e.pin.map(|p| c.lead_plan.contains_key(&p)).unwrap_or(false));
         let mut leads: Vec<u64> = c.wires[first..].iter().filter(|w| {
             w.auto && w.a.is_some() && w.b.is_some() && (w.a.as_ref().unwrap().pin.is_some() != w.b.as_ref().unwrap().pin.is_some())
+                && !planned(w)
         }).map(|w| w.id).collect();
         let line_of = |c: &Circuit, w: &Wire| (c.end_xy(w.a.as_ref().unwrap()), c.end_xy(w.b.as_ref().unwrap()));
         let crossed = |c: &Circuit, out: &HashMap<u64, Wire>, leads: &[u64], id: u64| -> usize {
@@ -627,11 +630,48 @@ fn rails(c: &mut Circuit, dsu: &mut Dsu<Node>, node_pins: &NodePins) -> IndexMap
             }
         }
     }
+    // a flying lead's planned hole is on a rail of its net (autoplace::lead_plan): the net gets that rail if no
+    // other net has it
+    for (&p, &h) in &c.lead_plan {
+        let name = match nets.iter().find(|n| n.pins.contains(&p)) {
+            Some(n) => n.name.clone(),
+            None => continue,
+        };
+        let s = Node::Strip(c.boards[h.board as usize].strip(h));
+        if !owner.contains_key(&s) {
+            owner.insert(s, name);
+        }
+    }
     let mut out: IndexMap<String, Vec<Node>> = IndexMap::default();
     for (s, name) in owner {
         out.entry(name).or_default().push(s);
     }
     out
+}
+
+/// The flying leads of the rails' nets go in first, each into its planned hole, when that is on a rail its net
+/// owns and still free.
+fn lay_planned_leads(c: &mut Circuit, dsu: &mut Dsu<Node>, rails: &IndexMap<String, Vec<Node>>, node_pins: &NodePins) {
+    let plan: Vec<(PinId, Hole)> = c.lead_plan.iter().map(|(&p, &h)| (p, h)).collect();
+    for (p, h) in plan {
+        let net = match c.nets.values().find(|n| n.pins.contains(&p)) {
+            Some(n) => n.clone(),
+            None => continue,
+        };
+        let strip = Node::Strip(c.boards[h.board as usize].strip(h));
+        if !rails.get(&net.name).map(|r| r.contains(&strip)).unwrap_or(false) {
+            continue;
+        }
+        let pin = match pin_node(c, p) {
+            Some(n) => n,
+            None => continue,
+        };
+        let a = options(c, pin, &net, node_pins);
+        let b = options(c, strip, &net, node_pins).into_iter().find(|o| o.o.hole == Some(h));
+        if let (Some(a), Some(b)) = (a.first(), b) {
+            lay(c, Some(dsu), &net, a, &b, false, true, false);
+        }
+    }
 }
 
 fn wire_net(c: &mut Circuit, dsu: &mut Dsu<Node>, net: &Net, rails: &[Node], node_pins: &NodePins, flying: bool) {

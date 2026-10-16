@@ -10,28 +10,28 @@ parts:
     rot: 180
   U1:
     symbol: Driver_Motor:L293D
-    at: f31
+    at: f30
     rot: 0
   C1:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - b31
-    - b34
+    - top+31
+    - top-31
   C2:
     type: electrolytic
     value: 100uF
     pins:
-    - g38
-    - g35
+    - g37
+    - g34
   C3:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - i38
-    - i35
+    - j37
+    - j34
   J1:
     type: offboard
     title: Motor A

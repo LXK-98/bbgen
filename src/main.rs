@@ -408,7 +408,7 @@ fn dev_measure(args: &[String]) -> i32 {
     println!("{}", json!({
         "status": "ok", "seconds": num(bbgen::pyf::round(seconds, 2)), "parts": c.parts.len(), "wires": c.wires.len(),
         "errors": r.errors(), "warnings": r.warnings(), "codes": codes,
-        "slanted": m::slanted(&c), "bent": m::bent(&c), "crossings": m::crossings(&c),
+        "slanted": m::slanted(&c), "bent": m::bent(&c), "crossings": m::crossings(&c), "lead_crossings": m::lead_crossings(&c),
         "flex": c.wires.iter().filter(|w| w.flex).count(), "rail_links_inside": m::rail_links_inside(&c),
         "label_clashes": m::label_clashes(&c, &canvas), "board_wire": num(bbgen::pyf::round(board, 1)),
         "flying": num(bbgen::pyf::round(m::flying_length(&c), 1)),

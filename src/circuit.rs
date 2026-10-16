@@ -289,6 +289,8 @@ pub struct Circuit {
     pub wires: Vec<Wire>,
     pub groups: Vec<String>,
     pub nets: IndexMap<String, Net>,
+    /// where each flying lead of a rail's net lands (autoplace::lead_plan), and those holes
+    pub lead_plan: IndexMap<PinId, Hole>,
     pub lead_room: HashSet<Hole>,
     pub autowire: bool,
     // wiring's state (autowire.rs)
@@ -348,7 +350,7 @@ impl Circuit {
             under: HashMap::default(), tall: HashSet::default(), cables: vec![],
             rail_order: data.at("_rail_order").as_list().map(|l| l.iter().map(Val::py_str).collect()).unwrap_or_default(),
             boards: vec![], default_board: 0, levels: vec![], library: None, parts: vec![], part_index: HashMap::default(),
-            wires: vec![], groups: vec![], nets: IndexMap::default(), lead_room: HashSet::default(), autowire: false,
+            wires: vec![], groups: vec![], nets: IndexMap::default(), lead_plan: IndexMap::default(), lead_room: HashSet::default(), autowire: false,
             ends: HashSet::default(), lain: HashSet::default(), pin_strips: HashSet::default(), strip_at: HashMap::default(), wired: 0,
             empty: None, step_blocked: HashMap::default(), straight_strips: HashMap::default(), next_id: 0,
             leg_rank: HashMap::default(), rounds: vec![],
@@ -593,7 +595,8 @@ impl Circuit {
             }
         }
         self.layout_offboard();
-        self.lead_room = crate::autoplace::lead_room(self);
+        self.lead_plan = crate::autoplace::lead_plan(self);
+        self.lead_room = self.lead_plan.values().copied().collect();
         for i in 0..self.parts.len() {
             for (k, leg) in self.parts[i].legs.clone().iter().enumerate() {
                 let who = format!("{} leg {}", self.parts[i].r#ref, k + 1);

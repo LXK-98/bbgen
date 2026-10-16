@@ -12,46 +12,46 @@ parts:
     - GND
   U1:
     symbol: Regulator_Linear:LD1117V33
-    at: d59
-    rot: 90
+    at: c61
+    rot: 270
   C1:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - b61
-    - b59
+    - a59
+    - top-59
   C2:
     type: electrolytic
     value: 10uF
     near: U1
     pins:
-    - top+58
-    - top-58
+    - top+57
+    - top-57
   R1:
     type: resistor
     value: 330R
     pins:
-    - bot+59
-    - i59
+    - bot+60
+    - h60
   D1:
     type: led
     color: green
     pins:
-    - f59
-    - e59
+    - f61
+    - e61
   R2:
     type: resistor
     value: 220R
     pins:
-    - top+51
-    - a51
+    - b60
+    - b54
   D2:
     type: led
     color: blue
     pins:
-    - b52
-    - top-52
+    - a54
+    - top-54
 nets:
   5V:
     pins:

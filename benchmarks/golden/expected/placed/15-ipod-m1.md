@@ -45,23 +45,23 @@ Place these first.
 
 ### GND (11)
 
-- [ ] **W4** black: `a43` → `top-43` · GND (Pico.18 GND ↔ top- rail)
-- [ ] **W5** black: `j36` → `bot-36` · GND (U11.2 GND, C3.2 ↔ bot- rail)
-- [ ] **W6** black: `bot-23` → `j23` · GND (bot- rail ↔ U13.2 V-)
-- [ ] **W7** black: `top-16` → `b16` · GND (top- rail ↔ RV1.3)
-- [ ] **W8** black: `g29` → `g23` · GND (U12.2 VSS, R3.2, C5.2 -, C1.2 ↔ U13.2 V-)
-- [ ] **W9** black: `top-3` → `bot-3` · GND (top- rail ↔ bot- rail)
-- [ ] **W10** black: `top-61` → `J1.3 GND` · GND (top- rail ↔ J1.3 GND)
-- [ ] **W11** black: `top-60` → `J1.6 GND` · GND (top- rail ↔ J1.6 GND)
-- [ ] **W12** black: `top-59` → `J1.8 GND` · GND (top- rail ↔ J1.8 GND)
-- [ ] **W13** black: `top-58` → `J1.17 GND` · GND (top- rail ↔ J1.17 GND)
-- [ ] **W14** black: `bot-61` → `J1.31 GND` · GND (bot- rail ↔ J1.31 GND)
+- [ ] **W4** black: `J1.3 GND` → `top-61` · GND (J1.3 GND ↔ top- rail)
+- [ ] **W5** black: `J1.6 GND` → `top-60` · GND (J1.6 GND ↔ top- rail)
+- [ ] **W6** black: `J1.8 GND` → `top-59` · GND (J1.8 GND ↔ top- rail)
+- [ ] **W7** black: `J1.17 GND` → `top-57` · GND (J1.17 GND ↔ top- rail)
+- [ ] **W8** black: `J1.31 GND` → `top-55` · GND (J1.31 GND ↔ top- rail)
+- [ ] **W9** black: `a43` → `top-43` · GND (Pico.18 GND ↔ top- rail)
+- [ ] **W10** black: `j36` → `bot-36` · GND (U11.2 GND, C3.2 ↔ bot- rail)
+- [ ] **W11** black: `bot-23` → `j23` · GND (bot- rail ↔ U13.2 V-)
+- [ ] **W12** black: `top-16` → `b16` · GND (top- rail ↔ RV1.3)
+- [ ] **W13** black: `g29` → `g23` · GND (U12.2 VSS, R3.2, C5.2 -, C1.2 ↔ U13.2 V-)
+- [ ] **W14** black: `top-3` → `bot-3` · GND (top- rail ↔ bot- rail)
 
 ### 3V0 (3)
 
-- [ ] **W15** orange: `top+22` → `a22` · 3V0 (top+ rail ↔ U13.6 V+, R1.1)
-- [ ] **W16** orange: `a28` → `top+28` · 3V0 (U12.6 VOUT ↔ top+ rail)
-- [ ] **W17** orange: `top+57` → `J1.33 3V0` · 3V0 (top+ rail ↔ J1.33 3V0)
+- [ ] **W15** orange: `J1.33 3V0` → `top+61` · 3V0 (J1.33 3V0 ↔ top+ rail)
+- [ ] **W16** orange: `top+22` → `a22` · 3V0 (top+ rail ↔ U13.6 V+, R1.1)
+- [ ] **W17** orange: `a28` → `top+28` · 3V0 (U12.6 VOUT ↔ top+ rail)
 
 ### VDDIO (1)
 

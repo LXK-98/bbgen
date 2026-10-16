@@ -32,16 +32,16 @@ Place these first.
 
 ### 5V (4)
 
-- [ ] **W1** red: `j60` → `bot+60` · 5V (U1.8 VCC, RA.1 ↔ bot+ rail)
-- [ ] **W2** red: `a57` → `top+57` · 5V (U1.4 /RST ↔ top+ rail)
-- [ ] **W3** red: `bot+3` → `top+3` · 5V (bot+ rail ↔ top+ rail)
-- [ ] **W4** red: `J1.1 5V` → `top+61` · 5V (J1.1 5V ↔ top+ rail)
+- [ ] **W1** red: `J1.1 5V` → `top+61` · 5V (J1.1 5V ↔ top+ rail)
+- [ ] **W2** red: `j60` → `bot+60` · 5V (U1.8 VCC, RA.1 ↔ bot+ rail)
+- [ ] **W3** red: `a57` → `top+57` · 5V (U1.4 /RST ↔ top+ rail)
+- [ ] **W4** red: `bot+3` → `top+3` · 5V (bot+ rail ↔ top+ rail)
 
 ### GND (3)
 
-- [ ] **W5** black: `a60` → `top-60` · GND (U1.1 GND, C1.2 - ↔ top- rail)
-- [ ] **W6** black: `top-4` → `bot-4` · GND (top- rail ↔ bot- rail)
-- [ ] **W7** black: `J1.2 GND` → `top-61` · GND (J1.2 GND ↔ top- rail)
+- [ ] **W5** black: `J1.2 GND` → `top-61` · GND (J1.2 GND ↔ top- rail)
+- [ ] **W6** black: `a60` → `top-60` · GND (U1.1 GND, C1.2 - ↔ top- rail)
+- [ ] **W7** black: `top-4` → `bot-4` · GND (top- rail ↔ bot- rail)
 
 ### TIMING (3)
 

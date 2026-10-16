@@ -8,128 +8,128 @@ parts:
     symbol: 74xx:74LS173
     footprint: Package_DIP:DIP-16_W7.62mm
     title: 74LS173 low
-    at: f53
+    at: f54
     rot: 0
   U2:
     symbol: 74xx:74LS173
     footprint: Package_DIP:DIP-16_W7.62mm
     title: 74LS173 high
-    at: f33
+    at: f34
     rot: 0
   U3:
     symbol: 74xx:74LS245
     footprint: Package_DIP:DIP-20_W7.62mm
-    at: f42
+    at: f43
     rot: 0
   C1:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - top+54
-    - top-54
+    - top+55
+    - top-55
   C2:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - top+34
-    - top-34
+    - top+35
+    - top-35
   C3:
     type: capacitor
     value: 100nF
     near: U3
     pins:
-    - top+43
-    - top-43
+    - top+42
+    - top-42
   R1:
     type: resistor
     value: 330R
     pins:
-    - j43
-    - j41
+    - j44
+    - j42
   D1:
     type: led
     pins:
+    - h42
     - h41
-    - h40
   R2:
     type: resistor
     value: 330R
     pins:
-    - h56
-    - h52
+    - h57
+    - h53
   D2:
     type: led
     pins:
-    - j52
-    - j51
+    - j53
+    - j54
   R3:
     type: resistor
     value: 330R
     pins:
-    - i57
-    - i61
+    - i58
+    - i62
   D3:
     type: led
     pins:
+    - g62
     - g61
-    - g60
   R4:
     type: resistor
     value: 330R
     pins:
-    - h58
-    - h62
+    - h59
+    - h63
   D4:
     type: led
     pins:
-    - a52
-    - top-52
+    - a53
+    - top-53
   R5:
     type: resistor
     value: 330R
     pins:
-    - h35
-    - h30
+    - h36
+    - h31
   D5:
     type: led
     pins:
-    - i30
-    - i33
+    - i31
+    - i34
   R6:
     type: resistor
     value: 330R
     pins:
-    - j36
-    - j31
+    - j37
+    - j32
   D6:
     type: led
     pins:
-    - a27
-    - top-27
+    - a28
+    - top-28
   R7:
     type: resistor
     value: 330R
     pins:
-    - g37
-    - g32
+    - c31
+    - c33
   D7:
     type: led
     pins:
-    - a31
-    - top-31
+    - a33
+    - top-33
   R8:
     type: resistor
     value: 330R
     pins:
-    - j38
-    - j29
+    - j39
+    - j30
   D8:
     type: led
     pins:
-    - a29
-    - top-29
+    - a30
+    - top-30
   J1:
     type: offboard
     title: Bus

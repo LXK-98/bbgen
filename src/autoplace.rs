@@ -1,7 +1,7 @@
 //! Which nets run on which rails, the rail ends kept for a supply's flying leads, and a built layout's
 //! score: what placement and a build both use. The search itself is in search.rs.
 
-use crate::board::{parse_hole, Hole, Row};
+use crate::board::{parse_hole, Hole, Row, Xy, RAILS};
 use crate::check;
 use crate::circuit::{aligned, Circuit, PinId};
 use crate::costs::*;
@@ -72,38 +72,171 @@ pub fn plan_for(c: &Circuit, net_of: &HashMap<PinId, String>) -> IndexMap<String
     rail_plan(&polarity, &explicit, &leg_rails(c, net_of), &c.rail_order)
 }
 
-/// The rail holes a supply's flying leads should land in: the two at the rail's end nearest the connector, on
-/// the rail of its net nearest the pin.
-pub fn lead_room(c: &Circuit) -> HashSet<Hole> {
+/// Where each flying lead of a rail's net lands, decided before anything else is placed: on a rail of its net
+/// (never in a strip), every rail lead of one connector on the same side of the board (top or bottom: the side
+/// where the most of them have a rail, then the shortest leads), in the free holes nearest the connectors (the
+/// rails' ends), shared out so that the leads cross as little as they can, then are shortest. A net may take a
+/// rail of its sign that no other net has (wiring gives it the rail then). A lead whose net has no rail on its
+/// connector's side goes to its nearest rail.
+pub fn lead_plan(c: &Circuit) -> IndexMap<PinId, Hole> {
     let net_of = net_of(c);
     let plan = plan_for(c, &net_of);
-    let first = &c.boards[c.default_board as usize];
-    let all: Vec<Hole> = c.boards.iter().flat_map(|b| b.holes()).collect();
-    let mut out = HashSet::default();
+    let mut claimed: HashMap<Row, &String> = HashMap::default();
+    for (n, rails) in &plan {
+        for r in rails.iter().filter_map(|r| Row::parse(r)) {
+            claimed.insert(r, n);
+        }
+    }
+    let rows_of = |n: &String| -> Vec<Row> {
+        let mut rows: Vec<Row> = plan.get(n).map(|r| r.iter().filter_map(|r| Row::parse(r)).collect()).unwrap_or_default();
+        if let Some(sign) = c.nets.get(n).and_then(|net| net.polarity) {
+            for r in RAILS {
+                if r.sign() == sign && !claimed.contains_key(&r) && !rows.contains(&r) {
+                    rows.push(r);
+                }
+            }
+        }
+        rows
+    };
+    // a footprint pin of a rail's net drops straight to its rail: a lead takes no hole in that drop's way
+    let mut needed: HashSet<Hole> = HashSet::default();
+    for (pi, part) in c.parts.iter().enumerate() {
+        if !part.kind.is_footprint() {
+            continue;
+        }
+        for (k, pin) in part.pins.iter().enumerate() {
+            let (h, n) = match (pin.hole, net_of.get(&PinId { part: pi as u16, pin: k as u16 })) {
+                (Some(h), Some(n)) if !h.row.is_rail() => (h, n),
+                _ => continue,
+            };
+            let side = if h.row.top_half() { "top" } else { "bot" };
+            if rows_of(n).iter().any(|r| r.side() == side) {
+                for r in RAILS.iter().filter(|r| r.side() == side) {
+                    needed.insert(Hole::new(h.board, *r, h.col));
+                }
+            }
+        }
+    }
+    let free: Vec<Hole> = c.boards.iter().flat_map(|b| b.holes())
+        .filter(|h| h.row.is_rail() && !c.occupied.contains_key(h) && !needed.contains(h)).collect();
+    let nearest = |rows: &[Row], xy: Xy| -> Option<f64> {
+        free.iter().filter(|h| rows.contains(&h.row)).map(|&h| pyf::dist(c.xy(h), xy)).min_by(|a, b| a.partial_cmp(b).unwrap())
+    };
+    // (pin, its xy, the rail it goes to)
+    let mut leads: Vec<(PinId, Xy, Row)> = Vec::new();
     for (pi, part) in c.parts.iter().enumerate() {
         if part.kind != Kind::Offboard {
             continue;
         }
-        for (k, pin) in part.pins.iter().enumerate() {
-            let rails = match net_of.get(&PinId { part: pi as u16, pin: k as u16 }).and_then(|n| plan.get(n)) {
-                Some(r) if !r.is_empty() => r,
-                _ => continue,
-            };
-            let xy = match pin.xy {
-                Some(xy) => xy,
-                None => continue,
-            };
-            let dy = |r: &String| ((first.rail_y(Row::parse(r).unwrap()) as f64) - xy.1).abs();
-            let mut row = &rails[0];
-            for r in &rails[1..] {
-                if dy(r) < dy(row) {
-                    row = r;
+        let mine: Vec<(PinId, Xy, Vec<Row>)> = part.pins.iter().enumerate().filter_map(|(k, pin)| {
+            let p = PinId { part: pi as u16, pin: k as u16 };
+            let rows = rows_of(net_of.get(&p)?);
+            if rows.is_empty() { None } else { Some((p, pin.xy?, rows)) }
+        }).collect();
+        let on = |rows: &[Row], side: &str| -> Vec<Row> { rows.iter().copied().filter(|r| r.side() == side).collect() };
+        let mut side = "top";
+        let mut best = (i64::MAX, f64::INFINITY);
+        for s in ["top", "bot"] {
+            let (mut missing, mut length) = (0i64, 0.0);
+            for (_, xy, rows) in &mine {
+                match nearest(&on(rows, s), *xy) {
+                    Some(d) => length += d,
+                    None => missing += 1,
                 }
             }
-            let row = Row::parse(row).unwrap();
-            let mut holes: Vec<Hole> = all.iter().copied().filter(|h| h.row == row).collect();
-            holes.sort_by(|a, b| (c.xy(*a).0 - xy.0).abs().partial_cmp(&(c.xy(*b).0 - xy.0).abs()).unwrap());
-            out.extend(holes.into_iter().take(2));
+            if (missing, length) < best {
+                best = (missing, length);
+                side = s;
+            }
+        }
+        for (p, xy, rows) in mine {
+            let there = on(&rows, side);
+            let rows = if there.is_empty() { rows } else { there };
+            // of its rows (one on a side, for a net of one sign), the nearest
+            let row = *rows.iter().min_by(|a, b| nearest(&[**a], xy).unwrap_or(f64::INFINITY)
+                .partial_cmp(&nearest(&[**b], xy).unwrap_or(f64::INFINITY)).unwrap()).unwrap();
+            leads.push((p, xy, row));
+        }
+    }
+    // each rail's leads get as many of its free holes as there are leads, the nearest the leads
+    let mut rows: Vec<Row> = Vec::new();
+    for l in &leads {
+        if !rows.contains(&l.2) {
+            rows.push(l.2);
+        }
+    }
+    let mut groups: Vec<(Vec<usize>, Vec<Hole>)> = Vec::new();
+    for &r in &rows {
+        let ry = c.boards[c.default_board as usize].rail_y(r) as f64;
+        let mut who: Vec<usize> = (0..leads.len()).filter(|&i| leads[i].2 == r).collect();
+        who.sort_by(|&a, &b| (leads[a].1 .1 - ry).abs().partial_cmp(&(leads[b].1 .1 - ry).abs()).unwrap());
+        let (mx, my) = (who.iter().map(|&i| leads[i].1 .0).sum::<f64>() / who.len() as f64, who.iter().map(|&i| leads[i].1 .1).sum::<f64>() / who.len() as f64);
+        let mut holes: Vec<Hole> = free.iter().copied().filter(|h| h.row == r).collect();
+        holes.sort_by(|a, b| pyf::dist(c.xy(*a), (mx, my)).partial_cmp(&pyf::dist(c.xy(*b), (mx, my))).unwrap());
+        holes.truncate(who.len());
+        groups.push((who, holes));
+    }
+    // try every way of sharing each rail's holes out (few leads go to one rail), keep the one with the fewest
+    // crossings, then the shortest leads; with too many ways, the nearest pin to its rail takes the nearest hole
+    let ways: usize = groups.iter().map(|(w, _)| (1..=w.len()).product::<usize>()).product();
+    let mut choice: Vec<Vec<usize>> = groups.iter().map(|(w, h)| (0..w.len().min(h.len())).collect()).collect();
+    if ways <= 5040 {
+        let perms: Vec<Vec<Vec<usize>>> = groups.iter().map(|(w, h)| permutations(w.len().min(h.len()))).collect();
+        let mut best: Option<((usize, f64), Vec<Vec<usize>>)> = None;
+        let mut idx = vec![0usize; groups.len()];
+        loop {
+            let pick: Vec<Vec<usize>> = (0..groups.len()).map(|g| perms[g][idx[g]].clone()).collect();
+            let mut lines: Vec<(Xy, Xy)> = Vec::new();
+            for (g, (who, holes)) in groups.iter().enumerate() {
+                for (k, &i) in who.iter().enumerate().take(holes.len()) {
+                    lines.push((leads[i].1, c.xy(holes[pick[g][k]])));
+                }
+            }
+            let mut crossings = 0;
+            for i in 0..lines.len() {
+                for j in i + 1..lines.len() {
+                    crossings += crate::measure::cross(lines[i], lines[j]) as usize;
+                }
+            }
+            let length: f64 = lines.iter().map(|l| pyf::dist(l.0, l.1)).sum();
+            if best.as_ref().map(|b| crossings < b.0 .0 || (crossings == b.0 .0 && length < b.0 .1 - 1e-9)).unwrap_or(true) {
+                best = Some(((crossings, length), pick));
+            }
+            let mut g = 0;
+            while g < groups.len() {
+                idx[g] += 1;
+                if idx[g] < perms[g].len() {
+                    break;
+                }
+                idx[g] = 0;
+                g += 1;
+            }
+            if g == groups.len() {
+                break;
+            }
+        }
+        choice = best.unwrap().1;
+    }
+    let mut out: IndexMap<PinId, Hole> = IndexMap::default();
+    for (g, (who, holes)) in groups.iter().enumerate() {
+        for (k, &i) in who.iter().enumerate().take(holes.len()) {
+            out.insert(leads[i].0, holes[choice[g][k]]);
+        }
+    }
+    out
+}
+
+/// Every ordering of 0..n.
+fn permutations(n: usize) -> Vec<Vec<usize>> {
+    if n == 0 {
+        return vec![vec![]];
+    }
+    let mut out = Vec::new();
+    for p in permutations(n - 1) {
+        for at in 0..=p.len() {
+            let mut q = p.clone();
+            q.insert(at, n - 1);
+            out.push(q);
         }
     }
     out

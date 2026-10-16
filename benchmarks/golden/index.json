@@ -1,8 +1,8 @@
 {
  "01-led": {
-  "hash": "ad0bd17eb3",
-  "score": 13.016143169218642,
-  "events": 32
+  "hash": "97d58a1480",
+  "score": 12.718304780320999,
+  "events": 30
  },
  "02-pico-button": {
   "hash": "c3ada2d524",
@@ -17,22 +17,22 @@
  "04-555-blinker": {
   "hash": "f19f7bd532",
   "score": 45.718304780321,
-  "events": 165
+  "events": 167
  },
  "05-555-4017-chaser": {
-  "hash": "b016f14062",
-  "score": 209.8263928451253,
-  "events": 216
+  "hash": "21b742e42f",
+  "score": 208.12423123402294,
+  "events": 214
  },
  "06-lm386-amp": {
-  "hash": "5f9d6b82a9",
-  "score": 80.97505048868048,
-  "events": 248
+  "hash": "3a7a49dd1a",
+  "score": 67.56509096779688,
+  "events": 247
  },
  "07-lm358-amp": {
-  "hash": "8be43d8845",
-  "score": 98.55691852443594,
-  "events": 220
+  "hash": "406c4e4be5",
+  "score": 95.16210239385873,
+  "events": 207
  },
  "08-relay-driver": {
   "hash": "32d7701fc7",
@@ -45,14 +45,14 @@
   "events": 201
  },
  "10-atmega328-breadboard": {
-  "hash": "4ee55676c7",
-  "score": 64.82410066895127,
-  "events": 212
+  "hash": "b2f2d3ccdf",
+  "score": 60.82410066895128,
+  "events": 192
  },
  "11-l293d-motors": {
-  "hash": "5ccedc0fd3",
-  "score": 206.24833654210238,
-  "events": 199
+  "hash": "99c5624baf",
+  "score": 200.8350135580331,
+  "events": 213
  },
  "12-pico-i2c": {
   "hash": "85fb99b1e6",
@@ -60,9 +60,9 @@
   "events": 214
  },
  "13-ben-eater-register": {
-  "hash": "e4060bb6ac",
-  "score": 841.8414357435131,
-  "events": 330
+  "hash": "706ed154eb",
+  "score": 783.138377724692,
+  "events": 328
  },
  "14-7seg-multiplexed": {
   "hash": "4ea45b6447",
@@ -70,14 +70,14 @@
   "events": 322
  },
  "15-ipod-m1": {
-  "hash": "1bd5a04b85",
-  "score": 254.7437158959231,
-  "events": 269
+  "hash": "fb9de91c76",
+  "score": 249.86514465165303,
+  "events": 230
  },
  "16-ipod-m2": {
-  "hash": "4fa311a975",
-  "score": 2698.4886125583816,
-  "events": 611
+  "hash": "bef1411b52",
+  "score": 2433.42218404242,
+  "events": 697
  },
  "17-esp32-devkit": {
   "hash": "400881a370",
@@ -90,14 +90,14 @@
   "events": 158
  },
  "19-two-supplies": {
-  "hash": "3500d23c32",
-  "score": 46.5763930401593,
-  "events": 181
+  "hash": "85e6f6a977",
+  "score": 45.14408201859587,
+  "events": 198
  },
  "20-esp32-offboard": {
-  "hash": "108b69d7ae",
-  "score": 99.74190148075542,
-  "events": 286
+  "hash": "58bc436d3a",
+  "score": 83.4206317235401,
+  "events": 263
  },
  "21-esp32-under": {
   "hash": "23f6488a6f",

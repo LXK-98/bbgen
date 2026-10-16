@@ -28,7 +28,7 @@ BBGEN = [str(HERE.parent / "target" / "release" / "bbgen")]  # built by main() f
 # what the table shows: (key, heading, lower is better)
 COLUMNS = [
     ("errors", "err", True), ("warnings", "warn", True), ("slanted", "slant", True), ("bent", "bent", True),
-    ("crossings", "cross", True), ("flex", "flex", True), ("rail_links_inside", "links", True),
+    ("crossings", "cross", True), ("lead_crossings", "lead×", True), ("flex", "flex", True), ("rail_links_inside", "links", True),
     ("label_clashes", "labels", True), ("board_wire", "wire", True), ("flying", "lead", True),
     ("columns", "cols", True), ("seconds", "s", True),
 ]

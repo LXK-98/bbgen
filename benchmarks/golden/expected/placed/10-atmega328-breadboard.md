@@ -33,16 +33,16 @@ Place these first.
 
 ### 5V (4)
 
-- [ ] **W1** red: `j53` → `bot+53` · 5V (U1.20 AVCC, C3.1 ↔ bot+ rail)
-- [ ] **W2** red: `a55` → `top+55` · 5V (U1.7 VCC, R1.1 ↔ top+ rail)
-- [ ] **W3** red: `top+3` → `bot+3` · 5V (top+ rail ↔ bot+ rail)
-- [ ] **W4** red: `J1.3 5V` → `top+61` · 5V (J1.3 5V ↔ top+ rail)
+- [ ] **W1** red: `J1.3 5V` → `top+61` · 5V (J1.3 5V ↔ top+ rail)
+- [ ] **W2** red: `j53` → `bot+53` · 5V (U1.20 AVCC, C3.1 ↔ bot+ rail)
+- [ ] **W3** red: `a55` → `top+55` · 5V (U1.7 VCC, R1.1 ↔ top+ rail)
+- [ ] **W4** red: `top+3` → `bot+3` · 5V (top+ rail ↔ bot+ rail)
 
 ### GND (3)
 
-- [ ] **W5** black: `a54` → `top-54` · GND (U1.8 GND, C1.2, C2.2 ↔ top- rail)
-- [ ] **W6** black: `J1.1 GND` → `top-61` · GND (J1.1 GND ↔ top- rail)
-- [ ] **W7** black: `top-60` → `J1.2 CTS` · GND (top- rail ↔ J1.2 CTS)
+- [ ] **W5** black: `J1.1 GND` → `top-61` · GND (J1.1 GND ↔ top- rail)
+- [ ] **W6** black: `J1.2 CTS` → `top-60` · GND (J1.2 CTS ↔ top- rail)
+- [ ] **W7** black: `a54` → `top-54` · GND (U1.8 GND, C1.2, C2.2 ↔ top- rail)
 
 ### DTR (1)
 

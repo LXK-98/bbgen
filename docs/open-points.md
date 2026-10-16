@@ -127,12 +127,119 @@ its nine Dupont leads. All are flying leads from off-board connectors crossing e
   another's should get the upper rail. Today `rail_plan` (autoplace) and `rails` (autowire) fill rails
   top first, and placement tries both orders only for two free supplies (`_rail_order`, `orders` in
   `search::autoplace`).
-- 19 is such a case: both orders are already built and scored, and the crossed one wins. Start there
-  (11 columns, 0.2 s): build it with each `_rail_order` and compare what each score is made of. Either
-  the crossing (`CROSS_WEIGHT` on the leads) is too cheap against what the other order costs, or the
-  other order loses for a reason of its own (the LD1117's body over its input pin, as `expect:` notes).
+- 19 is such a case, and the rail order isn't what goes wrong. With 5V first and the LD1117 at `e61`
+  turned 270, 19 scores 36.0 (1 crossing, 4 wires, 16.7 holes of lead, 8 columns) against today's 46.6
+  (2, 6, 25.3, 11). The search builds that start, but it scores 79 there: the small parts' first legs
+  bunch up into a warning that repair would remove. Only the best start (64.3, 3V3 first) is turned and
+  repaired, and repair moves parts, never the rail order, so the better layout is never reached.
+  - Repairing the best start of each rail order: no change (5V first's best start is the LD1117 at
+    `f61`, below the trench, and repair can't take it across); 16 a second slower. Reverted.
+  - Repairing every start (8 to 12 of them): 19 gets its 36.0 layout; 14 loses its warning and its
+    slant; 02, 09, 18 and 20 get shorter wires or leads. But 13 goes 12 → 36 crossings (16 → 12
+    jumpers), 14 25 → 35, 07 1 → 4, and the run takes 53 s instead of 8. Reverted.
+  - So two things: the start scores rank on problems repair fixes easily (a start's score is a poor
+    guide to where it ends), and once the search finds more, the score lets crossings go cheaply
+    (`CROSS_WEIGHT` 2 against `FLEX_WEIGHT` 12 per jumper: 13 traded 4 jumpers for 24 crossings).
+    A better search needs the score to hold crossings dearer first, or it makes 13 and 14 worse.
+    Cheaper than repairing every start: polish each start a little (a few builds of leg moves) before
+    choosing, so the starts are compared as they'd be once their small parts are tidied.
 - Where the file doesn't fix the connector's pin order (off-board parts whose labels are just names),
   bbgen could order the pins to match where their nets land; for a real header (the ESP32) it can't.
+
+**Research** (October 2026), on the two halves of 19's finding above.
+
+*Which starts get the repair.* Ranking starts by their raw score is the "greedy trap" the pilot method was
+made for: judge each choice by the result of finishing it with a cheap heuristic, not by how it looks now
+([Duin & Voß 1999; Voß, Fink & Duin 2005](https://ideas.repec.org/a/spr/annopr/v136y2005i1p285-30210.1007-s10479-005-2060-2.html)).
+Repairing every start is that method at full price. Sharing a budget between starts is a bandit problem:
+[Györgyi & Kocsis](https://arxiv.org/abs/1401.3894) give each local-search instance resources by how far it
+could still get, and need only logarithmically more evaluations than a search started in the right place.
+The simple form is successive halving: give every start a small budget, keep the better half, double the
+budget, repeat ([overview](https://www.emergentmind.com/topics/successive-halving-sh)). Its known risk is
+pruning a slow starter too early, which is 19's `e61` start exactly, so the first round has to be long
+enough to tidy the small parts. For bbgen: every start gets a few repair builds, the better half twice as
+many, and so on, until one start has the full `REPAIR_BUILDS`. That costs about twice today's one repair,
+not 8–12 times.
+
+The closest working tool, [Stripboard Editor](https://stripboard-editor.com/how-auto-layout-works) (simulated
+annealing on stripboard), does three things worth copying. It scores during search with a fast approximate
+wiring and runs the slow, thorough finish only on new best boards. It makes several runs from different
+random starts and keeps the best by the full-price score. And it raises the price of slanted or crossing
+wires during the run (25 → 400) while the temperature falls, so rough arrangements can form early and get
+tidied late. That is a penalty schedule: a start's fixable faults count for little at first.
+
+*How much a crossing is worth.* A weighted sum works only when the weights say what the user prefers;
+otherwise the objectives are put in order instead (lexicographic optimization).
+[Paquete & Stützle](https://eden.dei.uc.pt/%7Epaquete/papers/patat2002.pdf) compare two ways to search like
+that: comparing level by level (Lex-tie), or meeting each level in turn (Lex-seq). Level by level falls
+behind when the top level is hard to meet. [Timefold](https://docs.timefold.ai/timefold-solver/latest/constraints-and-score/overview)
+has hard, medium and soft score levels, and warns against a big weight where a level is meant. The
+[stripboard ASP paper](https://arxiv.org/html/2512.04910v1) ranks its objectives by priority too (strip
+distance, then area, then width). In diagrams, crossings are by far the aesthetic that most affects how
+easily people read them ([Purchase 1997](https://eprints.gla.ac.uk/35804)), more than bends. A builder
+follows a checklist wire by wire, so that applies less, but it argues for counting crossings dearer than 2.
+
+What to try, in order:
+1. Settle what a jumper is worth against crossings (a preference, not a weight to tune): today 1 jumper
+   = 6 crossings. Count a flying lead over a board wire apart from two wires on the board, since the lead
+   runs above it. Then check that today's layouts keep their numbers.
+2. Successive halving over the starts instead of repairing only the best.
+3. If the score still trades badly once the search finds more: levels (errors, then warnings, then the
+   rest) in place of the 1000 and 15 weights, or Stripboard Editor's rising price for crossings.
+
+**Tried: the new prices alone** (`CROSS_WEIGHT` 6 for two wires flat on the board or two in the air,
+`CROSS_OVER_WEIGHT` 1 for a lead or jumper passing over a flat wire). Crossings fall in 13 (12 → 10),
+14 (25 → 17), 15 (5 → 4), 16 (204 → 193) and 19 (2 → 1; 19 also gets 8 columns and 16.7 holes of lead,
+most of its better layout). They rise in 10, 17 and 18, all of it leads passing over board wires, as
+meant. But 13 gains a warning and 16 two (`OVER_PART`). In 16 that's a trade the score now allows (2
+warnings at 15 against 11 crossings). In 13 it isn't: the old warning-free layout scores 879.8 under the
+new prices, the one found 904.3. The search took another path from its one repaired start and missed
+it. Raising warnings to 60 kept both warnings and cost 09 a slant and 4 jumpers, so the weights can't be
+judged apart from the search: a change of price changes which start wins and where repair goes. Not
+kept yet; worth judging again with step 2 in place, and with each benchmark's old layout scored under
+the new prices as a check (`bbgen dev build golden/placed/<name>.yaml` prints its score).
+
+**Tried next, judged by each benchmark's old layout scored under the new prices** (a search change can
+then be told from a price change: if the search ends above the old layout, it missed it).
+- Repairing every start, with the new prices: 14 of 21 better than their old layouts, 6 the same, 07 still
+  missed (total score 7378 → 7150). 19 gets its 30.0 layout, 10 and 18 lose their crossings. But 13 and
+  16 take warnings (2 and 4): at 15 a warning is cheaper than a jumper.
+- Warnings at 60 in the score itself: 13 drops to 0 warnings, but 19 loses its good layout and 04 and 16
+  miss theirs. Repair is a local search, and a dear warning walls off the paths that pass through one.
+- Repairing at 15, choosing among the repaired starts at 60 (`PICK_WARNING_WEIGHT`): 13 keeps one warning
+  and 13 crossings, 19 keeps 30.0. This is what Stripboard Editor does (cheap penalties while searching,
+  the full price to choose).
+- Successive halving, simulated on every start's recorded repair (score after each kept move): it gets a
+  third of the gain (7580 → 7514 against 7398 for repairing all) for 1.2× the builds; a longer first round
+  gets no more. A start's score after a few builds says little about where it ends (13, 14, 20 lose their
+  winner early). Not built.
+- **Verdict: worse, reverted.** Looked at as drawings, the layouts below read messier than before in most
+  cases, although they score lower: parts crammed into a cluster with labels over each other (18), legs
+  stretched out to save a wire (02), LEDs scattered over both halves (09). The score rewards short and few
+  wires and hardly sees crowding, labels over parts, stretched legs or parts out of line; a stronger search
+  finds the layouts that exploit that. The old, weaker search mostly kept the estimate's tidy placements (it
+  likes room around parts). So the score has to see tidiness before the search is made stronger, and every
+  change has to be judged on the drawings, not only on the numbers.
+- What was tried (all reverted): every start turned and repaired, side by side on threads,
+  each building its trials one at a time; the winner chosen at the full warning price; the new crossing
+  prices. Same layouts at `BBGEN_JOBS=1`. Against the old layouts: 14 better, 5 the same, 07 and 16
+  missed (16 takes 2 warnings; at the full price its old layout is better and no start reaches it).
+  Crossings over all 21: 265 → 245, jumpers 91 → 91, warnings 2 → 4 (16). The cost is time: 8 s → 33 s
+  for all 21, 16 alone 3 s → 11–15 s, since 8 repairs are 8 times the work (16: 54 s on one core).
+
+**Kept (October 2026): rules for the supply leads, and crossings on the board only.**
+- `crossings` (the `cross` column, and the score) counts only wires on the board: where an off-board part
+  sits is the drawing's choice, and a lead runs above the board. `lead×` counts crossings with a lead in
+  them, for information.
+- Every flying lead of a rail's net gets its hole before anything else is placed (`autoplace::lead_plan`):
+  on a rail of its net, every rail lead of one connector on the same side of the board, in the outermost
+  free holes, shared out by fewest crossings; a ground may take a free `-` rail; a lead leaves a part's
+  straight drop to the rail its hole. Wiring lays them first and `settle_leads` leaves them be. 19's leads
+  no longer cross, 13 loses its warning; 16 is worse (37 → 75 board crossings), a search miss: its old
+  layout scores better under the new rules.
+- Tried and left out: a fence keeping the circuit out of the leads' columns, in placement's model or as a
+  move of the finished layout toward it. Every variant reshuffled the search (05 and 13 messier, 13 up to 4
+  warnings), as any change to placement's limits or prices does while it repairs one start only.
 
 ## 5. Circuit 16 is big: 41 jumpers, 204 crossings, 75 s
 

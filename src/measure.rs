@@ -19,10 +19,11 @@ pub fn cross(s: (Xy, Xy), t: (Xy, Xy)) -> bool {
     turn(p, q, a) * turn(p, q, b) < 0.0 && turn(a, b, p) * turn(a, b, q) < 0.0
 }
 
-fn segments(c: &Circuit) -> Vec<(i64, Xy, Xy)> {
+/// Each wire's runs, those of the flying leads (to an off-board pin) or those lying on the board.
+fn segments(c: &Circuit, leads: bool) -> Vec<(i64, Xy, Xy)> {
     let mut out = Vec::new();
     for w in &c.wires {
-        if w.a.is_some() && w.b.is_some() {
+        if w.a.is_some() && w.b.is_some() && w.on_board() != leads {
             let pts = c.wire_points(w);
             for s in pts.windows(2) {
                 out.push((w.num, s[0], s[1]));
@@ -32,24 +33,34 @@ fn segments(c: &Circuit) -> Vec<(i64, Xy, Xy)> {
     out
 }
 
-/// Pairs of wire runs that cross: what makes a layout look tangled.
-pub fn crossings(c: &Circuit) -> usize {
-    let segs = segments(c);
-    let boxes: Vec<(f64, f64, f64, f64)> = segs.iter().map(|&(_, a, b)| {
-        (crate::circuit::pymin(a.0, b.0), crate::circuit::pymax(a.0, b.0), crate::circuit::pymin(a.1, b.1), crate::circuit::pymax(a.1, b.1))
-    }).collect();
+/// Pairs of runs that cross, of one wire from `a` and one from `b` (or within `a`, when `b` is None).
+fn crossed(a: &[(i64, Xy, Xy)], b: Option<&[(i64, Xy, Xy)]>) -> usize {
+    let bx = |&(_, p, q): &(i64, Xy, Xy)| (crate::circuit::pymin(p.0, q.0), crate::circuit::pymax(p.0, q.0), crate::circuit::pymin(p.1, q.1), crate::circuit::pymax(p.1, q.1));
     let mut n = 0;
-    for i in 0..segs.len() {
-        for j in i + 1..segs.len() {
-            let ((wi, a, b), (wj, p, q)) = (segs[i], segs[j]);
-            let (bi, bj) = (boxes[i], boxes[j]);
+    for i in 0..a.len() {
+        let others = match b { Some(b) => b, None => &a[i + 1..] };
+        for t in others {
+            let ((wi, p, q), (wj, r, s)) = (a[i], *t);
+            let (bi, bj) = (bx(&a[i]), bx(t));
             if wi == wj || bi.1 < bj.0 || bj.1 < bi.0 || bi.3 < bj.2 || bj.3 < bi.2 {
                 continue;
             }
-            n += cross((a, b), (p, q)) as usize;
+            n += cross((p, q), (r, s)) as usize;
         }
     }
     n
+}
+
+/// Pairs of wires on the board that cross: what makes a layout look tangled. Flying leads don't count: where an
+/// off-board part sits is the drawing's choice, not the build's, and a lead runs above the board.
+pub fn crossings(c: &Circuit) -> usize {
+    crossed(&segments(c, false), None)
+}
+
+/// Pairs that cross with a flying lead in them (another lead, or a wire on the board): how the drawing reads.
+pub fn lead_crossings(c: &Circuit) -> usize {
+    let (leads, board) = (segments(c, true), segments(c, false));
+    crossed(&leads, None) + crossed(&leads, Some(&board))
 }
 
 /// Wires lying on the board that are bent around a part.

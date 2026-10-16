@@ -12,13 +12,13 @@ parts:
     type: resistor
     value: 330R
     pins:
-    - top+59
-    - a59
+    - top+60
+    - a60
   D1:
     type: led
     pins:
+    - c60
     - c59
-    - c58
 nets:
   5V:
     pins:

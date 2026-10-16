@@ -30,25 +30,25 @@ Place these first.
 - [ ] **R3** 10k: legs in `2:b15` and `2:b19`
 - [ ] **R4** 10k: legs in `2:a11` and `2:a14`
 - [ ] **C5** 10uF: legs in `2:b60` and `2:b59` (+ leg first)
-- [ ] **C1** 1uF: legs in `2:top+58` and `2:top-58`
-- [ ] **C2** 1uF: legs in `2:bot+59` and `2:bot-59`
+- [ ] **C1** 1uF: legs in `2:top+61` and `2:top-61`
+- [ ] **C2** 1uF: legs in `2:bot+54` and `2:bot-54`
 - [ ] **C3** 1uF: legs in `b43` and `b42`
-- [ ] **C4** 1uF: legs in `i43` and `bot-43`
+- [ ] **C4** 1uF: legs in `j43` and `bot-43`
 - [ ] **C6** 100nF: legs in `bot+31` and `bot-31`
 - [ ] **U1** SN74LVC8T245: pin 1 in `f47`, notch (pin-1 end) pointing left; 24 pins, rows 0.6 in apart. ASSUMED: TSSOP-24_4.4x7.8mm_P0.65mm on a 24-pin adapter: chip pad n on adapter pin n. Check this against your adapter
-- [ ] **U2** SN74LVC8T245: pin 1 in `2:f24`, notch (pin-1 end) pointing left; 24 pins, rows 0.6 in apart. ASSUMED: TSSOP-24_4.4x7.8mm_P0.65mm on a 24-pin adapter: chip pad n on adapter pin n. Check this against your adapter
+- [ ] **U2** SN74LVC8T245: pin 1 in `2:b35`, notch (pin-1 end) pointing right; 24 pins, rows 0.6 in apart. ASSUMED: TSSOP-24_4.4x7.8mm_P0.65mm on a 24-pin adapter: chip pad n on adapter pin n. Check this against your adapter
 - [ ] **U3** SN74LVC8T245: pin 1 in `2:b52`, notch (pin-1 end) pointing right; 24 pins, rows 0.6 in apart. ASSUMED: TSSOP-24_4.4x7.8mm_P0.65mm on a 24-pin adapter: chip pad n on adapter pin n. Check this against your adapter
 - [ ] **U4** SN74LVC1T45DBV: pin 1 in `f60`, notch (pin-1 end) pointing left; 6 pins, rows 0.3 in apart. ASSUMED: SOT-23-6 on a 6-pin adapter: chip pad n on adapter pin n. Check this against your adapter
 - [ ] **R7** 10k: legs in `2:h52` and `2:h57`
-- [ ] **R8** 10k: legs in `2:i52` and `2:i56`
+- [ ] **R8** 10k: legs in `2:i51` and `2:i56`
 - [ ] **C7** 100nF: legs in `a60` and `top-60`
-- [ ] **C8** 100nF: legs in `h60` and `h57`
-- [ ] **C9** 100nF: legs in `2:j25` and `2:bot-25`
-- [ ] **C10** 100nF: legs in `2:j52` and `2:j50`
-- [ ] **C11** 100nF: legs in `2:a53` and `2:top-53`
-- [ ] **C12** 100nF: legs in `2:j51` and `2:bot-51`
+- [ ] **C8** 100nF: legs in `i60` and `i58`
+- [ ] **C9** 100nF: legs in `2:g36` and `2:g33`
+- [ ] **C10** 100nF: legs in `2:i34` and `2:i33`
+- [ ] **C11** 100nF: legs in `2:h38` and `2:h41`
+- [ ] **C12** 100nF: legs in `2:h51` and `2:h50`
 - [ ] **C13** 100nF: legs in `g60` and `g61`
-- [ ] **C14** 100nF: legs in `2:b6` and `2:b4`
+- [ ] **C14** 100nF: legs in `2:a6` and `2:top-6`
 - [ ] **J1** Interposer J1: off the breadboard: reached with flying leads
 
 ## Wires
@@ -57,218 +57,211 @@ Place these first.
 
 - [ ] **W1** red: `2:a60` → `2:top+60` · VSYS (U12.1 VIN, C5.1 + ↔ top+ rail)
 
-### GND (30)
+### GND (28)
 
-- [ ] **W2** black: `g57` → `g58` · GND (U1.11 GND, C8.2 ↔ U1.12 GND)
-- [ ] **W3** black: `2:g34` → `2:g35` · GND (U2.11 GND ↔ U2.12 GND)
-- [ ] **W4** black: `2:a59` → `2:top-59` · GND (U12.2 VSS, C5.2 - ↔ top- rail)
-- [ ] **W5** black: `a58` → `top-58` · GND (U1.13 GND ↔ top- rail)
-- [ ] **W6** black: `2:top-45` → `2:a45` · GND (top- rail ↔ U3.8 A6)
-- [ ] **W7** black: `2:top-43` → `2:a43` · GND (top- rail ↔ U3.10 A8)
-- [ ] **W8** black: `top-49` → `a49` · GND (top- rail ↔ U1.22 /OE)
-- [ ] **W9** black: `2:top-42` → `2:a42` · GND (top- rail ↔ U3.11 GND)
-- [ ] **W10** black: `2:top-41` → `2:a41` · GND (top- rail ↔ U3.12 GND)
-- [ ] **W11** black: `a42` → `top-42` · GND (U11.2 GND, C3.2 ↔ top- rail)
-- [ ] **W12** black: `2:top-35` → `2:a35` · GND (top- rail ↔ U2.13 GND)
-- [ ] **W13** black: `2:bot-33` → `2:bot-31` · GND (bot- rail ↔ bot- rail)
-- [ ] **W14** black: `2:j19` → `2:bot-19` · GND (Pico.18 GND ↔ bot- rail)
-- [ ] **W15** black: `j22` → `bot-22` · GND (RV1.3 ↔ bot- rail)
-- [ ] **W16** black: `2:bot-41` → `2:j41` · GND (bot- rail ↔ U3.13 GND)
-- [ ] **W17** black: `bot-57` → `j57` · GND (bot- rail ↔ U1.11 GND, C8.2)
-- [ ] **W18** black: `2:bot-35` → `2:j35` · GND (bot- rail ↔ U2.12 GND)
-- [ ] **W19** black: `bot-61` → `j61` · GND (bot- rail ↔ U4.2 GND, C13.2)
-- [ ] **W20** black: `bot-30` → `bot-33` · GND (bot- rail ↔ bot- rail)
-- [ ] **W21** black: `2:g41` → `2:g50` · GND (U3.13 GND ↔ U3.22 /OE, C10.2)
-- [ ] **W22** black: `c42` → `c29` · GND (U11.2 GND, C3.2 ↔ U13.2 V-)
-- [ ] **W23** black: `top-34` → `bot-34` · GND (top- rail ↔ bot- rail)
-- [ ] **W24** black: `2:h35` → `2:h36` · GND (U2.12 GND ↔ jumper junction)
-- [ ] **W25** black: `2:f36` → `2:e36` · GND (jumper junction ↔ jumper junction)
-- [ ] **W26** black: `2:a36` → `2:top-36` · GND (jumper junction ↔ top- rail)
-- [ ] **W27** black: `2:bot-60` → `J1.17 GND` · GND (bot- rail ↔ J1.17 GND)
-- [ ] **W28** black: `2:bot-61` → `J1.31 GND` · GND (bot- rail ↔ J1.31 GND)
-- [ ] **W29** black: `2:top-61` → `J1.3 GND` · GND (top- rail ↔ J1.3 GND)
-- [ ] **W30** black: `2:top-57` → `J1.6 GND` · GND (top- rail ↔ J1.6 GND)
-- [ ] **W31** black: `2:top-55` → `J1.8 GND` · GND (top- rail ↔ J1.8 GND)
+- [ ] **W2** black: `J1.31 GND` → `2:bot-61` · GND (J1.31 GND ↔ bot- rail)
+- [ ] **W3** black: `J1.17 GND` → `2:bot-59` · GND (J1.17 GND ↔ bot- rail)
+- [ ] **W4** black: `J1.8 GND` → `2:bot-58` · GND (J1.8 GND ↔ bot- rail)
+- [ ] **W5** black: `J1.6 GND` → `2:bot-57` · GND (J1.6 GND ↔ bot- rail)
+- [ ] **W6** black: `J1.3 GND` → `2:bot-55` · GND (J1.3 GND ↔ bot- rail)
+- [ ] **W7** black: `g57` → `g58` · GND (U1.11 GND ↔ U1.12 GND, C8.2)
+- [ ] **W8** black: `a58` → `top-58` · GND (U1.13 GND ↔ top- rail)
+- [ ] **W9** black: `2:a59` → `2:top-59` · GND (U12.2 VSS, C5.2 - ↔ top- rail)
+- [ ] **W10** black: `2:a4` → `2:top-4` · GND (Pico.38 GND ↔ top- rail)
+- [ ] **W11** black: `top-49` → `a49` · GND (top- rail ↔ U1.22 /OE)
+- [ ] **W12** black: `2:top-45` → `2:a45` · GND (top- rail ↔ U3.8 A6)
+- [ ] **W13** black: `a42` → `top-42` · GND (U11.2 GND, C3.2 ↔ top- rail)
+- [ ] **W14** black: `2:top-24` → `2:a24` · GND (top- rail ↔ U2.12 GND)
+- [ ] **W15** black: `2:top-43` → `2:a43` · GND (top- rail ↔ U3.10 A8)
+- [ ] **W16** black: `2:top-25` → `2:a25` · GND (top- rail ↔ U2.11 GND)
+- [ ] **W17** black: `2:top-42` → `2:a42` · GND (top- rail ↔ U3.11 GND)
+- [ ] **W18** black: `2:top-41` → `2:a41` · GND (top- rail ↔ U3.12 GND)
+- [ ] **W19** black: `2:top-31` → `2:top-33` · GND (top- rail ↔ top- rail)
+- [ ] **W20** black: `j22` → `bot-22` · GND (RV1.3 ↔ bot- rail)
+- [ ] **W21** black: `bot-58` → `j58` · GND (bot- rail ↔ U1.12 GND, C8.2)
+- [ ] **W22** black: `bot-61` → `j61` · GND (bot- rail ↔ U4.2 GND, C13.2)
+- [ ] **W23** black: `2:bot-41` → `2:i41` · GND (bot- rail ↔ U3.13 GND, C11.2)
+- [ ] **W24** black: `bot-30` → `bot-33` · GND (bot- rail ↔ bot- rail)
+- [ ] **W25** black: `2:g41` → `2:g50` · GND (U3.13 GND, C11.2 ↔ U3.22 /OE, C12.2)
+- [ ] **W26** black: `2:h24` → `2:h33` · GND (U2.13 GND ↔ U2.22 /OE, C9.2, C10.2)
+- [ ] **W27** black: `c42` → `c29` · GND (U11.2 GND, C3.2 ↔ U13.2 V-)
+- [ ] **W28** black: `top-34` → `bot-34` · GND (top- rail ↔ bot- rail)
+- [ ] **W29** black: `2:top-37` → `2:bot-37` · GND (top- rail ↔ bot- rail)
 
 ### 3V0 (3)
 
-- [ ] **W32** orange: `j30` → `bot+30` · 3V0 (U13.6 V+, R1.1 ↔ bot+ rail)
-- [ ] **W33** orange: `2:j60` → `2:bot+60` · 3V0 (U12.6 VOUT ↔ bot+ rail)
-- [ ] **W34** orange: `2:bot+61` → `J1.33 3V0` · 3V0 (bot+ rail ↔ J1.33 3V0)
+- [ ] **W30** orange: `J1.33 3V0` → `2:bot+61` · 3V0 (J1.33 3V0 ↔ bot+ rail)
+- [ ] **W31** orange: `j30` → `bot+30` · 3V0 (U13.6 V+, R1.1 ↔ bot+ rail)
+- [ ] **W32** orange: `2:j60` → `2:bot+60` · 3V0 (U12.6 VOUT ↔ bot+ rail)
 
-### 3V3 (9)
+### 3V3 (7)
 
-- [ ] **W35** pink: `g47` → `g48` · 3V3 (U1.1 VCCA ↔ U1.2 DIR)
-- [ ] **W36** pink: `2:h24` → `2:h25` · 3V3 (U2.1 VCCA ↔ U2.2 DIR, C9.1)
-- [ ] **W37** pink: `2:a6` → `2:top+6` · 3V3 (Pico.36 3V3, C14.1 ↔ top+ rail)
-- [ ] **W38** pink: `2:a52` → `2:a54` · 3V3 (U3.1 VCCA ↔ jumper junction)
-- [ ] **W39** pink: `2:b54` → `2:b53` · 3V3 (jumper junction ↔ C11.1)
-- [ ] **W40** pink: `b60` → `b59` · 3V3 (U4.6 VCCB, C7.1 ↔ jumper junction)
-- [ ] **W41** pink: `a59` → `top+59` · 3V3 (jumper junction ↔ top+ rail)
-- [ ] **W42** pink: `top+46` → `f46` · 3V3 (top+ rail ↔ jumper junction)
-- [ ] **W43** pink: `h46` → `h47` · 3V3 (jumper junction ↔ U1.1 VCCA)
+- [ ] **W33** pink: `g47` → `g48` · 3V3 (U1.1 VCCA ↔ U1.2 DIR)
+- [ ] **W34** pink: `2:f36` → `2:f38` · 3V3 (C9.1 ↔ C11.1)
+- [ ] **W35** pink: `b60` → `b59` · 3V3 (U4.6 VCCB, C7.1 ↔ jumper junction)
+- [ ] **W36** pink: `a59` → `top+59` · 3V3 (jumper junction ↔ top+ rail)
+- [ ] **W37** pink: `top+40` → `a40` · 3V3 (top+ rail ↔ jumper junction)
+- [ ] **W38** pink: `e40` → `f40` · 3V3 (jumper junction ↔ jumper junction)
+- [ ] **W39** pink: `j40` → `j47` · 3V3 (jumper junction ↔ U1.1 VCCA)
 
 ### VDDIO (5)
 
-- [ ] **W44** blue: `2:g51` → `2:g52` · VDDIO (U3.23 VCCB, C12.1 ↔ U3.24 VCCB, R7.1, R8.1, C10.1)
-- [ ] **W45** blue: `g43` → `g44` · VDDIO (U11.6 VOUT, C4.1 ↔ jumper junction)
-- [ ] **W46** blue: `f44` → `e44` · VDDIO (jumper junction ↔ jumper junction)
-- [ ] **W47** blue: `a44` → `a47` · VDDIO (jumper junction ↔ U1.24 VCCB)
-- [ ] **W48** blue: `2:h51` → `J1.26 VDDIO` · VDDIO (U3.23 VCCB, C12.1 ↔ J1.26 VDDIO)
+- [ ] **W40** blue: `2:g51` → `2:g52` · VDDIO (U3.23 VCCB, R8.1, C12.1 ↔ U3.24 VCCB, R7.1)
+- [ ] **W41** blue: `2:h34` → `2:h35` · VDDIO (U2.23 VCCB, C10.1 ↔ U2.24 VCCB)
+- [ ] **W42** blue: `2:j35` → `2:j51` · VDDIO (U2.24 VCCB ↔ U3.23 VCCB, R8.1, C12.1)
+- [ ] **W43** blue: `h43` → `h60` · VDDIO (U11.6 VOUT, C4.1 ↔ U4.1 VCCA, C8.1, C13.1)
+- [ ] **W44** blue: `2:j52` → `J1.26 VDDIO` · VDDIO (U3.24 VCCB, R7.1 ↔ J1.26 VDDIO)
 
 ### WIPER (3)
 
-- [ ] **W49** white: `h23` → `h20` · WIPER (RV1.2 ↔ jumper junction)
-- [ ] **W50** white: `f20` → `e20` · WIPER (jumper junction ↔ jumper junction)
-- [ ] **W51** white: `b20` → `b23` · WIPER (jumper junction ↔ R5.1)
+- [ ] **W45** white: `h23` → `h20` · WIPER (RV1.2 ↔ jumper junction)
+- [ ] **W46** white: `f20` → `e20` · WIPER (jumper junction ↔ jumper junction)
+- [ ] **W47** white: `b20` → `b23` · WIPER (jumper junction ↔ R5.1)
 
 ### REF (1)
 
-- [ ] **W52** gray: `d35` → `J1.34 REF` · REF (R6.2 ↔ J1.34 REF)
+- [ ] **W48** gray: `e35` → `J1.34 REF` · REF (R6.2 ↔ J1.34 REF)
 
 ### TE (1)
 
-- [ ] **W53** blue: `J1.7 TE` → `i62` · TE (J1.7 TE ↔ U4.3 A)
+- [ ] **W49** blue: `J1.7 TE` → `g62` · TE (J1.7 TE ↔ U4.3 A)
 
 ### P30 (1)
 
-- [ ] **W54** yellow: `J1.30 P30` → `2:i57` · P30 (J1.30 P30 ↔ R7.2)
+- [ ] **W50** yellow: `J1.30 P30` → `2:i57` · P30 (J1.30 P30 ↔ R7.2)
 
 ### P32 (1)
 
-- [ ] **W55** purple: `J1.32 P32` → `2:j56` · P32 (J1.32 P32 ↔ R8.2)
+- [ ] **W51** purple: `J1.32 P32` → `2:j56` · P32 (J1.32 P32 ↔ R8.2)
 
 ### D0 (1)
 
-- [ ] **W56** brown: `a50` → `J1.2 D0` · D0 (U1.21 B1 ↔ J1.2 D0)
+- [ ] **W52** brown: `a50` → `J1.2 D0` · D0 (U1.21 B1 ↔ J1.2 D0)
 
 ### D1 (1)
 
-- [ ] **W57** gray: `a51` → `J1.25 D1` · D1 (U1.20 B2 ↔ J1.25 D1)
+- [ ] **W53** gray: `a51` → `J1.25 D1` · D1 (U1.20 B2 ↔ J1.25 D1)
 
 ### D2 (1)
 
-- [ ] **W58** green: `a52` → `J1.24 D2` · D2 (U1.19 B3 ↔ J1.24 D2)
+- [ ] **W54** green: `a52` → `J1.24 D2` · D2 (U1.19 B3 ↔ J1.24 D2)
 
 ### D3 (1)
 
-- [ ] **W59** purple: `a53` → `J1.23 D3` · D3 (U1.18 B4 ↔ J1.23 D3)
+- [ ] **W55** purple: `a53` → `J1.23 D3` · D3 (U1.18 B4 ↔ J1.23 D3)
 
 ### D4 (1)
 
-- [ ] **W60** brown: `a54` → `J1.22 D4` · D4 (U1.17 B5 ↔ J1.22 D4)
+- [ ] **W56** brown: `a54` → `J1.22 D4` · D4 (U1.17 B5 ↔ J1.22 D4)
 
 ### D5 (1)
 
-- [ ] **W61** gray: `a55` → `J1.21 D5` · D5 (U1.16 B6 ↔ J1.21 D5)
+- [ ] **W57** gray: `a55` → `J1.21 D5` · D5 (U1.16 B6 ↔ J1.21 D5)
 
 ### D6 (1)
 
-- [ ] **W62** green: `a56` → `J1.20 D6` · D6 (U1.15 B7 ↔ J1.20 D6)
+- [ ] **W58** green: `a56` → `J1.20 D6` · D6 (U1.15 B7 ↔ J1.20 D6)
 
 ### D7 (1)
 
-- [ ] **W63** purple: `a57` → `J1.19 D7` · D7 (U1.14 B8 ↔ J1.19 D7)
+- [ ] **W59** purple: `a57` → `J1.19 D7` · D7 (U1.14 B8 ↔ J1.19 D7)
 
 ### D8 (1)
 
-- [ ] **W64** brown: `2:a27` → `J1.18 D8` · D8 (U2.21 B1 ↔ J1.18 D8)
+- [ ] **W60** brown: `2:i32` → `J1.18 D8` · D8 (U2.21 B1 ↔ J1.18 D8)
 
 ### D9 (1)
 
-- [ ] **W65** gray: `2:a28` → `J1.1 D9` · D9 (U2.20 B2 ↔ J1.1 D9)
+- [ ] **W61** gray: `2:g31` → `J1.1 D9` · D9 (U2.20 B2 ↔ J1.1 D9)
 
 ### D10 (1)
 
-- [ ] **W66** green: `2:a29` → `J1.16 D10` · D10 (U2.19 B3 ↔ J1.16 D10)
+- [ ] **W62** green: `2:i30` → `J1.16 D10` · D10 (U2.19 B3 ↔ J1.16 D10)
 
 ### D11 (1)
 
-- [ ] **W67** purple: `2:a30` → `J1.15 D11` · D11 (U2.18 B4 ↔ J1.15 D11)
+- [ ] **W63** purple: `2:g29` → `J1.15 D11` · D11 (U2.18 B4 ↔ J1.15 D11)
 
 ### D12 (1)
 
-- [ ] **W68** brown: `2:a31` → `J1.14 D12` · D12 (U2.17 B5 ↔ J1.14 D12)
+- [ ] **W64** brown: `2:g28` → `J1.14 D12` · D12 (U2.17 B5 ↔ J1.14 D12)
 
 ### D13 (1)
 
-- [ ] **W69** gray: `2:a32` → `J1.13 D13` · D13 (U2.16 B6 ↔ J1.13 D13)
+- [ ] **W65** gray: `2:g27` → `J1.13 D13` · D13 (U2.16 B6 ↔ J1.13 D13)
 
 ### D14 (1)
 
-- [ ] **W70** green: `2:a33` → `J1.12 D14` · D14 (U2.15 B7 ↔ J1.12 D14)
-
-### GP15 (2)
-
-- [ ] **W71** yellow: `2:j21` → `2:j22` · GP15 (Pico.20 GPIO15 ↔ jumper junction)
-- [ ] **W72** yellow: `2:g22` → `2:g33` · GP15 (jumper junction ↔ U2.10 A8)
+- [ ] **W66** green: `2:g26` → `J1.12 D14` · D14 (U2.15 B7 ↔ J1.12 D14)
 
 ### D15 (1)
 
-- [ ] **W73** purple: `2:a34` → `J1.11 D15` · D15 (U2.14 B8 ↔ J1.11 D15)
+- [ ] **W67** purple: `2:g25` → `J1.11 D15` · D15 (U2.14 B8 ↔ J1.11 D15)
 
 ### D16 (1)
 
-- [ ] **W74** brown: `2:h49` → `J1.10 D16` · D16 (U3.21 B1 ↔ J1.10 D16)
+- [ ] **W68** brown: `2:h49` → `J1.10 D16` · D16 (U3.21 B1 ↔ J1.10 D16)
 
 ### D17 (1)
 
-- [ ] **W75** gray: `2:h48` → `J1.9 D17` · D17 (U3.20 B2 ↔ J1.9 D17)
+- [ ] **W69** gray: `2:h48` → `J1.9 D17` · D17 (U3.20 B2 ↔ J1.9 D17)
 
 ### DC (1)
 
-- [ ] **W76** green: `2:h47` → `J1.28 D/C` · DC (U3.19 B3 ↔ J1.28 D/C)
+- [ ] **W70** green: `2:h47` → `J1.28 D/C` · DC (U3.19 B3 ↔ J1.28 D/C)
 
 ### NWR (1)
 
-- [ ] **W77** purple: `2:h46` → `J1.27 /WR` · NWR (U3.18 B4 ↔ J1.27 /WR)
+- [ ] **W71** purple: `2:h46` → `J1.27 /WR` · NWR (U3.18 B4 ↔ J1.27 /WR)
 
 ### NCS (1)
 
-- [ ] **W78** brown: `2:h45` → `J1.29 /CS` · NCS (U3.17 B5 ↔ J1.29 /CS)
+- [ ] **W72** brown: `2:h45` → `J1.29 /CS` · NCS (U3.17 B5 ↔ J1.29 /CS)
 
 ## Flexible jumpers
 
 Plug these in last: they arch over the rest.
 
-- [ ] **W79** red: `2:a3` → `a43`, 20 cm flexible jumper · VSYS (Pico.39 VSYS ↔ U11.1 VIN, C3.1)
-- [ ] **W80** red: `2:b3` → `2:top+33`, 20 cm flexible jumper · VSYS (Pico.39 VSYS ↔ top+ rail)
-- [ ] **W81** black: `2:top-46` → `2:a44`, 10 cm flexible jumper · GND (top- rail ↔ U3.9 A7)
-- [ ] **W82** black: `2:a19` → `2:a26`, 10 cm flexible jumper · GND (Pico.23 GND, R3.2 ↔ U2.22 /OE)
-- [ ] **W83** black: `2:bot-3` → `bot-60`, 10 cm flexible jumper · GND (bot- rail ↔ bot- rail)
-- [ ] **W84** orange: `2:bot+33` → `bot+29`, 30 cm flexible jumper · 3V0 (bot+ rail ↔ bot+ rail)
-- [ ] **W85** pink: `2:c53` → `2:a51`, 10 cm flexible jumper · 3V3 (C11.1 ↔ U3.2 DIR)
-- [ ] **W86** pink: `2:top+3` → `top+61`, 10 cm flexible jumper · 3V3 (top+ rail ↔ top+ rail)
-- [ ] **W87** pink: `2:top+21` → `2:i24`, 10 cm flexible jumper · 3V3 (top+ rail ↔ U2.1 VCCA)
-- [ ] **W88** pink: `2:top+31` → `2:d53`, 10 cm flexible jumper · 3V3 (top+ rail ↔ C11.1)
-- [ ] **W89** blue: `a48` → `a61`, 10 cm flexible jumper · VDDIO (U1.23 VCCB ↔ U4.5 DIR)
-- [ ] **W90** blue: `d61` → `i60`, 10 cm flexible jumper · VDDIO (U4.5 DIR ↔ U4.1 VCCA, C8.1, C13.1)
-- [ ] **W91** blue: `j44` → `j60`, 10 cm flexible jumper · VDDIO (jumper junction ↔ U4.1 VCCA, C8.1, C13.1)
-- [ ] **W92** blue: `b61` → `2:a24`, 20 cm flexible jumper · VDDIO (U4.5 DIR ↔ U2.24 VCCB)
-- [ ] **W93** blue: `c61` → `2:a25`, 20 cm flexible jumper · VDDIO (U4.5 DIR ↔ U2.23 VCCB)
-- [ ] **W94** blue: `i44` → `2:i51`, 30 cm flexible jumper · VDDIO (jumper junction ↔ U3.23 VCCB, C12.1)
-- [ ] **W95** green: `2:a15` → `2:a58`, 20 cm flexible jumper · EN_3V0 (Pico.27 GPIO21, R3.1 ↔ U12.3 CE)
-- [ ] **W96** yellow: `2:b11` → `a41`, 20 cm flexible jumper · EN_VDDIO (Pico.31 GPIO26_ADC0, R4.1 ↔ U11.3 EN)
-- [ ] **W97** brown: `b28` → `2:b13`, 30 cm flexible jumper · REF_IN (U13.3 +, R5.2 ↔ Pico.29 GPIO22)
-- [ ] **W98** cyan: `d30` → `g28`, 10 cm flexible jumper · REF_OUT (U13.1, R6.1 ↔ U13.4 -)
-- [ ] **W99** green: `c62` → `2:c10`, 10 cm flexible jumper · TE_3V3 (U4.4 B ↔ Pico.32 GPIO27_ADC1)
-- [ ] **W100** white: `2:j2` → `j49`, 10 cm flexible jumper · GP0 (Pico.1 GPIO0 ↔ U1.3 A1)
-- [ ] **W101** cyan: `2:j3` → `j50`, 10 cm flexible jumper · GP1 (Pico.2 GPIO1 ↔ U1.4 A2)
-- [ ] **W102** blue: `2:j5` → `j51`, 10 cm flexible jumper · GP2 (Pico.4 GPIO2 ↔ U1.5 A3)
-- [ ] **W103** yellow: `2:j6` → `j52`, 10 cm flexible jumper · GP3 (Pico.5 GPIO3 ↔ U1.6 A4)
-- [ ] **W104** white: `2:j7` → `j53`, 10 cm flexible jumper · GP4 (Pico.6 GPIO4 ↔ U1.7 A5)
-- [ ] **W105** cyan: `2:j8` → `j54`, 10 cm flexible jumper · GP5 (Pico.7 GPIO5 ↔ U1.8 A6)
-- [ ] **W106** blue: `2:j10` → `j55`, 20 cm flexible jumper · GP6 (Pico.9 GPIO6 ↔ U1.9 A7)
-- [ ] **W107** yellow: `2:j11` → `j56`, 20 cm flexible jumper · GP7 (Pico.10 GPIO7 ↔ U1.10 A8)
-- [ ] **W108** white: `2:j12` → `2:j26`, 10 cm flexible jumper · GP8 (Pico.11 GPIO8 ↔ U2.3 A1)
-- [ ] **W109** cyan: `2:j13` → `2:j27`, 10 cm flexible jumper · GP9 (Pico.12 GPIO9 ↔ U2.4 A2)
-- [ ] **W110** blue: `2:j15` → `2:j28`, 10 cm flexible jumper · GP10 (Pico.14 GPIO10 ↔ U2.5 A3)
-- [ ] **W111** yellow: `2:j16` → `2:j29`, 10 cm flexible jumper · GP11 (Pico.15 GPIO11 ↔ U2.6 A4)
-- [ ] **W112** white: `2:j17` → `2:j30`, 10 cm flexible jumper · GP12 (Pico.16 GPIO12 ↔ U2.7 A5)
-- [ ] **W113** cyan: `2:j18` → `2:j31`, 10 cm flexible jumper · GP13 (Pico.17 GPIO13 ↔ U2.8 A6)
-- [ ] **W114** blue: `2:j20` → `2:j32`, 10 cm flexible jumper · GP14 (Pico.19 GPIO14 ↔ U2.9 A7)
-- [ ] **W115** white: `2:a21` → `2:a50`, 20 cm flexible jumper · GP16 (Pico.21 GPIO16 ↔ U3.3 A1)
-- [ ] **W116** cyan: `2:a20` → `2:a49`, 20 cm flexible jumper · GP17 (Pico.22 GPIO17 ↔ U3.4 A2)
-- [ ] **W117** blue: `2:a18` → `2:a48`, 20 cm flexible jumper · GP18 (Pico.24 GPIO18 ↔ U3.5 A3)
-- [ ] **W118** yellow: `2:a17` → `2:a47`, 20 cm flexible jumper · GP19 (Pico.25 GPIO19 ↔ U3.6 A4)
-- [ ] **W119** white: `2:a16` → `2:a46`, 20 cm flexible jumper · GP20 (Pico.26 GPIO20 ↔ U3.7 A5)
+- [ ] **W73** red: `2:a3` → `a43`, 20 cm flexible jumper · VSYS (Pico.39 VSYS ↔ U11.1 VIN, C3.1)
+- [ ] **W74** red: `2:b3` → `2:top+33`, 20 cm flexible jumper · VSYS (Pico.39 VSYS ↔ top+ rail)
+- [ ] **W75** black: `2:top-46` → `2:a44`, 10 cm flexible jumper · GND (top- rail ↔ U3.9 A7)
+- [ ] **W76** black: `2:bot-33` → `2:j33`, 10 cm flexible jumper · GND (bot- rail ↔ U2.22 /OE, C9.2, C10.2)
+- [ ] **W77** black: `2:top-3` → `top-61`, 10 cm flexible jumper · GND (top- rail ↔ top- rail)
+- [ ] **W78** orange: `2:bot+33` → `bot+29`, 30 cm flexible jumper · 3V0 (bot+ rail ↔ bot+ rail)
+- [ ] **W79** pink: `2:b6` → `2:top+6`, 10 cm flexible jumper · 3V3 (Pico.36 3V3, C14.1 ↔ top+ rail)
+- [ ] **W80** pink: `2:top+31` → `2:a34`, 10 cm flexible jumper · 3V3 (top+ rail ↔ U2.2 DIR)
+- [ ] **W81** pink: `2:top+30` → `2:a35`, 10 cm flexible jumper · 3V3 (top+ rail ↔ U2.1 VCCA)
+- [ ] **W82** pink: `2:top+3` → `top+61`, 10 cm flexible jumper · 3V3 (top+ rail ↔ top+ rail)
+- [ ] **W83** pink: `2:top+29` → `2:h36`, 10 cm flexible jumper · 3V3 (top+ rail ↔ C9.1)
+- [ ] **W84** pink: `2:g38` → `2:a51`, 10 cm flexible jumper · 3V3 (C11.1 ↔ U3.2 DIR)
+- [ ] **W85** pink: `2:i38` → `2:a52`, 10 cm flexible jumper · 3V3 (C11.1 ↔ U3.1 VCCA)
+- [ ] **W86** blue: `a48` → `a61`, 10 cm flexible jumper · VDDIO (U1.23 VCCB ↔ U4.5 DIR)
+- [ ] **W87** blue: `j60` → `d61`, 10 cm flexible jumper · VDDIO (U4.1 VCCA, C8.1, C13.1 ↔ U4.5 DIR)
+- [ ] **W88** blue: `i43` → `a47`, 10 cm flexible jumper · VDDIO (U11.6 VOUT, C4.1 ↔ U1.24 VCCB)
+- [ ] **W89** blue: `c61` → `2:j34`, 20 cm flexible jumper · VDDIO (U4.5 DIR ↔ U2.23 VCCB, C10.1)
+- [ ] **W90** green: `2:a15` → `2:a58`, 20 cm flexible jumper · EN_3V0 (Pico.27 GPIO21, R3.1 ↔ U12.3 CE)
+- [ ] **W91** yellow: `2:b11` → `a41`, 20 cm flexible jumper · EN_VDDIO (Pico.31 GPIO26_ADC0, R4.1 ↔ U11.3 EN)
+- [ ] **W92** brown: `b28` → `2:b13`, 30 cm flexible jumper · REF_IN (U13.3 +, R5.2 ↔ Pico.29 GPIO22)
+- [ ] **W93** cyan: `d30` → `g28`, 10 cm flexible jumper · REF_OUT (U13.1, R6.1 ↔ U13.4 -)
+- [ ] **W94** green: `c62` → `2:c10`, 10 cm flexible jumper · TE_3V3 (U4.4 B ↔ Pico.32 GPIO27_ADC1)
+- [ ] **W95** white: `2:j2` → `j49`, 10 cm flexible jumper · GP0 (Pico.1 GPIO0 ↔ U1.3 A1)
+- [ ] **W96** cyan: `2:j3` → `j50`, 10 cm flexible jumper · GP1 (Pico.2 GPIO1 ↔ U1.4 A2)
+- [ ] **W97** blue: `2:j5` → `j51`, 10 cm flexible jumper · GP2 (Pico.4 GPIO2 ↔ U1.5 A3)
+- [ ] **W98** yellow: `2:j6` → `j52`, 10 cm flexible jumper · GP3 (Pico.5 GPIO3 ↔ U1.6 A4)
+- [ ] **W99** white: `2:j7` → `j53`, 10 cm flexible jumper · GP4 (Pico.6 GPIO4 ↔ U1.7 A5)
+- [ ] **W100** cyan: `2:j8` → `j54`, 10 cm flexible jumper · GP5 (Pico.7 GPIO5 ↔ U1.8 A6)
+- [ ] **W101** blue: `2:j10` → `j55`, 20 cm flexible jumper · GP6 (Pico.9 GPIO6 ↔ U1.9 A7)
+- [ ] **W102** yellow: `2:j11` → `j56`, 20 cm flexible jumper · GP7 (Pico.10 GPIO7 ↔ U1.10 A8)
+- [ ] **W103** white: `2:j12` → `2:a33`, 20 cm flexible jumper · GP8 (Pico.11 GPIO8 ↔ U2.3 A1)
+- [ ] **W104** cyan: `2:j13` → `2:a32`, 10 cm flexible jumper · GP9 (Pico.12 GPIO9 ↔ U2.4 A2)
+- [ ] **W105** blue: `2:j15` → `2:a31`, 10 cm flexible jumper · GP10 (Pico.14 GPIO10 ↔ U2.5 A3)
+- [ ] **W106** yellow: `2:j16` → `2:a30`, 10 cm flexible jumper · GP11 (Pico.15 GPIO11 ↔ U2.6 A4)
+- [ ] **W107** white: `2:j17` → `2:a29`, 10 cm flexible jumper · GP12 (Pico.16 GPIO12 ↔ U2.7 A5)
+- [ ] **W108** cyan: `2:j18` → `2:a28`, 10 cm flexible jumper · GP13 (Pico.17 GPIO13 ↔ U2.8 A6)
+- [ ] **W109** blue: `2:j20` → `2:a27`, 10 cm flexible jumper · GP14 (Pico.19 GPIO14 ↔ U2.9 A7)
+- [ ] **W110** yellow: `2:j21` → `2:a26`, 10 cm flexible jumper · GP15 (Pico.20 GPIO15 ↔ U2.10 A8)
+- [ ] **W111** white: `2:a21` → `2:a50`, 20 cm flexible jumper · GP16 (Pico.21 GPIO16 ↔ U3.3 A1)
+- [ ] **W112** cyan: `2:a20` → `2:a49`, 20 cm flexible jumper · GP17 (Pico.22 GPIO17 ↔ U3.4 A2)
+- [ ] **W113** blue: `2:a18` → `2:a48`, 20 cm flexible jumper · GP18 (Pico.24 GPIO18 ↔ U3.5 A3)
+- [ ] **W114** yellow: `2:a17` → `2:a47`, 20 cm flexible jumper · GP19 (Pico.25 GPIO19 ↔ U3.6 A4)
+- [ ] **W115** white: `2:a16` → `2:a46`, 20 cm flexible jumper · GP20 (Pico.26 GPIO20 ↔ U3.7 A5)

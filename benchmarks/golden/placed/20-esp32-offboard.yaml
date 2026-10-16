@@ -70,24 +70,24 @@ parts:
     type: resistor
     value: 330R
     pins:
-    - c63
+    - d63
     - f63
   D1:
     type: led
     pins:
-    - h63
-    - h61
+    - i63
+    - i61
   R3:
     type: resistor
     value: 10k
     pins:
-    - bot+42
-    - h42
+    - bot+41
+    - h41
   SW1:
     type: dip
     pins: 4
     title: button
-    at: f42
+    at: f41
     rot: 0
 nets:
   3V3:

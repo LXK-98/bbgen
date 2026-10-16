@@ -7,50 +7,50 @@ parts:
   U1:
     symbol: Amplifier_Audio:LM386
     footprint: Package_DIP:DIP-8_W7.62mm
-    at: f56
+    at: f53
     rot: 0
   RV1:
     footprint: Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical
     title: 10k volume
-    at: f49
+    at: f58
     rot: 0
   C1:
     type: electrolytic
     value: 250uF
     pins:
-    - a59
-    - a61
+    - b56
+    - b57
   R1:
     type: resistor
     value: 10R
     pins:
-    - c59
-    - c54
+    - c56
+    - c51
   C2:
     type: capacitor
     value: 47nF
     pins:
-    - a54
-    - top-54
+    - a51
+    - top-51
   C3:
     type: electrolytic
     value: 10uF
     pins:
-    - a57
-    - top-57
+    - a54
+    - top-54
   C4:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - top+59
-    - top-59
+    - top+57
+    - top-57
   C5:
     type: electrolytic
     value: 100uF
     pins:
-    - top+55
-    - top-55
+    - top+52
+    - top-52
   J1:
     type: offboard
     title: Audio in
