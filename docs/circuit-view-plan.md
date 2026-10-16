@@ -324,6 +324,13 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
    - `--rails` (and "Supplies as wires" in the studio's circuit view) draws supplies and grounds as wires from one
      power symbol each, a textbook drawing for small circuits. Supplies stay wires however long. Both styles are
      held to the read-back check for every benchmark; the rails style is recorded for the examples.
+   - A long net that would become a label is labelled only at its pins far from the rest, where it can be: the
+     rest stay wired, the net's name written on their wire (as KiCad writes a local label). In the rails style the
+     555's THR, TRIG and RB had become labels side by side; now they're wired and only C1 has one, and the eeprom's
+     GP17 runs to the EEPROM with only the logic analyzer's SCL a label. A net is split only where it would have
+     been labelled whole, so no drawing gains labels; if what stays wired is still long (over 0.4 of the page's
+     width and height for each two pins it joins: benchmark 16's REF_IN ran down the whole page), or there's no
+     room for the name, it's labelled whole as before.
    **ELK in Rust** (October 2026). bbgen now lays schematics out with
    [elk-rs](https://github.com/openedges/elk-rs) (EPL-2.0, pinned to `v0.11.0+rs.3`), a Rust port of ELK checked
    against Java ELK, in place of elkjs in QuickJS; `build.rs` and `vendor/elkjs` are gone.

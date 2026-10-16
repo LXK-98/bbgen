@@ -48,6 +48,23 @@ struct Port {
     /// how strongly this pin drives its net
     drive: f64,
     id: String,
+    /// the part's index and its pin's (usize::MAX for a power symbol or a label)
+    pin: (usize, usize),
+}
+
+/// The nets drawn as labels: whole, or only at some pins (`apart`), the rest wired together with a label of their own.
+#[derive(Clone)]
+struct Labels {
+    whole: Vec<bool>,
+    /// pins (the part's index and its pin's) of a wired net drawn as its label instead
+    apart: std::collections::HashSet<(usize, usize)>,
+}
+
+impl Labels {
+    /// a net wired at some of its pins and labelled at the others
+    fn split(&self, n: usize, ctx: &Ctx) -> bool {
+        !self.whole[n] && self.apart.iter().any(|&(k, i)| ctx.net_of[k][i] == Some(n))
+    }
 }
 
 /// The schematic: its SVG (in the drawing's colour, `currentColor`), its size in pixels, and the graph ELK laid out.
@@ -258,7 +275,7 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
 
     // nets drawn as labels from the start: one with many pins (a supply without a rail, like 16's VDDIO), and
     // those of a connector with many pins (its wires would run all over the page)
-    let mut labelled: Vec<bool> = (0..names.len()).map(|n| {
+    let whole: Vec<bool> = (0..names.len()).map(|n| {
         let pins = &c.nets[n].pins;
         let big_connector = pins.iter().any(|p| {
             let part = &c.parts[p.part as usize];
@@ -267,6 +284,7 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
         });
         classes[n] == Class::Signal && (pins.len() >= MANY_PINS || big_connector)
     }).collect();
+    let mut labelled = Labels { whole, apart: Default::default() };
     let mut round = 0;
     loop {
         let mut nodes = make_nodes(&ctx, &labelled);
@@ -302,7 +320,15 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
             at.insert(n["id"].as_str().unwrap().to_string(), (n["x"].as_f64().unwrap(), n["y"].as_f64().unwrap() + row_h));
         }
         nodes.extend(corner);
-        let drawn = route(&nodes, &laid_out, at, row_h);
+        let mut drawn = route(&nodes, &laid_out, at, row_h);
+        // a net wired at some pins and labelled at others has its name on its wire, where there's room
+        let mut nameless = Vec::new();
+        for n in (0..names.len()).filter(|&n| labelled.split(n, &ctx)) {
+            match name_spot(&nodes, &drawn, n, names[n]) {
+                Some(p) => drawn.names.push((n, p)),
+                None => nameless.push(n),
+            }
+        }
         let problems = check(&drawn, names);
         let width = laid_out["width"].as_f64().unwrap_or(0.0).max(row_w);
         let height = laid_out["height"].as_f64().unwrap_or(0.0) + row_h;
@@ -310,21 +336,42 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
         let long = |n: usize| drawn.length(n) > LONG * (width + height);
         // a long net stays wired if labelling it would leave a part with no wire at all: a part cut loose from the
         // circuit (the 555's timing resistors, with all their nets labels) reads worse than a long wire
-        let mut more: Vec<usize> = (0..names.len()).filter(|&n| !labelled[n] && problems.iter().any(|(m, _)| *m == n)).collect();
-        let mut would = labelled.clone();
+        let mut more: Vec<usize> = (0..names.len()).filter(|&n| !labelled.whole[n] && (problems.iter().any(|(m, _)| *m == n) || nameless.contains(&n)))
+            .collect();
+        let mut would = labelled.whole.clone();
         for &n in &more {
             would[n] = true;
         }
         // (in the rails style, supplies stay wires however long: that's the style)
-        let long_ones: Vec<usize> = (0..names.len()).filter(|&n| !would[n] && long(n) && classes[n] == Class::Signal).collect();
+        // (a net wired at some pins only is long past SHORT for each wire joining two of them: it was split to keep
+        // those close together)
+        let joins = |n: usize| c.nets[n].pins.iter().filter(|p| !labelled.apart.contains(&(p.part as usize, p.pin as usize))).count()
+            .saturating_sub(1).max(1) as f64;
+        let long_ones: Vec<usize> = (0..names.len()).filter(|&n| !would[n] && classes[n] == Class::Signal)
+            .filter(|&n| long(n) || (labelled.split(n, &ctx) && drawn.length(n) / joins(n) > SHORT * (width + height))).collect();
+        let mut apart = Vec::new();
         for n in long_ones {
             let keeps = c.nets[n].pins.iter().all(|p| {
-                ctx.net_of[p.part as usize].iter().flatten().any(|&m| m != n && ctx.wired(m) && !would[m])
+                let k = p.part as usize;
+                ctx.net_of[k].iter().enumerate().any(|(i, m)| m.map(|m| m != n && ctx.wired(m) && !would[m]
+                    && !labelled.apart.contains(&(k, i)) && !apart.contains(&(k, i))).unwrap_or(false))
             });
-            if keeps {
-                would[n] = true;
-                more.push(n);
+            if !keeps {
+                continue;
             }
+            // rather than all of it, a label at only the pins far from the rest, which stay wired (as one draws a long
+            // net by hand): a pin wired to its neighbour reads better than both labelled
+            let bus = (0..names.len()).any(|m| m != n && same_bus(names[m], names[n]));
+            if !bus && !labelled.split(n, &ctx) {
+                let cut: std::collections::HashSet<(usize, usize)> = labelled.apart.iter().chain(&apart).copied().collect();
+                let far = far_pins(&ctx, &nodes, &drawn.at, n, width + height, &would, &cut);
+                if !far.is_empty() {
+                    apart.extend(far);
+                    continue;
+                }
+            }
+            would[n] = true;
+            more.push(n);
         }
         round += 1;
         // BBGEN_SCHEMATIC_DEBUG: what each round found, to see why a net became a label
@@ -332,35 +379,128 @@ pub fn draw_with(c: &Circuit, style: Style) -> Result<Schematic, String> {
             for (_, p) in &problems {
                 eprintln!("round {}: {}", round, p);
             }
-            for n in (0..names.len()).filter(|&n| long(n) && !labelled[n]) {
+            for n in (0..names.len()).filter(|&n| long(n) && !labelled.whole[n]) {
                 eprintln!("round {}: {} is {:.0} px long, the page {:.0} px across and down", round, names[n], drawn.length(n), width + height);
             }
+            for n in (0..names.len()).filter(|&n| labelled.split(n, &ctx)) {
+                eprintln!("round {}: {}, wired at some pins, is {:.0} px long, the page {:.0} px across and down", round, names[n], drawn.length(n),
+                          width + height);
+            }
+            for &(k, i) in &apart {
+                eprintln!("round {}: {} labelled at {}.{} only", round, names[ctx.net_of[k][i].unwrap()], c.parts[k].r#ref, c.parts[k].pins[i].num);
+            }
         }
-        if more.is_empty() || round == ROUNDS {
+        if (more.is_empty() && apart.is_empty()) || round == ROUNDS {
             let mut svg = render(&nodes, &drawn, names);
             if let Some((x, y)) = caption {
                 svg.insert_str(0, &format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{:.1}\" fill=\"currentColor\" fill-opacity=\"0.6\">Power</text>",
                                            x, y, 1.27 * PX));
             }
             let problems = problems.into_iter().map(|(_, p)| p).collect();
-            let labels = (0..names.len()).filter(|&n| labelled[n]).map(|n| names[n].to_string()).collect();
+            let labels = (0..names.len()).filter(|&n| labelled.whole[n] || labelled.split(n, &ctx)).map(|n| names[n].to_string()).collect();
             return Ok(Schematic { svg, width, height, graph, laid_out, problems, labelled: labels });
         }
         for n in more {
-            labelled[n] = true;
+            labelled.whole[n] = true;
         }
+        labelled.apart.extend(apart);
         // a bus (BUS0, BUS1, ...) is labelled all together or not at all
         for n in 0..names.len() {
-            if !labelled[n] && classes[n] == Class::Signal {
-                labelled[n] = (0..names.len()).any(|m| labelled[m] && same_bus(names[m], names[n]));
+            if !labelled.whole[n] && classes[n] == Class::Signal {
+                labelled.whole[n] = (0..names.len()).any(|m| labelled.whole[m] && same_bus(names[m], names[n]));
             }
         }
     }
 }
 
+/// Where to write a net's name on its wire: above a level stretch with room for it, clear of other wires, symbols and
+/// names, the longest such stretch; where the text starts (its baseline), or None.
+fn name_spot(nodes: &[Node], d: &Drawn, n: usize, name: &str) -> Option<Xy> {
+    let (w, h) = ((symbol::text_len(name, 1.27) + 1.0) * PX, 1.27 * PX);
+    let boxes: Vec<(f64, f64, f64, f64)> = nodes.iter().map(|node| {
+        let (x, y) = d.at[&node.id];
+        (x, y, x + (node.bounds.2 - node.bounds.0) * PX, y + (node.bounds.3 - node.bounds.1) * PX)
+    }).collect();
+    let hits = |b: (f64, f64, f64, f64)| {
+        let meets = |o: (f64, f64, f64, f64)| b.0 < o.2 && o.0 < b.2 && b.1 < o.3 && o.1 < b.3;
+        boxes.iter().any(|&o| meets(o))
+            || d.lines.iter().flat_map(|(_, pts)| pts.windows(2)).any(|s| meets((s[0].0.min(s[1].0) - 1.0, s[0].1.min(s[1].1) - 1.0,
+                                                                                  s[0].0.max(s[1].0) + 1.0, s[0].1.max(s[1].1) + 1.0)))
+            || d.names.iter().any(|(_, p)| meets((p.0, p.1 - h, p.0 + w, p.1 + 2.0)))
+    };
+    let mut best: Option<(f64, Xy)> = None;
+    for s in d.lines.iter().filter(|(m, _)| *m == n).flat_map(|(_, pts)| pts.windows(2)) {
+        let (a, b) = (s[0], s[1]);
+        let len = (b.0 - a.0).abs();
+        if (a.1 - b.1).abs() > 0.5 || len < w + 10.0 || best.map(|(l, _)| l >= len).unwrap_or(false) {
+            continue;
+        }
+        let x = a.0.min(b.0) + (len - w) / 2.0;
+        let at = (x, a.1 - 3.0);
+        if !hits((at.0, at.1 - h, at.0 + w, at.1 - 1.0)) {
+            best = Some((len, at));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// The pins of a long net to label rather than wire: the fewest, farthest from the rest, that leave the others close
+/// together (joined, as the crow flies along x and y, in under SHORT of the page's width and height together). None if
+/// that would leave fewer than two pins wired. The driving pin stays, and so does any pin whose part would have no
+/// wire left.
+fn far_pins(ctx: &Ctx, nodes: &[Node], at: &std::collections::HashMap<String, Xy>, n: usize, page: f64, would: &[bool],
+            cut: &std::collections::HashSet<(usize, usize)>) -> Vec<(usize, usize)> {
+    let mut pins: Vec<((usize, usize), Xy, bool)> = Vec::new();
+    for node in nodes {
+        let (x, y) = at[&node.id];
+        let o = (x / PX - node.bounds.0, y / PX - node.bounds.1);
+        for p in node.ports.iter().filter(|p| p.net == n && p.pin.0 != usize::MAX) {
+            let a = add(o, p.at);
+            pins.push((p.pin, (a.0 * PX, a.1 * PX), p.drive > 0.0));
+        }
+    }
+    if pins.len() < 3 {
+        return vec![];
+    }
+    let driver = pins.iter().position(|p| p.2).unwrap_or(0);
+    // (a pin already labelled at its end, `cut`, is no wire)
+    let keeps = |k: usize| ctx.net_of[k].iter().enumerate()
+        .any(|(i, m)| m.map(|m| m != n && ctx.wired(m) && !would[m] && !cut.contains(&(k, i))).unwrap_or(false));
+    // the shortest tree joining them, along x and y
+    let tree = |ps: &[usize]| {
+        let mut joined = vec![ps[0]];
+        let mut total = 0.0;
+        let mut rest: Vec<usize> = ps[1..].to_vec();
+        while !rest.is_empty() {
+            let (j, d) = rest.iter().enumerate().map(|(j, &r)| {
+                let d = joined.iter().map(|&q| (pins[q].1 .0 - pins[r].1 .0).abs() + (pins[q].1 .1 - pins[r].1 .1).abs()).fold(f64::INFINITY, f64::min);
+                (j, d)
+            }).min_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+            total += d;
+            joined.push(rest.remove(j));
+        }
+        total
+    };
+    let mut kept: Vec<usize> = (0..pins.len()).collect();
+    let mut far = Vec::new();
+    while tree(&kept) > SHORT * page {
+        let best = kept.iter().copied().filter(|&i| i != driver && keeps(pins[i].0 .0))
+            .map(|i| (i, tree(&kept.iter().copied().filter(|&j| j != i).collect::<Vec<_>>())))
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        match best {
+            Some((i, _)) if kept.len() > 2 => {
+                kept.retain(|&j| j != i);
+                far.push(pins[i].0);
+            }
+            _ => return vec![],
+        }
+    }
+    if kept.len() < 2 { vec![] } else { far }
+}
+
 /// Each part's units as nodes, turned and mirrored as they read best, with decoupling caps hanging from their
 /// chips' supplies; and in the rails style, a node for each supply's power symbol.
-fn make_nodes(ctx: &Ctx, labelled: &[bool]) -> Vec<Node> {
+fn make_nodes(ctx: &Ctx, labelled: &Labels) -> Vec<Node> {
     let (c, classes) = (ctx.c, &ctx.classes);
     let rails_style = ctx.style == Style::Rails;
     // decoupling caps (both legs on supplies) go by a chip: the one they're `near`, else the chip with a pin on their
@@ -470,14 +610,15 @@ fn make_nodes(ctx: &Ctx, labelled: &[bool]) -> Vec<Node> {
     }
     if rails_style {
         // one power symbol for each supply and ground, the source of its wires
-        for n in (0..ctx.names.len()).filter(|&n| classes[n] != Class::Signal && !labelled[n]) {
+        for n in (0..ctx.names.len()).filter(|&n| classes[n] != Class::Signal && !labelled.whole[n]) {
             if !nodes.iter().any(|node| node.ports.iter().any(|p| p.net == n)) {
                 continue;
             }
             let ground = classes[n] == Class::Ground;
             let way = if ground { (0, 1) } else { (0, -1) };
             let groups = vec![(format!("data-net=\"{}\"", symbol::escape(ctx.names[n])), flag((0.0, 0.0), way, ctx.names[n], ground))];
-            let port = Port { net: n, at: (0.0, 0.0), out: (-way.0, -way.1), drive: 2.0, id: format!("power.{}", ctx.names[n]) };
+            let port = Port { net: n, at: (0.0, 0.0), out: (-way.0, -way.1), drive: 2.0, id: format!("power.{}", ctx.names[n]),
+                              pin: (usize::MAX, 0) };
             nodes.push(Node { part: usize::MAX, id: format!("power:{}", ctx.names[n]), bounds: bounds_of(&groups), ports: vec![port],
                               groups, anchors: vec![], body: (0.0, 0.0, 0.0, 0.0), labels: false, power: true });
         }
@@ -488,7 +629,7 @@ fn make_nodes(ctx: &Ctx, labelled: &[bool]) -> Vec<Node> {
 /// Decoupling caps on the supply line from a chip's top pin(s) at `a`: the line goes up past the top of the caps,
 /// the supply's symbol on its end, and across to the caps, which stand to the right of everything above the chip,
 /// each down to its own ground.
-fn hang_caps(ctx: &Ctx, labelled: &[bool], node: &mut Node, n: usize, a: Xy, caps: &[usize]) {
+fn hang_caps(ctx: &Ctx, labelled: &Labels, node: &mut Node, n: usize, a: Xy, caps: &[usize]) {
     let thin = 0.1524;
     let mut built = Vec::new();
     for &j in caps {
@@ -539,7 +680,7 @@ fn hang_caps(ctx: &Ctx, labelled: &[bool], node: &mut Node, n: usize, a: Xy, cap
 
 /// The graph ELK lays out: the nodes, their ports fixed where their pins are, and each wired net's edges from its
 /// driving pin.
-fn graph(ctx: &Ctx, nodes: &[Node], labelled: &[bool]) -> Value {
+fn graph(ctx: &Ctx, nodes: &[Node], labelled: &Labels) -> Value {
     let mut children = Vec::new();
     for node in nodes {
         let b = node.bounds;
@@ -570,7 +711,7 @@ fn graph(ctx: &Ctx, nodes: &[Node], labelled: &[bool]) -> Value {
     }
     let mut edges = Vec::new();
     for (n, name) in ctx.names.iter().enumerate() {
-        if !ctx.wired(n) || labelled[n] {
+        if !ctx.wired(n) || labelled.whole[n] {
             continue;
         }
         let ports: Vec<&Port> = nodes.iter().flat_map(|node| &node.ports).filter(|p| p.net == n).collect();
@@ -620,8 +761,11 @@ const MANY_PINS: usize = 6;
 const BIG_CONNECTOR: usize = 12;
 /// A net whose wires are longer than this share of the page's width and height together becomes a label.
 const LONG: f64 = 0.75;
+/// A long net's pins that stay wired are joined in under this share of the page's width and height together (far_pins),
+/// and once drawn, its wires are no longer than this for each two pins they join.
+const SHORT: f64 = 0.4;
 /// Lay out at most this many times.
-const ROUNDS: usize = 3;
+const ROUNDS: usize = 4;
 
 /// What's drawn of the wires, in pixels: each net's lines (pins drawn on to their ports included), its branch dots,
 /// and where its pins are.
@@ -629,6 +773,8 @@ struct Drawn {
     lines: Vec<(usize, Vec<Xy>)>,
     dots: Vec<(usize, Xy)>,
     pins: Vec<(usize, Xy)>,
+    /// a net's name written on its wire (a net wired at some pins, labelled at others): where its text starts
+    names: Vec<(usize, Xy)>,
     /// each node's place: (x, y) in pixels of its box's corner
     at: std::collections::HashMap<String, Xy>,
 }
@@ -644,7 +790,7 @@ impl Drawn {
 fn route(nodes: &[Node], laid_out: &Value, at: std::collections::HashMap<String, Xy>, down: f64) -> Drawn {
     // ELK's points, moved down by `down` (the power row above the layout)
     let xy = |v: &Value| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap() + down);
-    let mut d = Drawn { lines: vec![], dots: vec![], pins: vec![], at };
+    let mut d = Drawn { lines: vec![], dots: vec![], pins: vec![], names: vec![], at };
     let net_of_port: std::collections::HashMap<&str, usize> = nodes.iter().flat_map(|n| &n.ports).map(|p| (p.id.as_str(), p.net)).collect();
     for e in laid_out["edges"].as_array().unwrap() {
         let net = net_of_port[e["sources"][0].as_str().unwrap()];
@@ -806,6 +952,10 @@ fn render(nodes: &[Node], d: &Drawn, names: &[&str]) -> String {
         wires[*n].push_str(&format!("<polyline points=\"{}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linejoin=\"round\"/>",
                                     pts.iter().map(px).collect::<Vec<_>>().join(" ")));
     }
+    for (n, p) in &d.names {
+        wires[*n].push_str(&format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{:.1}\" fill=\"currentColor\">{}</text>", p.0, p.1,
+                                    1.27 * PX, symbol::escape(names[*n])));
+    }
     for (n, p) in &d.dots {
         wires[*n].push_str(&format!("<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"3\" fill=\"currentColor\"/>", p.0, p.1));
     }
@@ -852,7 +1002,7 @@ const GAP: f64 = 5.08;
 /// A unit of a part's symbol as a node: drawn about its origin, its power symbols added, its ports found. For a
 /// supply in `hang`, top pins get no symbol: where it would go is left in `anchors`, for decoupling caps to hang
 /// from. A pin on `quiet` gets nothing (a cap's supply leg, wired to its chip's).
-fn build(ctx: &Ctx, labelled: &[bool], k: usize, u: usize, orient: Orient, hang: &[usize], quiet: Option<usize>) -> Node {
+fn build(ctx: &Ctx, labelled: &Labels, k: usize, u: usize, orient: Orient, hang: &[usize], quiet: Option<usize>) -> Node {
     let (classes, names) = (&ctx.classes, &ctx.names);
     let p = &ctx.c.parts[k];
     let sym = &ctx.syms[k];
@@ -891,14 +1041,14 @@ fn build(ctx: &Ctx, labelled: &[bool], k: usize, u: usize, orient: Orient, hang:
         let at = orient.point(sp.at);
         let d = orient.dir(sp.dir);
         let out = (-d.0, -d.1);
-        if classes[n] == Class::Signal && labelled[n] {
+        if classes[n] == Class::Signal && (labelled.whole[n] || labelled.apart.contains(&(k, sp.pins[0]))) {
             labels.push((format!("data-net=\"{}\"", symbol::escape(names[n])), label(at, out, names[n])));
-        } else if ctx.wired(n) && !labelled[n] {
+        } else if ctx.wired(n) && !labelled.whole[n] {
             if ports.iter().any(|q: &Port| q.at == at) {
                 continue;
             }
             let id = format!("{}.{}.{}", p.r#ref, u, sp.number);
-            ports.push(Port { net: n, at, out, drive: if ctx.drives(n, k, sp) { 1.0 } else { 0.0 }, id });
+            ports.push(Port { net: n, at, out, drive: if ctx.drives(n, k, sp) { 1.0 } else { 0.0 }, id, pin: (k, sp.pins[0]) });
         } else {
             rails.push((at, out, n));
         }
@@ -1064,7 +1214,7 @@ mod tests {
     use super::*;
 
     fn drawn(lines: Vec<(usize, Vec<Xy>)>, pins: Vec<(usize, Xy)>) -> Drawn {
-        Drawn { lines, dots: vec![], pins, at: Default::default() }
+        Drawn { lines, dots: vec![], pins, names: vec![], at: Default::default() }
     }
 
     #[test]
