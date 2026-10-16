@@ -11,6 +11,7 @@
 	import Inspector from '#lib/components/studio/Inspector.svelte';
 	import StatusBar from '#lib/components/studio/StatusBar.svelte';
 	import OpenDialog from '#lib/components/studio/OpenDialog.svelte';
+	import DropZone from '#lib/components/studio/DropZone.svelte';
 
 	onMount(() => {
 		studio.init();
@@ -42,7 +43,7 @@
 			<Resizable.Handle />
 			<Resizable.Pane defaultSize={57} minSize={30}>
 				<Resizable.PaneGroup direction="vertical" autoSaveId="bbgen-studio.rows">
-					<Resizable.Pane defaultSize={72} minSize={30}>
+					<Resizable.Pane defaultSize={72} minSize={30} class="relative">
 						{#if studio.view === 'both'}
 							<Resizable.PaneGroup direction="horizontal" autoSaveId="bbgen-studio.both">
 								<Resizable.Pane defaultSize={50} minSize={20}><Board /></Resizable.Pane>
@@ -54,6 +55,7 @@
 						{:else}
 							<Board />
 						{/if}
+						<DropZone />
 					</Resizable.Pane>
 					<Resizable.Handle />
 					<Resizable.Pane defaultSize={28} minSize={10}>

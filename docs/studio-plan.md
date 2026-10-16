@@ -31,9 +31,11 @@ noted where it did.
    Open dialog, recent files, watching (the `notify` watcher, not the dev server's), killing a running build
    when a new one starts, and the theme following the OS (WebKitGTK and `prefers-color-scheme`) all work.
    Fonts: compare the board's labels with the PNG of the same build; ship DejaVu Sans if they differ.
-2. **Open by dropping a file.** Tauri's `getCurrentWebview().onDragDropEvent` gives paths; open the first
-   `.yaml`/`.yml` and ignore the rest, with a drop highlight over the board. In the browser a drop has no
-   path, so there it says to use the Open dialog.
+2. **Open by dropping a file.** Done (October 2026). The engine's `onDrag` passes on Tauri's
+   `onDragDropEvent` (the dev server: the window's HTML drag events); a drop opens the first `.yaml`/`.yml`
+   and ignores the rest, and while files are dragged the centre says what a drop would open, or that it's not
+   a circuit. In the browser a drop has no path, so it says so and brings up the Open dialog. Checked in a
+   browser, the Tauri path by calling `studio.drag` with paths; still to see in the desktop window.
 3. **Show in YAML.** The scene needs each part's, wire's and net's line in the file: add `line` to
    `parts`, `wires` and `nets` (yaml.rs knows positions while parsing; carry them onto the circuit's
    items), document it in [scene-format.md](scene-format.md) (a field added, so `schema` stays 1) and

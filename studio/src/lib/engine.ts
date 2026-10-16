@@ -3,6 +3,9 @@
 
 import type { BuildOutput } from './scene';
 
+/** files dragged over the window: their paths, or null where the engine can't know them (a browser) */
+export type Drag = { type: 'over'; paths: string[] | null } | { type: 'drop'; paths: string[] | null } | { type: 'leave' };
+
 export interface Engine {
 	kind: 'tauri' | 'web';
 	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--wires`: every net a wire, no labels) */
@@ -13,6 +16,8 @@ export interface Engine {
 	watch(path: string, onChange: () => void): () => void;
 	/** a native open-file dialog, where there is one */
 	pick: (() => Promise<string | null>) | null;
+	/** call onDrag as files are dragged over the window and dropped on it */
+	onDrag(onDrag: (e: Drag) => void): void;
 }
 
 function inTauri(): boolean {
@@ -23,6 +28,7 @@ async function tauriEngine(): Promise<Engine> {
 	const { invoke } = await import('@tauri-apps/api/core');
 	const { listen } = await import('@tauri-apps/api/event');
 	const { open } = await import('@tauri-apps/plugin-dialog');
+	const { getCurrentWebview } = await import('@tauri-apps/api/webview');
 	return {
 		kind: 'tauri',
 		build: (path, schematic, wires) => invoke<BuildOutput>('build', { path, schematic, wires }),
@@ -43,6 +49,16 @@ async function tauriEngine(): Promise<Engine> {
 		async pick() {
 			const file = await open({ multiple: false, filters: [{ name: 'Circuit', extensions: ['yaml', 'yml'] }] });
 			return typeof file === 'string' ? file : null;
+		},
+		onDrag(onDrag) {
+			// 'over' doesn't repeat the paths 'enter' gave
+			let paths: string[] = [];
+			getCurrentWebview().onDragDropEvent(({ payload: e }) => {
+				if (e.type === 'enter') paths = e.paths;
+				if (e.type === 'enter' || e.type === 'over') onDrag({ type: 'over', paths });
+				else if (e.type === 'drop') onDrag({ type: 'drop', paths: e.paths });
+				else onDrag({ type: 'leave' });
+			});
 		}
 	};
 }
@@ -64,7 +80,28 @@ function webEngine(): Engine {
 			source.onmessage = () => onChange();
 			return () => source.close();
 		},
-		pick: null
+		pick: null,
+		onDrag(onDrag) {
+			// a browser gives a dropped file's name and contents but not its path, so a drop can't open it; it's
+			// caught all the same, or the browser would leave the studio to show the file
+			const files = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+			let depth = 0; // dragenter and dragleave fire for each element crossed
+			window.addEventListener('dragenter', (e) => {
+				if (files(e) && depth++ === 0) onDrag({ type: 'over', paths: null });
+			});
+			window.addEventListener('dragleave', (e) => {
+				if (files(e) && --depth === 0) onDrag({ type: 'leave' });
+			});
+			window.addEventListener('dragover', (e) => {
+				if (files(e)) e.preventDefault();
+			});
+			window.addEventListener('drop', (e) => {
+				if (!files(e)) return;
+				e.preventDefault();
+				depth = 0;
+				onDrag({ type: 'drop', paths: null });
+			});
+		}
 	};
 }
 

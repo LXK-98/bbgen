@@ -32,7 +32,8 @@ pnpm dev
 
 In the browser, the dev server stands in for Tauri ([vite/bbgen-dev.ts](vite/bbgen-dev.ts)): it runs bbgen,
 lists the repo's examples and benchmarks, and watches the open file. There's no native file dialog there, so
-open a file by typing its full path in the Open dialog.
+open a file by typing its full path in the Open dialog. In the desktop window, dropping a `.yaml` file on it
+opens it too.
 
 Which bbgen runs: `$BBGEN` if set, else a `bbgen` beside the app, else this checkout's `bin/bbgen` (which
 builds bbgen first when its sources changed), else `bbgen` on `PATH`.

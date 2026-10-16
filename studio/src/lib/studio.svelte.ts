@@ -2,7 +2,7 @@
 // and writes this one object, so hovering a row in a list lights the same thing on the board.
 
 import { toast } from 'svelte-sonner';
-import { getEngine, type Engine } from './engine';
+import { getEngine, type Drag, type Engine } from './engine';
 import { indexScene, type SceneIndex } from './lookup';
 import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError } from './scene';
 
@@ -54,6 +54,8 @@ export class Studio {
 	filter = $state('');
 	dim = $state(true);
 	openDialog = $state(false);
+	/** files being dragged over the window: the circuit a drop would open, if any; paths: false in a browser */
+	dragging = $state.raw<{ circuit: string | null; paths: boolean } | null>(null);
 
 	examples = $state.raw<string[]>([]);
 	recent = $state<string[]>(load(RECENT, []));
@@ -64,6 +66,7 @@ export class Studio {
 
 	async init() {
 		this.engine = await getEngine();
+		this.engine.onDrag((e) => this.drag(e));
 		this.examples = await this.engine.examples();
 		const last = this.recent[0];
 		if (last) await this.open(last);
@@ -87,6 +90,25 @@ export class Studio {
 			this.watching = true;
 		}
 		await this.rebuild();
+	}
+
+	/** files dragged over the window: a drop opens the first circuit file among them */
+	drag(e: Drag) {
+		if (e.type === 'leave') {
+			this.dragging = null;
+			return;
+		}
+		const circuit = e.paths?.find((p) => /\.ya?ml$/i.test(p)) ?? null;
+		if (e.type === 'over') {
+			this.dragging = { circuit, paths: e.paths !== null };
+			return;
+		}
+		this.dragging = null;
+		if (circuit) this.open(circuit);
+		else if (e.paths === null) {
+			toast.info("A browser doesn't say where a dropped file is", { description: 'Open it by its path instead.' });
+			this.openDialog = true;
+		} else toast.error('Not a circuit file', { description: 'Drop a .yaml or .yml file.' });
 	}
 
 	async rebuild() {
