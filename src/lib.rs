@@ -16,6 +16,7 @@ pub mod pyf;
 pub mod pyrand;
 pub mod render;
 pub mod scene;
+pub mod schematic;
 pub mod search;
 pub mod symbol;
 pub mod trace;

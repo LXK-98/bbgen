@@ -11,6 +11,7 @@
 //!     bbgen dev measure FILE OUTDIR [--no-png]                 what benchmarks/run.py tabulates
 //!     bbgen dev frames FILE OUTDIR [--all]                     a video's frames as SVG files
 //!     bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]      every part's schematic symbol, in a grid
+//!     bbgen dev schematic FILE OUT.svg                         the circuit's schematic, and the graph ELK laid out
 //!     bbgen dev elk GRAPH.json [OUT.json] [--repeat N]         a graph laid out by ELK, and how long it took
 //!     bbgen dev kicad-roots | score-lines | yaml-json FILE | pyf-check
 
@@ -299,6 +300,7 @@ fn dev(args: &[String]) -> i32 {
         Some("measure") => dev_measure(&args[1..]),
         Some("symbols") if args.len() >= 3 => dev_symbols(&args[1..]),
         Some("elk") if args.len() >= 2 => dev_elk(&args[1..]),
+        Some("schematic") if args.len() >= 3 => dev_schematic(&args[1..]),
         Some("kicad-roots") => {
             // the KiCad library folders parts are read from, one a line
             for r in bbgen::kicad::library_roots(None) {
@@ -325,7 +327,7 @@ fn dev(args: &[String]) -> i32 {
             0
         }
         _ => {
-            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | elk GRAPH.json [OUT.json] [--repeat N] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
+            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | elk GRAPH.json [OUT.json] [--repeat N] | schematic FILE OUT.svg | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
             2
         }
     }
@@ -572,5 +574,29 @@ fn dev_elk(args: &[String]) -> i32 {
         Some(path) => std::fs::write(path, text).unwrap(),
         None => print!("{}", text),
     }
+    0
+}
+
+/// dev schematic FILE OUT.svg: the circuit's schematic (and its PNG), with the graph given to ELK and what came back
+/// beside it (OUT.elk.json, OUT.laid.json), for ELK's online viewer.
+fn dev_schematic(args: &[String]) -> i32 {
+    let out = Path::new(&args[1]);
+    let c = match Circuit::load(&args[0]) {
+        Ok(c) => c,
+        Err(e) => { eprintln!("{}: {}", args[0], e); return 2; }
+    };
+    let start = Instant::now();
+    let s = match bbgen::schematic::draw(&c) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("{}", e); return 1; }
+    };
+    eprintln!("schematic in {:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir).ok();
+    }
+    std::fs::write(out, bbgen::schematic::page(&s)).unwrap();
+    std::fs::write(out.with_extension("elk.json"), serde_json::to_string_pretty(&s.graph).unwrap()).unwrap();
+    std::fs::write(out.with_extension("laid.json"), serde_json::to_string_pretty(&s.laid_out).unwrap()).unwrap();
+    png(out);
     0
 }

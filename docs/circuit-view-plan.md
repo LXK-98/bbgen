@@ -246,9 +246,25 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      numbered differently in each engine. It's left out of the output on both sides.
    - Costs: the stripped binary went from 3.1 MB to 6.2 MB, and a clean build from 14 s to 38 s (QuickJS is
      compiled for the build script too). Incremental builds are as before.
-3. **A first schematic.** Symbols as ELK nodes with their pins as fixed ports (`FIXED_POS`); power symbols;
-   edges directed as above; merged nets with junction dots; drawn with groups. Look at all of them and
-   write down what reads badly.
+3. **A first schematic.** Done (October 2026). [src/schematic.rs](../src/schematic.rs): each unit a node, its
+   signal pins ports fixed on the node's edge (the pin is drawn on to the edge, so a node's box can take in its
+   text and power symbols); supplies and grounds as power symbols; two-lead parts in line between signals or
+   hanging from one; each net drawn from its driving pin, merged, with junction dots. `bbgen dev schematic FILE
+   OUT.svg` draws one (with the ELK graph in and out beside it). 65–820 ms each over the 21 benchmarks.
+   `tests/schematic.rs` draws the examples. What the drawings show:
+   - Reads well already: 04 (the 555's timing network and output, as in a textbook), 07 and 09.
+   - **Symbols facing the wrong way.** A part driving from its left side (the Pico in 09 and 16) lands right of
+     or below what it drives, and its wires go round it; one fed on its right (07's Output connector, the
+     24LC256 in the eeprom example) lands on the left. Mirror such a symbol, as KiCad users do.
+   - **Fields of in-line parts** stay vertical where the library put them (R3 in 04). Place them above,
+     horizontally.
+   - **Power symbols on side pins** point sideways (connectors' GND, the 555's RST, the 595's OE). Supplies
+     should point up and grounds down, after a short wire.
+   - **Decoupling caps and power units** sit in a row at the top left, far from their chips, leaving much of the
+     page empty (16: nine caps).
+   - **Long nets.** 16's VDDIO (17 pins, no rail) is a wire tree over the whole page, and the nets to its 34-pin
+     connector and 13's bus cross everything: these want labels (step 5).
+   - **Connectors in the middle**: 13's Bus connector sits between the chips; connectors belong at the edges.
 4. **The rules.** Hanging two-lead parts, decoupling caps beside their chips, connectors at the edge,
    multi-unit symbols, generic boxes. One at a time, each judged before and after on the drawings.
 5. **Labels and the self-check.** Long nets as labels; the read-back check; records of each benchmark's
