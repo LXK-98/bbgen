@@ -41,6 +41,10 @@ export interface Engine {
 	stop(): Promise<void>;
 	/** circuit files that come with bbgen (its examples and benchmarks), when it can find them */
 	examples(): Promise<string[]>;
+	/** the circuit the app was started with (`bbgen studio FILE`), the first time it's asked; else null */
+	opened(): Promise<string | null>;
+	/** call onOpen with each circuit sent while the app is open (`bbgen studio FILE` again) */
+	onOpen(onOpen: (path: string) => void): void;
 	/** call onChange when the file is saved; returns a function that stops watching */
 	watch(path: string, onChange: () => void): () => void;
 	/** a native open-file dialog, where there is one */
@@ -81,6 +85,10 @@ async function tauriEngine(): Promise<Engine> {
 		},
 		stop: () => invoke('stop'),
 		examples: () => invoke<string[]>('examples'),
+		opened: () => invoke<string | null>('opened'),
+		onOpen(onOpen) {
+			listen<string>('open-file', (e) => onOpen(e.payload));
+		},
 		edit: (path, line) => invoke('edit', { path, line }),
 		useBbgen: (path) => invoke<BbgenInfo>('use_bbgen', { path }),
 		progress: (path) => invoke<string[]>('progress', { path }),
@@ -170,6 +178,9 @@ function webEngine(): Engine {
 			await get('/api/stop');
 		},
 		examples: () => get<string[]>('/api/examples').catch(() => []),
+		// a browser isn't started with a circuit, nor sent one
+		opened: async () => null,
+		onOpen() {},
 		// a browser can't write where you choose: the files are downloads
 		async export(path, what, wires) {
 			const q = `path=${encodeURIComponent(path)}&what=${what}&wires=${wires ? 1 : 0}`;

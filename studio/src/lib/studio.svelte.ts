@@ -115,12 +115,14 @@ export class Studio {
 	async init() {
 		this.engine = await getEngine();
 		this.engine.onDrag((e) => this.drag(e));
+		this.engine.onOpen((path) => this.open(path));
 		// the bbgen picked last time, if it still runs; else the usual one
 		const picked = load<string | null>(BBGEN, null);
 		this.bbgen = await this.engine.useBbgen(picked).catch(() => this.engine!.useBbgen(null)).catch(() => null);
 		this.examples = await this.engine.examples();
-		const last = this.recent[0];
-		if (last) await this.open(last);
+		// the circuit it was started with, else the one open last time
+		const first = (await this.engine.opened()) ?? this.recent[0];
+		if (first) await this.open(first);
 	}
 
 	async open(path: string) {

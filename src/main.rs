@@ -5,6 +5,8 @@
 //!     bbgen build|check circuit.yaml --json                     what was built, as JSON on stdout (docs/scene-format.md)
 //!     bbgen build|check circuit.yaml --events                   --json, after a JSON line for each step as it's taken
 //!     bbgen find WORDS... [--kicad DIR]                         search KiCad's library for a symbol
+//!     bbgen studio [circuit.yaml]                               open bbgen studio (with the circuit) and return
+//!     bbgen docs                                                where the circuit file's reference is
 //!
 //! For bbgen's own tests and benchmarks (benchmarks/README.md):
 //!
@@ -24,22 +26,28 @@ use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-const USAGE: &str = "usage: bbgen {build,check,find} ...\n\n\
-  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--wires] [--video FILE] [--video-all]\n\
-                                                    write <name>.svg/.png/.md next to the YAML and check the wiring\n\
-                                                    (--bare: the drawing without title, legend or background;\n\
-                                                    --schematic: the circuit's schematic too, <name>.schematic.svg;\n\
-                                                    --wires: every net a wire, no labels)\n\
-  check circuit.yaml                                check the wiring only\n\
-  build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)\n\
-  build|check circuit.yaml --events                 --json, after a JSON line for each step of placing and wiring\n\
-  find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
+const USAGE: &str = r#"usage: bbgen {build,check,find,studio,docs} ...
+
+  build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--wires] [--video FILE] [--video-all]
+                                                    write <name>.svg/.png/.md next to the YAML and check the wiring
+                                                    (--bare: the drawing without title, legend or background;
+                                                    --schematic: the circuit's schematic too, <name>.schematic.svg;
+                                                    --wires: every net a wire, no labels)
+  check circuit.yaml                                check the wiring only
+  build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)
+  build|check circuit.yaml --events                 --json, after a JSON line for each step of placing and wiring
+  find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555
+  studio [circuit.yaml]                             open bbgen studio, with the circuit if given, and return at once
+                                                    (a studio that's open already opens the circuit itself)
+  docs                                              print where the circuit file's reference is (circuit-file.md)"#;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("build") | Some("check") => run(&args),
         Some("find") => find(&args[1..]),
+        Some("studio") => studio(&args[1..]),
+        Some("docs") => docs(),
         Some("dev") => dev(&args[1..]),
         Some("--version") => {
             println!("bbgen {}", env!("CARGO_PKG_VERSION"));
@@ -338,6 +346,116 @@ fn find(args: &[String]) -> i32 {
         println!("nothing found; try fewer or shorter words");
     }
     if hits.is_empty() { 1 } else { 0 }
+}
+
+/// share/bbgen of an installed bbgen (beside its bin/), where install.sh puts the docs and the examples.
+fn installed_share() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let share = exe.parent()?.parent()?.join("share/bbgen");
+    share.is_dir().then_some(share)
+}
+
+/// The checkout this bbgen was built in, if it's still there.
+fn checkout() -> Option<PathBuf> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    root.join("Cargo.toml").is_file().then_some(root)
+}
+
+/// bbgen studio's binary: beside this bbgen (as install.sh puts them), else the checkout's release build, else on PATH.
+fn studio_exe() -> Option<PathBuf> {
+    let beside = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join("bbgen-studio")));
+    beside.filter(|p| p.is_file())
+        .or_else(|| checkout().map(|r| r.join("studio/src-tauri/target/release/bbgen-studio")).filter(|p| p.is_file()))
+        .or_else(|| std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join("bbgen-studio")).find(|p| p.is_file()))
+}
+
+/// studio [FILE]: start bbgen studio with FILE open, and return. A studio that's open already opens FILE itself and
+/// the new one exits at once; one that can't start (no WebKitGTK, no display) stops at once too, with an error. A
+/// short wait tells which happened.
+fn studio(args: &[String]) -> i32 {
+    let file = match args {
+        [] => None,
+        [f] if !f.starts_with('-') => Some(PathBuf::from(f)),
+        _ => {
+            eprintln!("bbgen: studio takes one circuit file at most\n{}", USAGE);
+            return 2;
+        }
+    };
+    if let Some(f) = file.as_ref().filter(|f| !f.is_file()) {
+        eprintln!("bbgen: no such file: {}", f.display());
+        return 2;
+    }
+    // absolute: a studio that's open already has a working directory of its own
+    let file = file.map(|f| std::path::absolute(&f).unwrap_or(f));
+    let Some(exe) = studio_exe() else {
+        eprintln!("bbgen: can't find bbgen-studio (looked beside bbgen, in its checkout and on PATH)");
+        return 1;
+    };
+    // what it prints goes to a log, not to the terminal (or agent) that started it
+    let log_path = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
+        .map(|d| d.join("bbgen/studio.log"));
+    let log = log_path.as_ref().and_then(|p| {
+        std::fs::create_dir_all(p.parent()?).ok()?;
+        std::fs::File::create(p).ok()
+    });
+    let output = || log.as_ref().and_then(|l| l.try_clone().ok()).map_or(std::process::Stdio::null(), Into::into);
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.args(&file).stdin(std::process::Stdio::null()).stdout(output()).stderr(output());
+    // a process group of its own: Ctrl-C here, or an agent's command ending, doesn't stop the studio
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("bbgen: can't run {}: {}", exe.display(), e);
+            return 1;
+        }
+    };
+    let with = file.as_ref().map(|f| format!(" with {}", f.display())).unwrap_or_default();
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        match child.try_wait() {
+            Ok(Some(s)) if s.success() => {
+                match &file {
+                    Some(f) => println!("opened {} in the bbgen studio that was open", f.display()),
+                    None => println!("bbgen studio is open already"),
+                }
+                return 0;
+            }
+            Ok(Some(s)) => {
+                eprintln!("bbgen: bbgen studio ({}) stopped at once ({})", exe.display(), s);
+                let said = log_path.and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+                let lines: Vec<&str> = said.lines().collect();
+                for l in &lines[lines.len().saturating_sub(20)..] {
+                    eprintln!("  {}", l);
+                }
+                return 1;
+            }
+            Ok(None) => {}
+            Err(_) => break,
+        }
+    }
+    println!("started bbgen studio{}", with);
+    0
+}
+
+/// docs: where the circuit file's reference is: an installed bbgen's share/bbgen/docs/circuit-file.md, else the
+/// checkout's.
+fn docs() -> i32 {
+    let page = "docs/circuit-file.md";
+    let found = installed_share().map(|s| s.join(page)).filter(|p| p.is_file())
+        .or_else(|| checkout().map(|r| r.join(page)).filter(|p| p.is_file()));
+    match found {
+        Some(p) => {
+            println!("{}", p.display());
+            0
+        }
+        None => {
+            eprintln!("bbgen: can't find {} (it isn't in share/bbgen beside bbgen, and the checkout is gone)", page);
+            1
+        }
+    }
 }
 
 // ---- for bbgen's own tests and benchmarks ----

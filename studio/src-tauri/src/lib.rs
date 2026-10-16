@@ -78,6 +78,20 @@ struct Studio {
     /// the build running now: a newer one stops it
     running: Mutex<Option<Arc<Mutex<Child>>>>,
     watchers: Mutex<HashMap<String, notify::RecommendedWatcher>>,
+    /// the circuit named on the command line (`bbgen studio FILE`), until the UI takes it
+    opened: Mutex<Option<String>>,
+}
+
+/// The circuit a command line names: its first argument that isn't a flag, made absolute against `cwd`.
+fn circuit_arg(args: impl Iterator<Item = String>, cwd: &Path) -> Option<String> {
+    let arg = args.into_iter().find(|a| !a.starts_with('-'))?;
+    Some(cwd.join(arg).to_string_lossy().into_owned())
+}
+
+/// The circuit the studio was started with, once: the UI opens it instead of the last one it had open.
+#[tauri::command]
+fn opened(studio: State<'_, Studio>) -> Option<String> {
+    studio.opened.lock().unwrap().take()
 }
 
 /// `bbgen build <path> --json` (and `--schematic`, or `--wires`, when the circuit view wants it): what it printed (a scene or an
@@ -224,12 +238,19 @@ fn save_progress(path: String, done: Vec<String>, app: AppHandle) -> Result<(), 
     std::fs::write(&file, serde_json::to_string_pretty(&Value::Object(all)).unwrap()).map_err(|e| e.to_string())
 }
 
-/// The circuits that come with bbgen: its examples and benchmarks.
+/// The circuits that come with bbgen: an installed studio's examples (share/bbgen/examples, beside its bin/), else
+/// the checkout's examples and benchmarks.
 #[tauri::command]
 fn examples() -> Vec<String> {
-    let Some(root) = repo() else { return vec![] };
+    let installed = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.parent()?.join("share/bbgen")))
+        .filter(|s| s.join("examples").is_dir());
+    let (root, dirs): (PathBuf, &[&str]) = match (installed, repo()) {
+        (Some(share), _) => (share, &["examples"]),
+        (None, Some(repo)) => (repo, &["examples", "benchmarks"]),
+        (None, None) => return vec![],
+    };
     let mut out = Vec::new();
-    for dir in ["examples", "benchmarks"] {
+    for dir in dirs {
         let mut files: Vec<String> = std::fs::read_dir(root.join(dir)).into_iter().flatten().flatten()
             .map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"))
             .map(|p| p.to_string_lossy().into_owned()).collect();
@@ -375,10 +396,23 @@ fn pinch_zooms_the_drawing(view: &webkit2gtk::WebView) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let started_with = circuit_arg(std::env::args().skip(1), &cwd);
     tauri::Builder::default()
+        // a second start (`bbgen studio FILE` while the studio is open) hands its circuit to this one, and exits
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(path) = circuit_arg(args.into_iter().skip(1), Path::new(&cwd)) {
+                let _ = app.emit("open-file", path);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
-        .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, stop, examples, watch, unwatch, edit, export, use_bbgen, progress, save_progress])
+        .manage(Studio { opened: Mutex::new(started_with), ..Default::default() })
+        .invoke_handler(tauri::generate_handler![build, stop, examples, watch, unwatch, edit, export, use_bbgen, progress, save_progress,
+                                                 opened])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
