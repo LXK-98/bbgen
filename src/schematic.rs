@@ -654,9 +654,6 @@ fn route(nodes: &[Node], laid_out: &Value, at: std::collections::HashMap<String,
             pts.push(xy(&s["endPoint"]));
             d.lines.push((net, pts));
         }
-        for j in e["junctionPoints"].as_array().into_iter().flatten() {
-            d.dots.push((net, xy(j)));
-        }
     }
     for node in nodes {
         let (x, y) = d.at[&node.id];
@@ -671,7 +668,49 @@ fn route(nodes: &[Node], laid_out: &Value, at: std::collections::HashMap<String,
             }
         }
     }
+    d.dots = junctions(&d.lines);
     d
+}
+
+/// Where a net's wires branch, as the drawing shows them: each net's lines cut into pieces at every point where one
+/// meets another, pieces drawn twice counted once (ELK's merged edges share their first stretch), and a dot wherever
+/// three pieces or more meet. (ELK's own junction points only cover the edges it merged.)
+fn junctions(lines: &[(usize, Vec<Xy>)]) -> Vec<(usize, Xy)> {
+    // points to a tenth of a pixel, so ends that meet are equal
+    let key = |p: Xy| ((p.0 * 10.0).round() as i64, (p.1 * 10.0).round() as i64);
+    let mut nets: Vec<usize> = lines.iter().map(|(n, _)| *n).collect();
+    nets.sort();
+    nets.dedup();
+    let mut dots = Vec::new();
+    for n in nets {
+        let segs: Vec<(Xy, Xy)> = lines.iter().filter(|(m, _)| *m == n).flat_map(|(_, pts)| pts.windows(2).map(|w| (w[0], w[1])))
+            .filter(|(a, b)| key(*a) != key(*b)).collect();
+        let mut points: Vec<Xy> = segs.iter().flat_map(|(a, b)| [*a, *b]).collect();
+        points.sort_by_key(|p| key(*p));
+        points.dedup_by_key(|p| key(*p));
+        // each segment cut at the points on it, as pieces between neighbouring points
+        let mut pieces: std::collections::HashSet<((i64, i64), (i64, i64))> = std::collections::HashSet::new();
+        for (a, b) in &segs {
+            let mut on_it: Vec<Xy> = points.iter().copied().filter(|p| on(*p, *a, *b)).collect();
+            let along = |p: &Xy| (p.0 - a.0).abs() + (p.1 - a.1).abs();
+            on_it.sort_by(|p, q| along(p).total_cmp(&along(q)));
+            for w in on_it.windows(2) {
+                let (x, y) = (key(w[0]), key(w[1]));
+                if x != y {
+                    pieces.insert(if x < y { (x, y) } else { (y, x) });
+                }
+            }
+        }
+        let mut degree: std::collections::HashMap<(i64, i64), usize> = std::collections::HashMap::new();
+        for (x, y) in &pieces {
+            *degree.entry(*x).or_default() += 1;
+            *degree.entry(*y).or_default() += 1;
+        }
+        let mut here: Vec<(i64, i64)> = degree.into_iter().filter(|(_, d)| *d >= 3).map(|(p, _)| p).collect();
+        here.sort();
+        dots.extend(here.into_iter().map(|(x, y)| (n, (x as f64 / 10.0, y as f64 / 10.0))));
+    }
+    dots
 }
 
 /// Whether p lies on the segment from a to b (they're horizontal or vertical), within half a pixel.
@@ -1026,6 +1065,19 @@ mod tests {
 
     fn drawn(lines: Vec<(usize, Vec<Xy>)>, pins: Vec<(usize, Xy)>) -> Drawn {
         Drawn { lines, dots: vec![], pins, at: Default::default() }
+    }
+
+    #[test]
+    fn a_dot_where_three_wires_meet_and_nowhere_else() {
+        let line = |pts: &[Xy]| (0usize, pts.to_vec());
+        // a T: a branch ending on a wire
+        assert_eq!(junctions(&[line(&[(0.0, 0.0), (100.0, 0.0)]), line(&[(50.0, 40.0), (50.0, 0.0)])]), vec![(0, (50.0, 0.0))]);
+        // a corner, and two wires crossing: no dot
+        assert!(junctions(&[line(&[(0.0, 0.0), (100.0, 0.0), (100.0, 50.0)])]).is_empty());
+        assert!(junctions(&[line(&[(0.0, 0.0), (100.0, 0.0)]), line(&[(50.0, -40.0), (50.0, 40.0)])]).is_empty());
+        // two edges from one pin sharing their first stretch (ELK's merged edges): a dot where they part only
+        let merged = [line(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0)]), line(&[(0.0, 0.0), (60.0, 0.0), (100.0, 0.0)])];
+        assert_eq!(junctions(&merged), vec![(0, (60.0, 0.0))]);
     }
 
     #[test]
