@@ -16,6 +16,8 @@ export interface Engine {
 	watch(path: string, onChange: () => void): () => void;
 	/** a native open-file dialog, where there is one */
 	pick: (() => Promise<string | null>) | null;
+	/** open the circuit file in an editor, at a line if given */
+	edit(path: string, line: number | null): Promise<void>;
 	/** call onDrag as files are dragged over the window and dropped on it */
 	onDrag(onDrag: (e: Drag) => void): void;
 }
@@ -33,6 +35,7 @@ async function tauriEngine(): Promise<Engine> {
 		kind: 'tauri',
 		build: (path, schematic, wires) => invoke<BuildOutput>('build', { path, schematic, wires }),
 		examples: () => invoke<string[]>('examples'),
+		edit: (path, line) => invoke('edit', { path, line }),
 		watch(path, onChange) {
 			let stop: (() => void) | null = null;
 			let stopped = false;
@@ -75,6 +78,7 @@ function webEngine(): Engine {
 		build: (path, schematic, wires) =>
 			get<BuildOutput>(`/api/build?path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}&wires=${wires ? 1 : 0}`),
 		examples: () => get<string[]>('/api/examples').catch(() => []),
+		edit: (path, line) => get(`/api/edit?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ''}`),
 		watch(path, onChange) {
 			const source = new EventSource(`/api/watch?path=${encodeURIComponent(path)}`);
 			source.onmessage = () => onChange();

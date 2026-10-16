@@ -35,8 +35,14 @@ fn placed_by_you(data: Option<&Val>, r: &str, kind: Kind) -> Option<bool> {
     Some(if kind.is_lead() { given("pins") } else { kind == Kind::Offboard || given("at") })
 }
 
-/// The scene for a built circuit. `data` is the circuit file as read, to tell what it placed from what bbgen did.
-pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value {
+/// The scene for a built circuit. `text` is the circuit file, to tell what it placed from what bbgen did and
+/// where each part, wire and net is in it.
+pub fn scene(c: &Circuit, result: &Result, text: Option<&str>, ms: f64) -> Value {
+    let (data, lines) = match text.map(crate::yaml::load_lines) {
+        Some(Ok((v, l))) => (Some(v), l),
+        _ => (None, Default::default()),
+    };
+    let data = data.as_ref();
     let (svg, cv) = crate::render::draw_annotated(c, result);
     let (width, height) = svg_size(&svg);
 
@@ -91,14 +97,22 @@ pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value
                "source": p.source, "adapter": p.adapter, "at": p.pins.first().and_then(|x| x.hole).map(|h| c.hole_name(h)),
                "rot": p.rot, "raised": p.raised, "placed_by": placed_by, "legs": p.legs, "slant": p.slant,
                "keepouts": p.keepouts.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>(),
-               "body": body, "pins": pins, "text": crate::checklist::part_text(c, p)})
+               "body": body, "pins": pins, "text": crate::checklist::part_text(c, p),
+               "line": lines.get(&["parts", &p.r#ref])})
     }).collect();
 
     let end = |e: &Option<End>| match e {
         Some(e) => json!({"hole": e.hole.map(|h| c.hole_name(h)), "pin": e.pin.map(|p| c.pin_str(p)), "spec": e.spec}),
         None => Value::Null,
     };
+    // the file's wires are the first, in its order; bbgen's come after
+    let mut nth: crate::HashMap<&str, usize> = Default::default();
     let wires: Vec<Value> = c.wires.iter().map(|w| {
+        let line = if w.auto { None } else {
+            let i = nth.entry(w.group.as_str()).or_default();
+            *i += 1;
+            lines.of_message(&format!("wires.{}[{}]: ", w.group, *i - 1))
+        };
         let placed = w.a.is_some() && w.b.is_some();
         let points: Vec<Value> = if placed { c.wire_points(w).into_iter().map(|p| pt(&cv, p)).collect() } else { vec![] };
         json!({"id": format!("W{}", w.num), "num": w.num, "group": w.group, "nets": result.wire_nets(c, w),
@@ -106,12 +120,13 @@ pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value
                "spec": [w.spec.0, w.spec.1], "via": w.via, "points": points, "flex": w.flex,
                "flying": placed && !w.on_board(), "laid_by": if w.auto { "bbgen" } else { "you" },
                "slant": w.slant, "under": if placed { c.under_of(w) } else { vec![] },
-               "text": crate::checklist::wire_text(c, result, w)})
+               "text": crate::checklist::wire_text(c, result, w), "line": line})
     }).collect();
 
     let nets: Vec<Value> = c.nets.values().map(|n| {
         json!({"name": n.name, "color": color_hex(&n.color), "pins": n.pins.iter().map(|&p| c.pin_str(p)).collect::<Vec<_>>(),
-               "rails": n.rails, "polarity": n.polarity.map(|p| p.to_string()), "guessed": n.guessed})
+               "rails": n.rails, "polarity": n.polarity.map(|p| p.to_string()), "guessed": n.guessed,
+               "line": lines.get(&["nets", &n.name])})
     }).collect();
 
     let issues: Vec<Value> = result.issues.iter().map(|i| {
@@ -124,7 +139,8 @@ pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value
         }
         json!({"level": i.level, "code": i.code, "message": i.message, "parts": refs,
                "pins": i.pins.iter().map(|&p| c.pin_str(p)).collect::<Vec<_>>(),
-               "holes": i.holes.iter().flatten().map(|&h| c.hole_name(h)).collect::<Vec<_>>()})
+               "holes": i.holes.iter().flatten().map(|&h| c.hole_name(h)).collect::<Vec<_>>(),
+               "line": lines.of_message(&i.message)})
     }).collect();
 
     let checklist: Vec<Value> = crate::checklist::steps(c, result).into_iter()
@@ -140,7 +156,6 @@ pub fn scene(c: &Circuit, result: &Result, data: Option<&Val>, ms: f64) -> Value
     })
 }
 
-/// A circuit file that couldn't be read, with where, when the message says (`... (line 3, column 1)`).
 /// The scene's `schematic`: the drawing (on nothing, in `currentColor`, with `data-part`, `data-net` and `data-pin`
 /// groups), its size, its style (`symbols` or `wires`), the nets drawn as labels, what the check found wrong in it (nothing, unless bbgen has a bug),
 /// and how long it took.
@@ -153,8 +168,10 @@ pub fn schematic(s: &crate::schematic::Schematic, ms: f64, style: crate::schemat
            "labels": s.labelled, "problems": s.problems, "ms": (ms * 10.0).round() / 10.0})
 }
 
-pub fn error(message: &str) -> Value {
-    let mut line = Value::Null;
+/// A circuit file that couldn't be read, with where, when the message says: `... (line 3, column 1)` from the
+/// YAML reader, or a path (`parts.U1: ...`) that `text`, the file, has a line for.
+pub fn error(message: &str, text: Option<&str>) -> Value {
+    let mut line = json!(text.and_then(|t| crate::yaml::load_lines(t).ok()).and_then(|(_, l)| l.of_message(message)));
     let mut column = Value::Null;
     if let Some(at) = message.rfind("(line ") {
         let nums: Vec<i64> = message[at..].split(|ch: char| !ch.is_ascii_digit()).filter_map(|s| s.parse().ok()).collect();

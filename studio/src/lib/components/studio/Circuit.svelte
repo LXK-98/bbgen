@@ -7,6 +7,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Drawing from './Drawing.svelte';
+	import BuildError from './BuildError.svelte';
 	import { Toggle } from '#lib/components/ui/toggle/index.js';
 	import TagX from '@lucide/svelte/icons/tag-x';
 
@@ -36,7 +37,9 @@
 					<TagX /> No labels
 				</Toggle>
 			</div>
-			{#if schematic.problems.length}
+			{#if studio.error}
+				<BuildError banner />
+			{:else if schematic.problems.length}
 				<div class="absolute right-3 bottom-3 left-3 z-10 flex items-start gap-3 rounded-lg border border-destructive/40 bg-background/95 px-4 py-3 text-sm shadow-md">
 					<TriangleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
 					<div>
@@ -48,7 +51,9 @@
 		</Drawing>
 	{:else}
 		<div class="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
-			{#if failed}
+			{#if studio.error && !scene}
+				<BuildError />
+			{:else if failed}
 				<div class="flex items-center gap-2"><TriangleAlert class="size-4 text-destructive" /> No schematic: {failed}</div>
 			{:else if scene || studio.building}
 				<div class="flex items-center gap-2"><LoaderCircle class="size-4 animate-spin" /> Drawing the schematic…</div>

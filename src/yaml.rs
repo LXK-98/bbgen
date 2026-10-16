@@ -8,6 +8,39 @@ use std::mem::MaybeUninit;
 use unsafe_libyaml::*;
 
 pub fn load(text: &str) -> Result<Val, String> {
+    load_lines(text).map(|(v, _)| v)
+}
+
+/// Where things are in a circuit file: the line (from 1) of each key and list item down to three levels,
+/// by its path (`["parts", "U1"]`, `["wires", "power", "2"]`; a key as Python's `str()` writes it).
+#[derive(Clone, Debug, Default)]
+pub struct Lines(Vec<(Vec<String>, usize)>);
+
+const DEPTH: usize = 3;
+
+impl Lines {
+    pub fn get(&self, path: &[&str]) -> Option<usize> {
+        self.0.iter().rev().find(|(p, _)| p.iter().map(String::as_str).eq(path.iter().copied())).map(|&(_, l)| l)
+    }
+
+    /// The line a message is about, when it starts with a path as bbgen writes them: `parts.U1: ...`,
+    /// `nets.GND: ...`, `wires.power[2]: ...` (`wires.wires[2]` when the wires are one list).
+    pub fn of_message(&self, message: &str) -> Option<usize> {
+        let (head, _) = message.split_once(": ")?;
+        let (section, rest) = head.split_once('.')?;
+        match section {
+            "parts" | "nets" => self.get(&[section, rest]),
+            "wires" => {
+                let (group, i) = rest.strip_suffix(']')?.rsplit_once('[')?;
+                self.get(&["wires", group, i]).or_else(|| if group == "wires" { self.get(&["wires", i]) } else { None })
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A circuit file's values, and where each is in it.
+pub fn load_lines(text: &str) -> Result<(Val, Lines), String> {
     unsafe {
         let mut parser = MaybeUninit::<yaml_parser_t>::uninit();
         if yaml_parser_initialize(parser.as_mut_ptr()).fail {
@@ -15,7 +48,7 @@ pub fn load(text: &str) -> Result<Val, String> {
         }
         let parser = parser.as_mut_ptr();
         yaml_parser_set_input_string(parser, text.as_ptr(), text.len() as _);
-        let mut b = Builder { stack: vec![], anchors: vec![], doc: None, docs: 0 };
+        let mut b = Builder { stack: vec![], anchors: vec![], doc: None, docs: 0, lines: Lines::default() };
         let out = loop {
             let mut event = MaybeUninit::<yaml_event_t>::uninit();
             if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
@@ -33,7 +66,7 @@ pub fn load(text: &str) -> Result<Val, String> {
                 break Err(e);
             }
             if done {
-                break Ok(b.doc.take().unwrap_or(Val::Null));
+                break Ok((b.doc.take().unwrap_or(Val::Null), std::mem::take(&mut b.lines)));
             }
         };
         yaml_parser_delete(parser);
@@ -41,9 +74,10 @@ pub fn load(text: &str) -> Result<Val, String> {
     }
 }
 
+/// A sequence or mapping being read: its items, its key waiting for a value, its anchor, and its first line.
 enum Frame {
-    Seq(Vec<Val>, Option<String>),
-    Map(Vec<(Val, Val)>, Option<Val>, Option<String>),
+    Seq(Vec<Val>, Option<String>, usize),
+    Map(Vec<(Val, Val)>, Option<Val>, Option<String>, usize),
 }
 
 struct Builder {
@@ -51,6 +85,7 @@ struct Builder {
     anchors: Vec<(String, Val)>,
     doc: Option<Val>,
     docs: usize,
+    lines: Lines,
 }
 
 unsafe fn cstr(p: *const u8) -> Option<String> {
@@ -63,6 +98,7 @@ unsafe fn cstr(p: *const u8) -> Option<String> {
 
 impl Builder {
     unsafe fn event(&mut self, ev: &yaml_event_t) -> Result<(), String> {
+        let line = ev.start_mark.line as usize + 1;
         match ev.type_ {
             YAML_DOCUMENT_START_EVENT => {
                 self.docs += 1;
@@ -85,36 +121,54 @@ impl Builder {
                 if let Some(a) = cstr(s.anchor) {
                     self.anchors.push((a, v.clone()));
                 }
-                self.add(v)?;
+                self.add(v, line)?;
             }
             YAML_ALIAS_EVENT => {
                 let name = cstr(ev.data.alias.anchor).unwrap_or_default();
                 let v = self.anchors.iter().rev().find(|(a, _)| *a == name).map(|(_, v)| v.clone())
                     .ok_or(format!("found undefined alias {}", name))?;
-                self.add(v)?;
+                self.add(v, line)?;
             }
-            YAML_SEQUENCE_START_EVENT => self.stack.push(Frame::Seq(vec![], cstr(ev.data.sequence_start.anchor))),
-            YAML_MAPPING_START_EVENT => self.stack.push(Frame::Map(vec![], None, cstr(ev.data.mapping_start.anchor))),
+            YAML_SEQUENCE_START_EVENT => self.stack.push(Frame::Seq(vec![], cstr(ev.data.sequence_start.anchor), line)),
+            YAML_MAPPING_START_EVENT => self.stack.push(Frame::Map(vec![], None, cstr(ev.data.mapping_start.anchor), line)),
             YAML_SEQUENCE_END_EVENT | YAML_MAPPING_END_EVENT => {
-                let (v, anchor) = match self.stack.pop().unwrap() {
-                    Frame::Seq(items, a) => (Val::List(items), a),
-                    Frame::Map(items, _, a) => (Val::Map(items), a),
+                let (v, anchor, line) = match self.stack.pop().unwrap() {
+                    Frame::Seq(items, a, l) => (Val::List(items), a, l),
+                    Frame::Map(items, _, a, l) => (Val::Map(items), a, l),
                 };
                 if let Some(a) = anchor {
                     self.anchors.push((a, v.clone()));
                 }
-                self.add(v)?;
+                self.add(v, line)?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    fn add(&mut self, v: Val) -> Result<(), String> {
+    /// Where a key or list item starting on `line` is: the path to it, if it's no deeper than `DEPTH`.
+    fn note(&mut self, line: usize, last: String) {
+        if self.stack.len() > DEPTH {
+            return;
+        }
+        let mut path: Vec<String> = self.stack[..self.stack.len() - 1].iter().map(|f| match f {
+            Frame::Seq(items, ..) => items.len().to_string(),
+            Frame::Map(_, key, ..) => key.as_ref().map(Val::py_str).unwrap_or_default(),
+        }).collect();
+        path.push(last);
+        self.lines.0.push((path, line));
+    }
+
+    fn add(&mut self, v: Val, line: usize) -> Result<(), String> {
+        match self.stack.last() {
+            Some(Frame::Seq(items, ..)) => self.note(line, items.len().to_string()),
+            Some(Frame::Map(_, None, ..)) => self.note(line, v.py_str()),
+            _ => {}
+        }
         match self.stack.last_mut() {
             None => self.doc = Some(v),
-            Some(Frame::Seq(items, _)) => items.push(v),
-            Some(Frame::Map(items, key, _)) => match key.take() {
+            Some(Frame::Seq(items, ..)) => items.push(v),
+            Some(Frame::Map(items, key, ..)) => match key.take() {
                 None => {
                     if matches!(v, Val::List(_) | Val::Map(_)) {
                         return Err("found unhashable key".into());
@@ -348,4 +402,30 @@ fn float(v: &str) -> Option<f64> {
     }
     // Python's float() takes "1." and ".5", which Rust's parse does too
     v.parse::<f64>().ok().map(|f| sign * f)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lines() {
+        let text = "title: x\nparts:\n  U1: {type: dip,\n       pins: 8}\n  R1: {type: resistor}\nwires:\n  power:\n    - [a1, a2]\n\n    - {from: a3,\n       to: a4}\n  i2c: [[b1, b2]]\nnets:\n  on: [U1.1]\n  GND: [U1.4]\n  GND: [U1.5]\n";
+        let (_, l) = load_lines(text).unwrap();
+        assert_eq!(l.get(&["parts", "U1"]), Some(3));
+        assert_eq!(l.get(&["parts", "R1"]), Some(5));
+        assert_eq!(l.get(&["wires", "power", "0"]), Some(8));
+        assert_eq!(l.get(&["wires", "power", "1"]), Some(10));
+        assert_eq!(l.get(&["wires", "i2c", "0"]), Some(12));
+        assert_eq!(l.get(&["nets", "True"]), Some(14)); // `on` is a boolean key, as in Python
+        assert_eq!(l.get(&["nets", "GND"]), Some(16)); // given twice: the value that counts is the last
+        assert_eq!(l.get(&["parts", "U1", "pins", "0"]), None); // deeper than kept
+        assert_eq!(l.of_message("wires.power[1]: flex is true or false"), Some(10));
+        assert_eq!(l.of_message("parts.R1: needs pins"), Some(5));
+        assert_eq!(l.of_message("nets.SDA: no such net"), None);
+        assert_eq!(l.of_message("something else"), None);
+
+        let (_, l) = load_lines("wires:\n  - [a1, a2]\n  - [a3, a4]\n").unwrap();
+        assert_eq!(l.of_message("wires.wires[1]: unknown color 'x'"), Some(3));
+    }
 }

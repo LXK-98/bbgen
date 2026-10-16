@@ -36,12 +36,16 @@ noted where it did.
    and ignores the rest, and while files are dragged the centre says what a drop would open, or that it's not
    a circuit. In the browser a drop has no path, so it says so and brings up the Open dialog. Checked in a
    browser, the Tauri path by calling `studio.drag` with paths; still to see in the desktop window.
-3. **Show in YAML.** The scene needs each part's, wire's and net's line in the file: add `line` to
-   `parts`, `wires` and `nets` (yaml.rs knows positions while parsing; carry them onto the circuit's
-   items), document it in [scene-format.md](scene-format.md) (a field added, so `schema` stays 1) and
-   check it in `tests/scene.rs`. The studio then opens the file at that line: a new Tauri command running
-   `$VISUAL`/`$EDITOR` with `+LINE` when set, or the OS opener; a "Show in YAML" button in the
-   inspector for parts, wires and nets. Error banners get the same link to their line.
+3. **Show in YAML.** Done (October 2026). Parts, wires, nets and issues in the scene have a `line`
+   (yaml.rs keeps each key's and list item's line, three levels deep), and an error's `line` comes from its
+   path too (`parts.U1: ...`), not only from the YAML reader; `tests/scene.rs` holds every part, wire you laid
+   and net of every example and benchmark to the line that names it. The inspector has "Show in YAML · line N"
+   for each, and so do the error banners, in the circuit view as well as the board. It runs `$VISUAL` or
+   `$EDITOR` at the line as that editor takes it (`+N file`, VS Code's `--goto file:N`, Zed's `file:N`, ...);
+   a terminal editor (nano, vim, helix, ...) gets a terminal window of its own (`$TERMINAL`, else the first of
+   ptyxis, gnome-terminal, konsole, kitty, alacritty, foot, wezterm, xterm); with neither set, the system's
+   opener, at the top of the file. Checked in a browser, with the edit request caught; still to see in the
+   desktop window.
 4. **Export.** A menu in the top bar: SVG (as `bbgen build` writes it, decorations included), the bare
    SVG, the checklist (.md), and all of them, as `bbgen build FILE -o DIR` (with `--bare` for the bare
    SVG) into a folder picked in a save dialog. A new engine call, `export(path, dir, bare)`, in both

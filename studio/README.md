@@ -35,6 +35,9 @@ lists the repo's examples and benchmarks, and watches the open file. There's no 
 open a file by typing its full path in the Open dialog. In the desktop window, dropping a `.yaml` file on it
 opens it too.
 
+"Show in YAML" in the inspector and on error banners opens the file at that line in `$VISUAL` or `$EDITOR`
+(a terminal editor such as nano in a terminal window), or with the system's opener when neither is set.
+
 Which bbgen runs: `$BBGEN` if set, else a `bbgen` beside the app, else this checkout's `bin/bbgen` (which
 builds bbgen first when its sources changed), else `bbgen` on `PATH`.
 

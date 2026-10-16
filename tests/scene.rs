@@ -40,9 +40,30 @@ fn scenes() {
         let name = path.to_string_lossy().into_owned();
         let c = Circuit::load(&name).unwrap_or_else(|e| panic!("{}: {}", name, e));
         let r = check(&c);
-        let data = Val::load(&std::fs::read_to_string(&path).unwrap()).ok();
-        let s: Value = bbgen::scene::scene(&c, &r, data.as_ref(), 0.0);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let s: Value = bbgen::scene::scene(&c, &r, Some(&text), 0.0);
         let svg = s["svg"].as_str().unwrap();
+
+        // every part, wire and net the file gives has its line, and it's the line that names it
+        let lines: Vec<&str> = text.lines().collect();
+        let at = |v: &Value| v["line"].as_u64().map(|l| lines[l as usize - 1]);
+        for p in s["parts"].as_array().unwrap() {
+            let r = p["ref"].as_str().unwrap();
+            assert!(at(p).is_some_and(|l| l.trim_start().starts_with(&format!("{}:", r))), "{}: {}'s line", name, r);
+        }
+        for w in s["wires"].as_array().unwrap() {
+            let mine = w["laid_by"] == "you";
+            assert_eq!(at(w).is_some(), mine, "{}: {}'s line", name, w["id"]);
+            if mine {
+                let a = w["spec"][0].as_str().unwrap();
+                assert!(at(w).unwrap().contains(a), "{}: {} starts at {}, not on line {}", name, w["id"], a, w["line"]);
+            }
+        }
+        let file_nets = Val::load(&text).unwrap().at("nets").as_map().map(|m| m.len()).unwrap_or(0);
+        let with_line = s["nets"].as_array().unwrap().iter().filter(|n| {
+            at(n).is_some_and(|l| l.trim_start().trim_matches('"').starts_with(n["name"].as_str().unwrap()))
+        }).count();
+        assert_eq!(with_line, file_nets, "{}: nets' lines", name);
 
         // the bare drawing, element for element
         let plain = bbgen::render::draw_bare(&c, &r, None).0;

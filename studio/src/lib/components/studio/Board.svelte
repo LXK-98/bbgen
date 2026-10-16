@@ -6,9 +6,9 @@
 	import type { Key } from '#lib/scene.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Drawing from './Drawing.svelte';
 	import Legend from './Legend.svelte';
+	import BuildError from './BuildError.svelte';
 
 	const scene = $derived(studio.scene);
 
@@ -74,17 +74,7 @@
 				</div>
 			{/if}
 
-			{#if studio.error}
-				<div class="absolute right-3 bottom-3 left-3 z-10 flex items-start gap-3 rounded-lg border border-destructive/40 bg-background/95 px-4 py-3 text-sm shadow-md">
-					<TriangleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
-					<div>
-						<div class="font-medium">The latest save didn't build; this is the last board that did.</div>
-						<div class="mt-0.5 font-mono text-xs text-muted-foreground">
-							{studio.error.message}{#if studio.error.line && !studio.error.message.includes('(line')} · line {studio.error.line}{/if}
-						</div>
-					</div>
-				</div>
-			{/if}
+			<BuildError banner />
 		</Drawing>
 	{:else}
 		<div class="flex h-full items-center justify-center p-8">
@@ -93,11 +83,7 @@
 					<LoaderCircle class="size-4 animate-spin" /> Building {studio.path?.split('/').pop()}…
 				</div>
 			{:else if studio.error}
-				<div class="max-w-lg rounded-xl border border-destructive/40 bg-background p-5 text-sm">
-					<div class="flex items-center gap-2 font-medium"><TriangleAlert class="size-4 text-destructive" /> bbgen couldn't build this circuit</div>
-					<pre class="mt-3 font-mono text-xs whitespace-pre-wrap text-muted-foreground">{studio.error.message}{#if studio.error.line}
-line {studio.error.line}, column {studio.error.column}{/if}</pre>
-				</div>
+				<BuildError />
 			{:else}
 				<div class="text-center">
 					<div class="text-sm font-medium">No circuit open</div>

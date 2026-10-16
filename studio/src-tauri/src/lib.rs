@@ -128,6 +128,67 @@ fn unwatch(path: String, studio: State<'_, Studio>) {
     studio.watchers.lock().unwrap().remove(&path);
 }
 
+/// Editors that need a terminal: started from the studio, they get a terminal window of their own.
+const IN_TERMINAL: &[&str] = &["vi", "vim", "nvim", "nano", "micro", "hx", "helix", "kak", "ne", "joe", "mg"];
+
+/// Terminals to run such an editor in, if `$TERMINAL` isn't set, and how each is given a command.
+const TERMINALS: &[(&str, &[&str])] = &[
+    ("ptyxis", &["--"]), ("gnome-terminal", &["--"]), ("konsole", &["-e"]), ("kitty", &[]), ("alacritty", &["-e"]),
+    ("foot", &[]), ("wezterm", &["start", "--"]), ("xterm", &["-e"]),
+];
+
+fn on_path(name: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
+}
+
+/// How an editor is told to open a file at a line: `+12 file` unless it's one known to want otherwise.
+fn at_line(editor: &str, path: &str, line: Option<u32>) -> Vec<String> {
+    let Some(line) = line else { return vec![path.into()] };
+    match editor {
+        "code" | "code-insiders" | "codium" | "cursor" | "windsurf" => vec!["--goto".into(), format!("{path}:{line}")],
+        "zed" | "zeditor" | "subl" | "hx" | "helix" | "micro" => vec![format!("{path}:{line}")],
+        "kate" => vec!["--line".into(), line.to_string(), path.into()],
+        _ => vec![format!("+{line}"), path.into()],
+    }
+}
+
+/// The command that opens `path` at `line`: `$VISUAL` or `$EDITOR` (in a terminal window when it's a terminal
+/// editor), else the system's own opener, at the top of the file.
+fn editor(path: &str, line: Option<u32>) -> Command {
+    let opener = || {
+        let mut c = Command::new(if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" });
+        c.arg(path);
+        c
+    };
+    let Some(set) = ["VISUAL", "EDITOR"].iter().filter_map(|v| std::env::var(v).ok()).find(|v| !v.trim().is_empty()) else {
+        return opener();
+    };
+    let mut words: Vec<String> = set.split_whitespace().map(String::from).collect();
+    let name = Path::new(&words[0]).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    words.extend(at_line(&name, path, line));
+    if IN_TERMINAL.contains(&name.as_str()) {
+        let terminal = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty()).map(|t| (t, vec!["-e".to_string()]))
+            .or_else(|| TERMINALS.iter().find(|(t, _)| on_path(t)).map(|(t, a)| (t.to_string(), a.iter().map(|s| s.to_string()).collect())));
+        let Some((terminal, flags)) = terminal.filter(|_| cfg!(all(unix, not(target_os = "macos")))) else { return opener() };
+        let mut c = Command::new(terminal);
+        c.args(flags).args(words);
+        return c;
+    }
+    let mut c = Command::new(&words[0]);
+    c.args(&words[1..]);
+    c
+}
+
+/// Open the circuit file in an editor, at a line when it's given.
+#[tauri::command]
+fn edit(path: String, line: Option<u32>) -> Result<(), String> {
+    let mut command = editor(&path, line);
+    let mut child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+        .map_err(|e| format!("can't run {}: {}", command.get_program().to_string_lossy(), e))?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
 /// WebKitGTK zooms the whole page on a pinch, and the page can't stop it: there's no cancellable event, nor a
 /// setting. So its zoom gesture (which WebKitGTK keeps on the view as `wk-view-zoom-gesture`) is made to do
 /// nothing, and each step of a pinch goes to the page as what Chromium and Firefox send for one: a wheel event with
@@ -176,7 +237,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch])
+        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

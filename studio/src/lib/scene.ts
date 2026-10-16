@@ -31,6 +31,8 @@ export interface Part {
 	body: Rect | null;
 	pins: Pin[];
 	text: string;
+	/** its line in the circuit file; null for what bbgen added */
+	line: number | null;
 }
 
 export interface End {
@@ -56,6 +58,8 @@ export interface Wire {
 	slant: string | null;
 	under: string[];
 	text: string;
+	/** its line in the circuit file; null for what bbgen added */
+	line: number | null;
 }
 
 export interface Net {
@@ -65,6 +69,8 @@ export interface Net {
 	rails: string[];
 	polarity: '+' | '-' | null;
 	guessed: boolean;
+	/** its line in the circuit file; null for what bbgen added */
+	line: number | null;
 }
 
 export interface Issue {
@@ -74,6 +80,8 @@ export interface Issue {
 	parts: string[];
 	pins: string[];
 	holes: string[];
+	/** the line it's about, when its message names a part, wire or net of the file */
+	line: number | null;
 }
 
 export interface Board {

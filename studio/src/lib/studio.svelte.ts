@@ -92,6 +92,16 @@ export class Studio {
 		await this.rebuild();
 	}
 
+	/** open the circuit file in an editor, at a line if given */
+	async edit(line: number | null) {
+		if (!this.engine || !this.path) return;
+		try {
+			await this.engine.edit(this.path, line);
+		} catch (e) {
+			toast.error("Couldn't open an editor", { description: String(e) });
+		}
+	}
+
 	/** files dragged over the window: a drop opens the first circuit file among them */
 	drag(e: Drag) {
 		if (e.type === 'leave') {

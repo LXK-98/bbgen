@@ -13,7 +13,9 @@ this; so can scripts. `tests/scene.rs` holds every example and benchmark to what
 {"schema": 1, "bbgen": "0.1.0", "error": {"message": "did not find expected ',' or '}' (line 3, column 1)", "line": 3, "column": 1}}
 ```
 
-`line` and `column` are null when the message doesn't say where (a part that names a pin that doesn't exist).
+`line` is where the YAML reader stopped, or, when the message starts with what it's about (`parts.U1: ...`,
+`wires.power[2]: ...`, `nets.GND: ...`), that entry's line in the file. `column` is the YAML reader's only. Both
+are null when the message doesn't say where (a part that names a pin that doesn't exist).
 
 ## A circuit that was built
 
@@ -25,8 +27,8 @@ this; so can scripts. `tests/scene.rs` holds every example and benchmark to what
 | `boards` | `id`, `kind` (`full`, `half`), `columns`, `split_rails`, `rect`, `rails` (each rail's nets), `holes` |
 | `parts` | see below |
 | `wires` | see below |
-| `nets` | `name`, `color` (hex), `pins`, `rails` (as the file asks), `polarity` (`+`, `-` or null), `guessed` |
-| `issues` | `level`, `code`, `message`, and what it's about: `parts`, `pins`, `holes` |
+| `nets` | `name`, `color` (hex), `pins`, `rails` (as the file asks), `polarity` (`+`, `-` or null), `guessed`, `line` |
+| `issues` | `level`, `code`, `message`, and what it's about: `parts`, `pins`, `holes`, and `line` when the message starts with an entry of the file (`nets.GND: ...`) |
 | `checklist` | the build's steps in order: `section` (`parts`, a wire group, `raised`, `flex`), `item` (`part:U1`, `wire:W6`), `text` |
 | `schematic` | with `--schematic` or `--wires` only: `svg` (the circuit's schematic, on nothing, in `currentColor`), `width`, `height`, `style` (`symbols`, or `wires`: every net a wire, no labels), `labels` (the nets drawn as labels), `problems` (what reading the drawing back found wrong: nothing, unless bbgen has a bug), `ms`. `{"error": ...}` when it couldn't be drawn |
 | `stats` | `errors`, `warnings`, `parts`, `wires`, `nets`, `ms` (load, place, wire and check) |
@@ -34,6 +36,10 @@ this; so can scripts. `tests/scene.rs` holds every example and benchmark to what
 Positions (`rect`, `holes`, `xy`, `points`, `body`) are in the drawing's pixels: `[x, y]`, or
 `[x0, y0, x1, y1]` for a rectangle. `holes` maps every hole's name (`f30`, `top+33`, `2:a12` on another
 board) to its centre.
+
+`line` (on parts, wires, nets and issues) is the line of the file the thing is written on, counting from 1: a
+part's or net's key, a wire's list item. It's null for what bbgen added (the wires it lays) and for a net the
+file doesn't name.
 
 Pins and holes are named as the checklist names them: a pin is `U1.5 SDA` (number, then name when it has
 one), a hole `f30`.

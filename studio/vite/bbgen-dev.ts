@@ -1,11 +1,11 @@
 /// <reference types="node" />
-// The studio's engine for `pnpm dev` in a browser: the same three things the Tauri app does (build a circuit,
-// list the repo's examples, say when a file changes), as HTTP endpoints on the dev server. Only the dev server
+// The studio's engine for `pnpm dev` in a browser: the same things the Tauri app does (build a circuit, list the
+// repo's examples, say when a file changes, open it in an editor), as HTTP endpoints on the dev server. Only the dev server
 // has them; the built app talks to Tauri instead (src-tauri/src/main.rs).
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, watch } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 
@@ -42,6 +42,37 @@ function run(path: string, schematic: boolean, wires: boolean): Promise<object> 
 	});
 }
 
+// Opening a file at a line, as src-tauri/src/lib.rs does: $VISUAL or $EDITOR (a terminal editor in a terminal
+// window of its own), else the system's opener.
+const IN_TERMINAL = ['vi', 'vim', 'nvim', 'nano', 'micro', 'hx', 'helix', 'kak', 'ne', 'joe', 'mg'];
+const TERMINALS: [string, string[]][] = [
+	['ptyxis', ['--']], ['gnome-terminal', ['--']], ['konsole', ['-e']], ['kitty', []], ['alacritty', ['-e']],
+	['foot', []], ['wezterm', ['start', '--']], ['xterm', ['-e']]
+];
+
+const onPath = (name: string) => (process.env.PATH ?? '').split(delimiter).some((d) => d && existsSync(join(d, name)));
+
+function atLine(editor: string, path: string, line: number | null): string[] {
+	if (!line) return [path];
+	if (['code', 'code-insiders', 'codium', 'cursor', 'windsurf'].includes(editor)) return ['--goto', `${path}:${line}`];
+	if (['zed', 'zeditor', 'subl', 'hx', 'helix', 'micro'].includes(editor)) return [`${path}:${line}`];
+	if (editor === 'kate') return ['--line', String(line), path];
+	return [`+${line}`, path];
+}
+
+function editor(path: string, line: number | null): string[] {
+	const opener = [process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open', path];
+	const set = [process.env.VISUAL, process.env.EDITOR].find((v) => v?.trim());
+	if (!set) return opener;
+	const words = set.trim().split(/\s+/);
+	const name = basename(words[0]).replace(/\.exe$/i, '');
+	words.push(...atLine(name, path, line));
+	if (!IN_TERMINAL.includes(name)) return words;
+	const terminal: [string, string[]] | undefined = process.env.TERMINAL ? [process.env.TERMINAL, ['-e']] : TERMINALS.find(([t]) => onPath(t));
+	if (!terminal || process.platform === 'darwin' || process.platform === 'win32') return opener;
+	return [terminal[0], ...terminal[1], ...words];
+}
+
 export function examples(): string[] {
 	const out: string[] = [];
 	for (const dir of ['examples', 'benchmarks']) {
@@ -69,6 +100,17 @@ export function bbgenDev(): Plugin {
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
 					return json(200, await run(path, url.searchParams.get('schematic') === '1', url.searchParams.get('wires') === '1'));
+				}
+				if (url.pathname === '/api/edit') {
+					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
+					const [cmd, ...args] = editor(path, Number(url.searchParams.get('line')) || null);
+					const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+					child.on('error', (e) => json(500, { error: `can't run ${cmd}: ${e.message}` }));
+					child.on('spawn', () => {
+						child.unref();
+						json(200, {});
+					});
+					return;
 				}
 				if (url.pathname === '/api/watch') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });

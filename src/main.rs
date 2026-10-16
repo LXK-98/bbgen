@@ -257,14 +257,14 @@ fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: 
     let c = match Circuit::load(&path) {
         Ok(c) => c,
         Err(e) => {
-            println!("{}", bbgen::scene::error(&e));
+            println!("{}", bbgen::scene::error(&e, std::fs::read_to_string(&path).ok().as_deref()));
             return 2;
         }
     };
     let result = check(&c);
     let ms = start.elapsed().as_secs_f64() * 1000.0;
-    let data = std::fs::read_to_string(&path).ok().and_then(|t| Val::load(&t).ok());
-    let mut scene = bbgen::scene::scene(&c, &result, data.as_ref(), ms);
+    let text = std::fs::read_to_string(&path).ok();
+    let mut scene = bbgen::scene::scene(&c, &result, text.as_deref(), ms);
     if let Some((drawing, style)) = drawing {
         scene["schematic"] = match drawing.join() {
             Ok((Ok(s), ms)) => bbgen::scene::schematic(&s, ms, style),

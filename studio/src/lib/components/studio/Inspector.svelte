@@ -7,6 +7,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
 	import Code from './Code.svelte';
+	import ShowInYaml from './ShowInYaml.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import X from '@lucide/svelte/icons/x';
@@ -182,7 +183,10 @@
 					</section>
 				{/if}
 				{@render checks(issuesOf((i) => i.parts.includes(part.ref)), part.ref)}
-				<Button variant="outline" size="sm" onclick={() => copy(part.pins.map((p) => p.hole).filter(Boolean).join(' '))}><Copy /> Copy its holes</Button>
+				<div class="flex flex-wrap gap-2">
+					<ShowInYaml line={part.line} />
+					<Button variant="outline" size="sm" onclick={() => copy(part.pins.map((p) => p.hole).filter(Boolean).join(' '))}><Copy /> Copy its holes</Button>
+				</div>
 			{:else if wire && ix}
 				<div>
 					<div class="flex flex-wrap items-center gap-2.5">
@@ -225,6 +229,7 @@
 					</div>
 				</section>
 				{@render checks(issuesOf((i) => new RegExp(`\\b${wire.id}\\b`).test(i.message)), wire.id)}
+				<div><ShowInYaml line={wire.line} /></div>
 			{:else if net && ix}
 				{@const wires = ix.wiresOfNet.get(net.name) ?? []}
 				{@const rails = railsOf(net.name)}
@@ -269,6 +274,7 @@
 					{/if}
 				</section>
 				{@render checks(issuesOf((i) => new RegExp(`\\b${net.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(i.message)), net.name)}
+				<div><ShowInYaml line={net.line} /></div>
 			{:else if pinOf && ix}
 				{@const { part: owner, pin } = pinOf}
 				{@const strip = pin.hole ? ix.strip.get(ix.stripOf.get(pin.hole) ?? '') : undefined}
@@ -305,6 +311,7 @@
 				{/if}
 				{#if issue.pins.length}<section>{@render title('Pins')}<p class="font-mono text-xs">{issue.pins.join(', ')}</p></section>{/if}
 				{#if issue.holes.length}<section>{@render title('Holes')}<div class="flex flex-wrap gap-1">{#each issue.holes as h}{@render link(`hole:${h}`, h)}{/each}</div></section>{/if}
+				<div><ShowInYaml line={issue.line} /></div>
 			{:else if kind === 'hole' && ix}
 				{@const s = ix.strip.get(ix.stripOf.get(name) ?? '')}
 				<div>
