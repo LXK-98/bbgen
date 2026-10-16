@@ -82,7 +82,7 @@ noted where it did.
    trials side by side with `--events` (a video builds them one at a time), and `tests/scene.rs` checks the
    scene after the events is the one `--json` prints. A step's score has one decimal: rounded to whole
    numbers, two kept layouts in a row could show the same score. Scores span a wide range: an error costs
-   about 4000, so benchmark 17 drops from 4127 to 177 when a move clears one; the score chart will want a
+   1000 (autoplace::score), so benchmark 17 drops from 4127 to 177 when a move clears four; the score chart will want a
    log scale.
 2. **Done (October 2026).** The engine reads stdout as a stream: in Tauri the build command sends each step
    down a channel, and the dev server answers with newline-delimited JSON, the steps and then the build. Stop
@@ -92,7 +92,7 @@ noted where it did.
 3. **Done (October 2026).** A Generation mode in the top bar: the board as it is at the latest kept step, the
    moved part ringed (`focus`), the phase, the score chart, the event log; afterwards a scrubber over the kept
    steps. The chart and log take the drawer's place under the board, so the board keeps its room. The chart is
-   on a log scale (an error costs about 4000), with a dot for each layout tried, the best so far as a line,
+   on a log scale (an error costs 1000), with a dot for each layout tried, the best so far as a line,
    the phases as bands and each wire laid as a tick. The scrubber works during the run too: moving it off the
    end stops following along, and moving it back to the end follows again. The temporary **Step by step**
    button from step 2 is gone: in Generation mode every build, a save's included, shows its steps.

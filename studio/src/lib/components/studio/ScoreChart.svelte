@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The score of every layout bbgen tried, as it tried them: a dot for each (kept ones larger, in the accent), the
 	// best so far as a line, the phases as bands, the wires laid as ticks at the foot. Lower is better. The scale is
-	// logarithmic: an error costs about 4000, so a move that clears one drops the score from thousands to hundreds.
+	// logarithmic: an error costs 1000, so a move that clears a few drops the score from thousands to hundreds.
 	// Clicking picks the step under the pointer.
 	import type { StepEvent } from '#lib/scene.js';
 
