@@ -229,9 +229,23 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      them beside the part when it's placed; that belongs to step 3.
    - The pins a symbol has no pin for are real gaps: the empty pin of a 5-pin chip on a 6-pin adapter, and two
      pins of the relay's footprint. None is in a net.
-2. **The engine.** `vendor/elkjs/` (the file, its licence, its version and checksum); `src/elk.rs`: QuickJS
-   with the shims, `layout(serde_json::Value) -> Result<Value, String>`, the bundle loaded once per process.
-   Try precompiled bytecode for the load time.
+2. **The engine.** Done (October 2026). [vendor/elkjs/](../vendor/elkjs) holds elkjs 0.12.0 unmodified, with its
+   licence, version and checksum. [build.rs](../build.rs) compiles it to QuickJS bytecode, and
+   [src/elk.rs](../src/elk.rs) has `layout(&Value) -> Result<Value, String>`. A thread loads ELK the first time
+   it lays something out. `bbgen dev elk GRAPH.json [OUT.json] [--repeat N]` lays out a graph and times it.
+   [tests/elk.rs](../tests/elk.rs) holds three graphs to Node's layouts of them, number for number, and checks
+   that layouts are the same every time and on every thread, and that a broken graph says what's wrong.
+   - Bytecode: parsing the 1.5 MB of JavaScript was 122 ms of the 128 ms load. Stripped bytecode (2 MB) loads in
+     about 8 ms and lays out the same. Bytecode with its debug info would be 10 MB.
+   - Layouts take 60–110 ms for small graphs (eeprom, 6 nodes) and 450–700 ms for big ones (13, 16), the same
+     on a second layout in one process. A profile puts 63 % in QuickJS's interpreter loop and most of the rest
+     in property lookups. Registering only the layered algorithm and raising the GC threshold made no
+     difference, so the time is QuickJS interpreting ELK. For step 6: the schematic depends only on the parts
+     and nets, so a build can lay it out on a thread of its own while placement runs.
+   - The only difference from Node was `$H`, an object id ELK's compiled Java adds to what it touches,
+     numbered differently in each engine. It's left out of the output on both sides.
+   - Costs: the stripped binary went from 3.1 MB to 6.2 MB, and a clean build from 14 s to 38 s (QuickJS is
+     compiled for the build script too). Incremental builds are as before.
 3. **A first schematic.** Symbols as ELK nodes with their pins as fixed ports (`FIXED_POS`); power symbols;
    edges directed as above; merged nets with junction dots; drawn with groups. Look at all of them and
    write down what reads badly.

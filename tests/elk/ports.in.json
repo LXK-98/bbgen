@@ -1,0 +1,186 @@
+{
+ "id": "root",
+ "layoutOptions": {
+  "elk.algorithm": "layered",
+  "elk.direction": "RIGHT",
+  "elk.edgeRouting": "ORTHOGONAL",
+  "elk.layered.mergeEdges": "true",
+  "elk.spacing.nodeNode": "20"
+ },
+ "children": [
+  {
+   "id": "mcu",
+   "width": 60,
+   "height": 100,
+   "layoutOptions": {
+    "elk.portConstraints": "FIXED_SIDE"
+   },
+   "ports": [
+    {
+     "id": "mcu.a",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "EAST"
+     }
+    },
+    {
+     "id": "mcu.b",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "EAST"
+     }
+    },
+    {
+     "id": "mcu.vcc",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "NORTH"
+     }
+    }
+   ]
+  },
+  {
+   "id": "r1",
+   "width": 40,
+   "height": 16,
+   "layoutOptions": {
+    "elk.portConstraints": "FIXED_POS"
+   },
+   "ports": [
+    {
+     "id": "r1.1",
+     "x": -1,
+     "y": 7,
+     "width": 2,
+     "height": 2
+    },
+    {
+     "id": "r1.2",
+     "x": 39,
+     "y": 7,
+     "width": 2,
+     "height": 2
+    }
+   ]
+  },
+  {
+   "id": "led",
+   "width": 16,
+   "height": 40,
+   "layoutOptions": {
+    "elk.portConstraints": "FIXED_POS"
+   },
+   "ports": [
+    {
+     "id": "led.a",
+     "x": 7,
+     "y": -1,
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "NORTH"
+     }
+    },
+    {
+     "id": "led.k",
+     "x": 7,
+     "y": 39,
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "SOUTH"
+     }
+    }
+   ]
+  },
+  {
+   "id": "chip",
+   "width": 60,
+   "height": 80,
+   "layoutOptions": {
+    "elk.portConstraints": "FIXED_SIDE"
+   },
+   "ports": [
+    {
+     "id": "chip.in1",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "WEST"
+     }
+    },
+    {
+     "id": "chip.in2",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "WEST"
+     }
+    },
+    {
+     "id": "chip.gnd",
+     "width": 2,
+     "height": 2,
+     "layoutOptions": {
+      "elk.port.side": "SOUTH"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cap",
+   "width": 16,
+   "height": 30
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "sources": [
+    "mcu.a"
+   ],
+   "targets": [
+    "r1.1"
+   ]
+  },
+  {
+   "id": "e2",
+   "sources": [
+    "r1.2"
+   ],
+   "targets": [
+    "led.a"
+   ]
+  },
+  {
+   "id": "e3",
+   "sources": [
+    "mcu.b"
+   ],
+   "targets": [
+    "chip.in1"
+   ]
+  },
+  {
+   "id": "e4",
+   "sources": [
+    "mcu.b"
+   ],
+   "targets": [
+    "chip.in2"
+   ]
+  },
+  {
+   "id": "e5",
+   "sources": [
+    "led.k"
+   ],
+   "targets": [
+    "chip.gnd"
+   ]
+  }
+ ]
+}

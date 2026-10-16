@@ -383,3 +383,8 @@ time, with `--check` failing on any regression ([benchmarks/README.md](benchmark
 costs placement and wiring trade off are all in [src/costs.rs](src/costs.rs), in holes of wire
 length so they compare directly. What's still open, what was tried and where to start is in
 [docs/open-points.md](docs/open-points.md).
+
+## Licence
+
+bbgen is MIT-licensed ([LICENSE](LICENSE)). It contains elkjs, the Eclipse Layout Kernel compiled to JavaScript,
+under the Eclipse Public License 2.0 ([vendor/elkjs](vendor/elkjs/README.md)).

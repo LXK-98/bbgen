@@ -11,6 +11,7 @@
 //!     bbgen dev measure FILE OUTDIR [--no-png]                 what benchmarks/run.py tabulates
 //!     bbgen dev frames FILE OUTDIR [--all]                     a video's frames as SVG files
 //!     bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]      every part's schematic symbol, in a grid
+//!     bbgen dev elk GRAPH.json [OUT.json] [--repeat N]         a graph laid out by ELK, and how long it took
 //!     bbgen dev kicad-roots | score-lines | yaml-json FILE | pyf-check
 
 use bbgen::check::{check, Result};
@@ -297,6 +298,7 @@ fn dev(args: &[String]) -> i32 {
         }
         Some("measure") => dev_measure(&args[1..]),
         Some("symbols") if args.len() >= 3 => dev_symbols(&args[1..]),
+        Some("elk") if args.len() >= 2 => dev_elk(&args[1..]),
         Some("kicad-roots") => {
             // the KiCad library folders parts are read from, one a line
             for r in bbgen::kicad::library_roots(None) {
@@ -323,7 +325,7 @@ fn dev(args: &[String]) -> i32 {
             0
         }
         _ => {
-            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
+            eprintln!("usage: bbgen dev {{build FILE [--dump OUT] [--repeat N] | measure FILE OUTDIR [--no-png] | frames FILE OUTDIR [--all] | symbols FILE OUT.svg [--rot N] [--mirror] | elk GRAPH.json [OUT.json] [--repeat N] | kicad-roots | score-lines | yaml-json FILE | pyf-check}}");
             2
         }
     }
@@ -533,5 +535,42 @@ fn dev_symbols(args: &[String]) -> i32 {
     }
     std::fs::write(out, svg).unwrap();
     png(out);
+    0
+}
+
+/// dev elk GRAPH.json [OUT.json] [--repeat N]: a graph in ELK's JSON laid out by ELK (to OUT.json, or stdout), and how
+/// long loading ELK and the layout took (and N more layouts of it, on average).
+fn dev_elk(args: &[String]) -> i32 {
+    let repeat: usize = args.iter().position(|a| a == "--repeat").and_then(|i| args.get(i + 1)).and_then(|n| n.parse().ok()).unwrap_or(0);
+    let out_path = args.get(1).filter(|a| !a.starts_with("--"));
+    let graph: serde_json::Value = match std::fs::read_to_string(&args[0]).map_err(|e| e.to_string())
+        .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string())) {
+        Ok(g) => g,
+        Err(e) => { eprintln!("{}: {}", args[0], e); return 2; }
+    };
+    let start = Instant::now();
+    if let Err(e) = bbgen::elk::ready() {
+        eprintln!("{}", e);
+        return 2;
+    }
+    let loaded = start.elapsed();
+    let start = Instant::now();
+    let out = match bbgen::elk::layout(&graph) {
+        Ok(g) => g,
+        Err(e) => { eprintln!("{}", e); return 1; }
+    };
+    eprintln!("ELK loaded in {:.1} ms, laid out in {:.1} ms", loaded.as_secs_f64() * 1000.0, start.elapsed().as_secs_f64() * 1000.0);
+    if repeat > 0 {
+        let start = Instant::now();
+        for _ in 0..repeat {
+            std::hint::black_box(bbgen::elk::layout(&graph).unwrap());
+        }
+        eprintln!("then {:.1} ms a layout ({} more)", start.elapsed().as_secs_f64() * 1000.0 / repeat as f64, repeat);
+    }
+    let text = serde_json::to_string_pretty(&out).unwrap() + "\n";
+    match out_path {
+        Some(path) => std::fs::write(path, text).unwrap(),
+        None => print!("{}", text),
+    }
     0
 }

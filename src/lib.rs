@@ -7,6 +7,7 @@ pub mod checklist;
 pub mod circuit;
 pub mod costs;
 pub mod dump;
+pub mod elk;
 pub mod kicad;
 pub mod legs;
 pub mod measure;
