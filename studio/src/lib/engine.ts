@@ -6,6 +6,24 @@ import type { BuildOutput } from './scene';
 /** files dragged over the window: their paths, or null where the engine can't know them (a browser) */
 export type Drag = { type: 'over'; paths: string[] | null } | { type: 'drop'; paths: string[] | null } | { type: 'leave' };
 
+/** what the export menu writes: one of bbgen's files, or all of them (the board, its checklist, the schematic) */
+export type Export = 'board' | 'bare' | 'checklist' | 'schematic' | 'all';
+
+const EXPORTS: Record<Exclude<Export, 'all'>, { ext: string; kind: string }> = {
+	board: { ext: 'svg', kind: 'SVG drawing' },
+	bare: { ext: 'bare.svg', kind: 'SVG drawing' },
+	checklist: { ext: 'md', kind: 'Markdown' },
+	schematic: { ext: 'schematic.svg', kind: 'SVG drawing' }
+};
+
+const folderOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '');
+const stemOf = (path: string) => path.split(/[\\/]/).pop()!.replace(/\.ya?ml$/i, '');
+
+/** the name an export is saved under unless you pick another: `eeprom.svg`, `eeprom.bare.svg`, ... */
+export function exportName(path: string, what: Exclude<Export, 'all'>): string {
+	return `${stemOf(path)}.${EXPORTS[what].ext}`;
+}
+
 export interface Engine {
 	kind: 'tauri' | 'web';
 	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--wires`: every net a wire, no labels) */
@@ -18,6 +36,9 @@ export interface Engine {
 	pick: (() => Promise<string | null>) | null;
 	/** open the circuit file in an editor, at a line if given */
 	edit(path: string, line: number | null): Promise<void>;
+	/** write one of bbgen's files where you choose (all of them into a folder); the files written, or null if
+	 * you cancelled. The schematic is drawn as the circuit view shows it (`wires`: no labels). */
+	export(path: string, what: Export, wires: boolean): Promise<string[] | null>;
 	/** call onDrag as files are dragged over the window and dropped on it */
 	onDrag(onDrag: (e: Drag) => void): void;
 }
@@ -29,13 +50,27 @@ function inTauri(): boolean {
 async function tauriEngine(): Promise<Engine> {
 	const { invoke } = await import('@tauri-apps/api/core');
 	const { listen } = await import('@tauri-apps/api/event');
-	const { open } = await import('@tauri-apps/plugin-dialog');
+	const { open, save } = await import('@tauri-apps/plugin-dialog');
 	const { getCurrentWebview } = await import('@tauri-apps/api/webview');
 	return {
 		kind: 'tauri',
 		build: (path, schematic, wires) => invoke<BuildOutput>('build', { path, schematic, wires }),
 		examples: () => invoke<string[]>('examples'),
 		edit: (path, line) => invoke('edit', { path, line }),
+		async export(path, what, wires) {
+			let to: string | null;
+			if (what === 'all') {
+				const dir = await open({ directory: true, defaultPath: folderOf(path), title: 'Export into a folder' });
+				to = typeof dir === 'string' ? dir : null;
+			} else {
+				const { ext, kind } = EXPORTS[what];
+				to = await save({
+					defaultPath: `${folderOf(path)}/${exportName(path, what)}`,
+					filters: [{ name: kind, extensions: [ext.split('.').pop()!] }]
+				});
+			}
+			return to ? invoke<string[]>('export', { path, what, wires, to }) : null;
+		},
 		watch(path, onChange) {
 			let stop: (() => void) | null = null;
 			let stopped = false;
@@ -78,6 +113,22 @@ function webEngine(): Engine {
 		build: (path, schematic, wires) =>
 			get<BuildOutput>(`/api/build?path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}&wires=${wires ? 1 : 0}`),
 		examples: () => get<string[]>('/api/examples').catch(() => []),
+		// a browser can't write where you choose: the files are downloads
+		async export(path, what, wires) {
+			const q = `path=${encodeURIComponent(path)}&what=${what}&wires=${wires ? 1 : 0}`;
+			const { files } = await get<{ files: { name: string; text: string }[] }>(`/api/export?${q}`);
+			const names: string[] = [];
+			for (const f of files) {
+				const name = what === 'all' ? f.name : exportName(path, what);
+				const a = document.createElement('a');
+				a.href = URL.createObjectURL(new Blob([f.text], { type: name.endsWith('.md') ? 'text/markdown' : 'image/svg+xml' }));
+				a.download = name;
+				a.click();
+				setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+				names.push(name);
+			}
+			return names;
+		},
 		edit: (path, line) => get(`/api/edit?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ''}`),
 		watch(path, onChange) {
 			const source = new EventSource(`/api/watch?path=${encodeURIComponent(path)}`);

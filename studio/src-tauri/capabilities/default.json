@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "what the studio's window may do",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
 }

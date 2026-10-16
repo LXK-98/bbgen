@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result and Rebuild.
+	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result, Export and Rebuild.
 	import { studio } from '#lib/studio.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -15,6 +15,7 @@
 	import Workflow from '@lucide/svelte/icons/workflow';
 	import Columns2 from '@lucide/svelte/icons/columns-2';
 	import ThemeMenu from './ThemeMenu.svelte';
+	import ExportMenu from './ExportMenu.svelte';
 
 	const scene = $derived(studio.scene);
 	const file = $derived(studio.path?.split('/').pop());
@@ -99,6 +100,7 @@
 				<Badge variant="outline" class="text-emerald-700 dark:text-emerald-400"><CircleCheck /> Check passed</Badge>
 			{/if}
 		{/if}
+		<ExportMenu />
 		<Button size="sm" disabled={!studio.path || studio.building} onclick={() => studio.rebuild()}>
 			<RefreshCw class={studio.building ? 'animate-spin' : ''} /> Rebuild
 		</Button>

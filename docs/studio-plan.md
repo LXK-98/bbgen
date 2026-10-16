@@ -46,11 +46,15 @@ noted where it did.
    ptyxis, gnome-terminal, konsole, kitty, alacritty, foot, wezterm, xterm); with neither set, the system's
    opener, at the top of the file. Checked in a browser, with the edit request caught; still to see in the
    desktop window.
-4. **Export.** A menu in the top bar: SVG (as `bbgen build` writes it, decorations included), the bare
-   SVG, the checklist (.md), and all of them, as `bbgen build FILE -o DIR` (with `--bare` for the bare
-   SVG) into a folder picked in a save dialog. A new engine call, `export(path, dir, bare)`, in both
-   `src-tauri/src/lib.rs` and `vite/bbgen-dev.ts`. Needs `dialog:allow-save` in the capabilities. A
-   PNG would need rsvg-convert or ImageMagick; leave it out unless asked.
+4. **Export.** Done (October 2026). An Export menu in the top bar: the board as `bbgen build` draws it,
+   the bare board, the checklist, the schematic (as the circuit view shows it, labels or not), and "All three"
+   (what `bbgen build --schematic` writes) into a folder. The engine's `export(path, what, wires)` runs
+   `bbgen build FILE -o <a folder of its own> --no-png` with `--bare` or `--schematic`/`--wires` as needed and
+   copies the file to where the save dialog (or, for all three, a folder dialog) says; the bare board and the
+   board have the same name, so they can't come from one build. A file the check finds errors on still exports.
+   No PNG, as planned. In the browser the files are downloads. Checked: every item in a browser (the downloads
+   caught), and the native side's copy by calling it from a test; the dialogs are still to see in the desktop
+   window.
 5. **Minimap.** A small copy of the board in a corner (the bottom right is free; the legend is top
    right, zoom top left) with the visible area as a rectangle you can drag. It's the same SVG at a fixed
    scale, so render it once per build (`<img>` of the svg as a data URL is cheaper than a second DOM

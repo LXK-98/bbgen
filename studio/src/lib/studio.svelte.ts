@@ -2,7 +2,7 @@
 // and writes this one object, so hovering a row in a list lights the same thing on the board.
 
 import { toast } from 'svelte-sonner';
-import { getEngine, type Drag, type Engine } from './engine';
+import { getEngine, type Drag, type Engine, type Export } from './engine';
 import { indexScene, type SceneIndex } from './lookup';
 import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError } from './scene';
 
@@ -37,6 +37,7 @@ export class Studio {
 	error = $state.raw<SceneError['error'] | null>(null);
 	output = $state.raw<BuildOutput | null>(null);
 	building = $state(false);
+	exporting = $state(false);
 	watching = $state(false);
 	builtAt = $state<Date | null>(null);
 
@@ -99,6 +100,26 @@ export class Studio {
 			await this.engine.edit(this.path, line);
 		} catch (e) {
 			toast.error("Couldn't open an editor", { description: String(e) });
+		}
+	}
+
+	/** write one of bbgen's files (or all of them) where the engine asks you to; its schematic as the view shows it */
+	async export(what: Export) {
+		if (!this.engine || !this.path) return;
+		this.exporting = true;
+		try {
+			const files = await this.engine.export(this.path, what, this.wires);
+			if (files?.length) {
+				const name = (p: string) => p.split(/[\\/]/).pop();
+				toast.success(files.length === 1 ? `Exported ${name(files[0])}` : `Exported ${files.length} files`, {
+					// where it went, when the engine wrote it rather than the browser downloading it
+					description: files.length > 1 ? files.map(name).join(', ') : files[0] !== name(files[0]) ? files[0] : undefined
+				});
+			}
+		} catch (e) {
+			toast.error("Couldn't export", { description: String(e).replace(/^Error: /, '') });
+		} finally {
+			this.exporting = false;
 		}
 	}
 

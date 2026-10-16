@@ -58,6 +58,10 @@ draws; the studio asks for it only while it's shown) and **Both**, side by side.
 both: a net or part lights in each, a wire on the board lights its net in the circuit, and a pin picked in the
 circuit (`pin:U1.5`) lights its hole and strip on the board.
 
+**Export** (top bar) writes bbgen's files for the open circuit: the board as `bbgen build` draws it, the bare
+board, the checklist, the schematic, or all three into a folder. bbgen builds them afresh, so they're what
+`bbgen build` would write. In the browser they're downloads.
+
 The board is bbgen's own SVG, put in the page once per build. Hover and selection add classes to its
 `data-part`, `data-wire`, `data-net` and `data-issue` groups; nothing is redrawn as the pointer moves.
 

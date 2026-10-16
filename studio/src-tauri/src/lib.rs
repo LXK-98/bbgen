@@ -83,6 +83,57 @@ async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Stu
               "ms": started.elapsed().as_millis() as u64}))
 }
 
+/// What `bbgen build` writes, for the export menu: one file (`board`, `bare`, `checklist` or `schematic`) to the
+/// file `to`, or `all` (the board, its checklist and the schematic) into the folder `to`. bbgen writes them into a
+/// folder of its own first, since the board and the bare board have the same name. Returns the files written.
+fn export_files(path: &str, what: &str, wires: bool, to: &Path) -> Result<Vec<String>, String> {
+    let stem = Path::new(path).file_stem().ok_or(format!("not a file: {path}"))?.to_string_lossy().into_owned();
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let tmp = std::env::temp_dir().join(format!("bbgen-studio-{}-{}", std::process::id(), nanos));
+    let mut args = vec!["build".to_string(), path.into(), "-o".into(), tmp.to_string_lossy().into_owned(), "--no-png".into()];
+    if what == "bare" {
+        args.push("--bare".into());
+    }
+    if what == "schematic" || what == "all" {
+        args.push(if wires { "--wires" } else { "--schematic" }.into());
+    }
+    let exe = bbgen();
+    let run = Command::new(&exe).args(&args).stdin(Stdio::null()).output()
+        .map_err(|e| format!("can't run {}: {}", exe.display(), e));
+    let copied = run.and_then(|out| {
+        // 1 is a board the check found errors on: still a board to export
+        if !matches!(out.status.code(), Some(0 | 1)) {
+            let err = String::from_utf8_lossy(&out.stderr);
+            return Err(err.trim().trim_start_matches("bbgen: ").to_string());
+        }
+        let name = |ext: &str| format!("{stem}.{ext}");
+        let files: Vec<(PathBuf, PathBuf)> = match what {
+            "board" | "bare" => vec![(tmp.join(name("svg")), to.into())],
+            "checklist" => vec![(tmp.join(name("md")), to.into())],
+            "schematic" => vec![(tmp.join(name("schematic.svg")), to.into())],
+            "all" => ["svg", "md", "schematic.svg"].iter().map(|e| (tmp.join(name(e)), to.join(name(e)))).collect(),
+            _ => return Err(format!("nothing to export called {what}")),
+        };
+        let mut written = Vec::new();
+        for (from, to) in files {
+            if !from.is_file() {
+                return Err(format!("bbgen wrote no {}", from.file_name().unwrap_or_default().to_string_lossy()));
+            }
+            std::fs::copy(&from, &to).map_err(|e| format!("{}: {}", to.display(), e))?;
+            written.push(to.to_string_lossy().into_owned());
+        }
+        Ok(written)
+    });
+    std::fs::remove_dir_all(&tmp).ok();
+    copied
+}
+
+#[tauri::command]
+async fn export(path: String, what: String, wires: bool, to: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || export_files(&path, &what, wires, Path::new(&to)))
+        .await.map_err(|e| e.to_string())?
+}
+
 /// The circuits that come with bbgen: its examples and benchmarks.
 #[tauri::command]
 fn examples() -> Vec<String> {
@@ -237,7 +288,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit])
+        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit, export])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

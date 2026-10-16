@@ -4,7 +4,8 @@
 // has them; the built app talks to Tauri instead (src-tauri/src/main.rs).
 
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, watch } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -73,6 +74,32 @@ function editor(path: string, line: number | null): string[] {
 	return [terminal[0], ...terminal[1], ...words];
 }
 
+/** bbgen's files for the export menu, as src-tauri's `export` makes them: built into a folder of its own, then read */
+function exportFiles(path: string, what: string, wires: boolean): Promise<{ name: string; text: string }[]> {
+	const stem = basename(path).replace(/\.ya?ml$/i, '');
+	const exts: Record<string, string[]> = { board: ['svg'], bare: ['svg'], checklist: ['md'], schematic: ['schematic.svg'], all: ['svg', 'md', 'schematic.svg'] };
+	if (!exts[what]) return Promise.reject(new Error(`nothing to export called ${what}`));
+	const tmp = mkdtempSync(join(tmpdir(), 'bbgen-studio-'));
+	const args = ['build', path, '-o', tmp, '--no-png'];
+	if (what === 'bare') args.push('--bare');
+	if (what === 'schematic' || what === 'all') args.push(wires ? '--wires' : '--schematic');
+	return new Promise<{ name: string; text: string }[]>((done, fail) => {
+		const child = spawn(bbgen(), args);
+		let err = '';
+		child.stderr.on('data', (d) => (err += d));
+		child.on('error', fail);
+		child.on('close', (code) => {
+			// 1 is a board the check found errors on: still a board to export
+			if (code !== 0 && code !== 1) return fail(new Error(err.trim().replace(/^bbgen: /, '')));
+			try {
+				done(exts[what].map((e) => ({ name: `${stem}.${e}`, text: readFileSync(join(tmp, `${stem}.${e}`), 'utf8') })));
+			} catch (e) {
+				fail(e);
+			}
+		});
+	}).finally(() => rmSync(tmp, { recursive: true, force: true }));
+}
+
 export function examples(): string[] {
 	const out: string[] = [];
 	for (const dir of ['examples', 'benchmarks']) {
@@ -100,6 +127,13 @@ export function bbgenDev(): Plugin {
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
 					return json(200, await run(path, url.searchParams.get('schematic') === '1', url.searchParams.get('wires') === '1'));
+				}
+				if (url.pathname === '/api/export') {
+					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
+					return exportFiles(path, url.searchParams.get('what') ?? '', url.searchParams.get('wires') === '1').then(
+						(files) => json(200, { files }),
+						(e) => json(500, { error: String(e.message ?? e) })
+					);
 				}
 				if (url.pathname === '/api/edit') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
