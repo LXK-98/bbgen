@@ -3,7 +3,7 @@
 // repo's examples, say when a file changes, open it in an editor), as HTTP endpoints on the dev server. Only the dev server
 // has them; the built app talks to Tauri instead (src-tauri/src/lib.rs).
 
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
@@ -43,17 +43,34 @@ function isCircuit(path: string): boolean {
 	return /\.ya?ml$/i.test(path) && existsSync(path);
 }
 
-function run(path: string, schematic: boolean, wires: boolean): Promise<object> {
+/** the build running now: a newer one stops it, as does /api/stop */
+let running: ChildProcess | null = null;
+
+/** `bbgen build`, as src-tauri/src/lib.rs runs it; with `onStep`, `--events`, and each step's line to it as it's printed */
+function run(path: string, schematic: boolean, wires: boolean, onStep?: (line: string) => void): Promise<object> {
 	const started = Date.now();
-	const args = ['build', path, '--json', ...(schematic ? [wires ? '--wires' : '--schematic'] : [])];
+	const args = ['build', path, onStep ? '--events' : '--json', ...(schematic ? [wires ? '--wires' : '--schematic'] : [])];
 	return new Promise((done) => {
 		const child = spawn(bbgen(), args);
+		running?.kill();
+		running = child;
 		let out = '';
 		let err = '';
-		child.stdout.on('data', (d) => (out += d));
+		let partial = '';
+		child.stdout.on('data', (d) => {
+			// a step's line starts with its "event"; the scene (or the error) is the rest
+			const lines = (partial + d).split('\n');
+			partial = lines.pop()!;
+			for (const line of lines) {
+				if (onStep && line.startsWith('{"event"')) onStep(line);
+				else out += line + '\n';
+			}
+		});
 		child.stderr.on('data', (d) => (err += d));
 		child.on('error', (e) => done({ json: null, stderr: String(e), code: null, command: '', ms: 0 }));
 		child.on('close', (code) => {
+			if (running === child) running = null;
+			out += partial;
 			let json = null;
 			try {
 				json = out.trim() ? JSON.parse(out) : null;
@@ -148,7 +165,18 @@ export function bbgenDev(): Plugin {
 				if (url.pathname === '/api/examples') return json(200, examples());
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
-					return json(200, await run(path, url.searchParams.get('schematic') === '1', url.searchParams.get('wires') === '1'));
+					const [schematic, wires] = [url.searchParams.get('schematic') === '1', url.searchParams.get('wires') === '1'];
+					if (url.searchParams.get('events') !== '1') return json(200, await run(path, schematic, wires));
+					// --events: newline-delimited JSON, each step's line as bbgen prints it, then {"done": what json() sends}
+					res.setHeader('content-type', 'application/x-ndjson');
+					res.setHeader('cache-control', 'no-cache');
+					const out = await run(path, schematic, wires, (line) => res.write(line + '\n'));
+					res.end(JSON.stringify({ done: out }) + '\n');
+					return;
+				}
+				if (url.pathname === '/api/stop') {
+					running?.kill();
+					return json(200, {});
 				}
 				if (url.pathname === '/api/bbgen') {
 					return useBbgen(url.searchParams.get('path')?.trim() || null).then(

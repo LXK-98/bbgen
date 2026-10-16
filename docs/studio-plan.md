@@ -18,8 +18,9 @@ from `bbgen dev frames --all`.
 ([scene-format.md](scene-format.md)). Phase 1 is too: [studio/](../studio) is the Inspect mode, in SvelteKit
 with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), with light, dark and system
 themes, the board and the circuit's schematic side by side, opening by drop, Show in YAML, Export, a minimap
-and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps); Phase 2 is
-next. The sections after it are the plan as written, with what changed on the way
+and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps). Phase 2 has begun:
+`bbgen build --events` streams each step, and the studio shows them as they come and can stop a build;
+Generation mode is next. The sections after it are the plan as written, with what changed on the way
 noted where it did.
 
 ## Next steps
@@ -74,10 +75,20 @@ noted where it did.
 
 ### Then Phase 2 (generation), from bbgen's side first
 
-1. `--events` in bbgen: JSON lines from `trace::step`, a drawing on kept steps only, as in Phase 0 §3.
-   Measure the slow-down on benchmark 09 with and without drawings before deciding on the rule.
-2. The engine reads stdout as a stream (Tauri: a channel from the command; dev server: SSE) instead of
-   waiting for the end, and Stop kills the process.
+1. **Done (October 2026).** `--events` in bbgen: JSON lines from `trace::step`, a drawing on kept steps only,
+   as in Phase 0 §3 (written up in [scene-format.md](scene-format.md#steps-as-theyre-taken---events)).
+   Measured on benchmark 09: 0.27 s with `--json`, 0.30 s with `--events`, 0.52 s and 24 MB with a drawing
+   on every step, so the rule stays. Benchmark 13 goes from 0.50 s to 0.68 s. Placement still builds its
+   trials side by side with `--events` (a video builds them one at a time), and `tests/scene.rs` checks the
+   scene after the events is the one `--json` prints. A step's score has one decimal: rounded to whole
+   numbers, two kept layouts in a row could show the same score. Scores span a wide range: an error costs
+   about 4000, so benchmark 17 drops from 4127 to 177 when a move clears one; the score chart will want a
+   log scale.
+2. **Done (October 2026).** The engine reads stdout as a stream: in Tauri the build command sends each step
+   down a channel, and the dev server answers with newline-delimited JSON, the steps and then the build. Stop
+   (the Rebuild button while a build runs) kills the process, and the last board stays up. **Step by step**
+   in the top bar builds with `--events`, and the status bar shows each step. Plain rebuilds stay `--json`:
+   on a placed file the drawings make `--events` ten times slower (benchmark 13 placed: 0.01 s to 0.13 s).
 3. A Generation mode in the top bar: the board as it is at the latest kept step, the moved part ringed
    (`focus`), the phase, the score chart, the event log; afterwards a scrubber over the kept steps.
 

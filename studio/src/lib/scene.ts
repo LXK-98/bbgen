@@ -145,6 +145,25 @@ export interface SceneError {
 }
 
 /** One run of bbgen, as the engine reports it. */
+/** a step of placing or wiring, as `--events` prints it while bbgen works */
+export interface StepEvent {
+	event: 'step';
+	/** from 1 */
+	n: number;
+	phase: 'start' | 'turn' | 'repair' | 'wiring';
+	caption: string;
+	kept: boolean;
+	/** the parts and wires it changed */
+	focus: string[];
+	/** the layout's score (lower is better) and the best before it; null for wiring */
+	score: number | null;
+	from: number | null;
+	/** the board as it stands, with kept steps only */
+	svg?: string;
+	width?: number;
+	height?: number;
+}
+
 export interface BuildOutput {
 	/** what bbgen printed on stdout: a scene or an error */
 	json: Scene | SceneError | null;

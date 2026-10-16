@@ -3,11 +3,12 @@
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// The bbgen checkout this was built in, if it's still there: its launcher, examples and benchmarks.
@@ -80,11 +81,12 @@ struct Studio {
 }
 
 /// `bbgen build <path> --json` (and `--schematic`, or `--wires`, when the circuit view wants it): what it printed (a scene or an
-/// error), its stderr and exit status.
+/// error), its stderr and exit status. With `events`, `--events`: each step's line goes to `on_step` as bbgen prints it.
 #[tauri::command]
-async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Studio>) -> Result<Value, String> {
+async fn build(path: String, schematic: bool, wires: bool, events: bool, on_step: Channel, studio: State<'_, Studio>)
+               -> Result<Value, String> {
     let exe = studio.bbgen();
-    let mut args = vec!["build", path.as_str(), "--json"];
+    let mut args = vec!["build", path.as_str(), if events { "--events" } else { "--json" }];
     if schematic {
         args.push(if wires { "--wires" } else { "--schematic" });
     }
@@ -92,7 +94,7 @@ async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Stu
     let started = Instant::now();
     let mut child = Command::new(&exe).args(&args).stdin(Stdio::null()).stdout(Stdio::piped())
         .stderr(Stdio::piped()).spawn().map_err(|e| format!("can't run {}: {}", exe.display(), e))?;
-    let (mut out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+    let (out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
     let child = Arc::new(Mutex::new(child));
     if let Some(old) = studio.running.lock().unwrap().replace(child.clone()) {
         old.lock().unwrap().kill().ok();
@@ -103,8 +105,16 @@ async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Stu
             err.read_to_string(&mut s).ok();
             s
         });
+        // a step's line starts with its "event"; the scene (or the error) is the rest
         let mut stdout = String::new();
-        out.read_to_string(&mut stdout).ok();
+        for line in BufReader::new(out).lines().map_while(|l| l.ok()) {
+            if line.starts_with("{\"event\"") {
+                on_step.send(InvokeResponseBody::Json(line)).ok();
+            } else {
+                stdout.push_str(&line);
+                stdout.push('\n');
+            }
+        }
         let stderr = errs.join().unwrap_or_default();
         let code = child.lock().unwrap().wait().ok().and_then(|s| s.code());
         (stdout, stderr, code)
@@ -119,6 +129,14 @@ async fn build(path: String, schematic: bool, wires: bool, studio: State<'_, Stu
     };
     Ok(json!({"json": json, "stderr": stderr, "code": code, "command": command,
               "ms": started.elapsed().as_millis() as u64}))
+}
+
+/// Stop the build that's running, if one is: it ends with no exit status.
+#[tauri::command]
+fn stop(studio: State<'_, Studio>) {
+    if let Some(child) = studio.running.lock().unwrap().as_ref() {
+        child.lock().unwrap().kill().ok();
+    }
 }
 
 /// What `bbgen build` writes, for the export menu: one file (`board`, `bare`, `checklist` or `schematic`) to the
@@ -326,7 +344,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch, edit, export, use_bbgen])
+        .invoke_handler(tauri::generate_handler![build, stop, examples, watch, unwatch, edit, export, use_bbgen])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

@@ -1,5 +1,6 @@
 <script lang="ts">
-	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result, Export and Rebuild.
+	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result, Export, and
+	// Rebuild (or step by step, each step in the status bar as bbgen takes it), which turns into Stop while it runs.
 	import { studio } from '#lib/studio.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -7,6 +8,8 @@
 	import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Footprints from '@lucide/svelte/icons/footprints';
+	import Square from '@lucide/svelte/icons/square';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -101,9 +104,25 @@
 			{/if}
 		{/if}
 		<ExportMenu />
-		<Button size="sm" disabled={!studio.path || studio.building} onclick={() => studio.rebuild()}>
-			<RefreshCw class={studio.building ? 'animate-spin' : ''} /> Rebuild
-		</Button>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button {...props} variant="outline" size="sm" disabled={!studio.path || studio.building} onclick={() => studio.rebuild(true)}>
+						<Footprints /> Step by step
+					</Button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>Rebuild, showing each step bbgen takes as it places and wires</Tooltip.Content>
+		</Tooltip.Root>
+		{#if studio.building}
+			<Button size="sm" variant="secondary" class="w-24" onclick={() => studio.stop()}>
+				<Square class="fill-current" /> Stop
+			</Button>
+		{:else}
+			<Button size="sm" class="w-24" disabled={!studio.path} onclick={() => studio.rebuild()}>
+				<RefreshCw /> Rebuild
+			</Button>
+		{/if}
 		<ThemeMenu />
 	</div>
 </header>

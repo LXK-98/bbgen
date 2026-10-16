@@ -4,7 +4,7 @@
 import { toast } from 'svelte-sonner';
 import { getEngine, type BbgenInfo, type Drag, type Engine, type Export } from './engine';
 import { indexScene, type SceneIndex } from './lookup';
-import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError } from './scene';
+import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError, type StepEvent } from './scene';
 
 const RECENT = 'bbgen-studio.recent';
 const VIEW = 'bbgen-studio.view';
@@ -38,6 +38,11 @@ export class Studio {
 	error = $state.raw<SceneError['error'] | null>(null);
 	output = $state.raw<BuildOutput | null>(null);
 	building = $state(false);
+	/** the steps of the latest build that showed them (`--events`), as bbgen took them, and the latest */
+	steps = $state.raw<StepEvent[]>([]);
+	step = $state.raw<StepEvent | null>(null);
+	/** whether the build running shows its steps */
+	stepping = $state(false);
 	exporting = $state(false);
 	watching = $state(false);
 	builtAt = $state<Date | null>(null);
@@ -65,6 +70,7 @@ export class Studio {
 	recent = $state<string[]>(load(RECENT, []));
 
 	#seq = 0;
+	#stopped = 0;
 	#unwatch: (() => void) | null = null;
 	#debounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -161,17 +167,39 @@ export class Studio {
 		} else toast.error('Not a circuit file', { description: 'Drop a .yaml or .yml file.' });
 	}
 
-	async rebuild() {
+	/** build the circuit again; with `steps`, showing each step bbgen takes as it takes it (`--events`) */
+	async rebuild(steps = false) {
 		if (!this.engine || !this.path) return;
 		const seq = ++this.#seq;
 		this.building = true;
+		this.stepping = steps;
+		let onStep: ((e: StepEvent) => void) | undefined;
+		if (steps) {
+			const taken: StepEvent[] = [];
+			this.steps = [];
+			this.step = null;
+			onStep = (e) => {
+				if (seq !== this.#seq) return;
+				taken.push(e);
+				this.steps = taken.slice();
+				this.step = e;
+			};
+		}
 		let out: BuildOutput;
 		try {
-			out = await this.engine.build(this.path, this.view !== 'board', this.wires);
+			out = await this.engine.build(this.path, this.view !== 'board', this.wires, onStep);
 		} catch (e) {
 			out = { json: null, stderr: String(e), code: null, command: '', ms: 0 };
 		}
 		if (seq !== this.#seq) return; // a newer build started meanwhile
+		this.stepping = false;
+		if (this.#stopped === seq) {
+			// stopped: the last board stays up, with no error
+			this.building = false;
+			this.output = out;
+			toast.info('Stopped', { description: this.step ? `after ${this.step.n} steps` : undefined });
+			return;
+		}
 		this.building = false;
 		this.output = out;
 		const took = out.ms < 1000 ? `${out.ms} ms` : `${(out.ms / 1000).toFixed(1)} s`;
@@ -197,6 +225,13 @@ export class Studio {
 			this.error = { message: out.stderr.trim() || 'bbgen printed nothing', line: null, column: null };
 			toast.error(`Didn't build (${took})`, { description: this.error.message });
 		}
+	}
+
+	/** stop the build that's running */
+	async stop() {
+		if (!this.engine || !this.building) return;
+		this.#stopped = this.#seq;
+		await this.engine.stop();
 	}
 
 	exists(key: Key): boolean {

@@ -1,7 +1,7 @@
 // The only way the studio reaches bbgen. In the desktop app that's Tauri commands (src-tauri); under `pnpm dev`
 // in a browser it's the dev server's endpoints (vite/bbgen-dev.ts). Either way bbgen runs as its own process.
 
-import type { BuildOutput } from './scene';
+import type { BuildOutput, StepEvent } from './scene';
 
 /** files dragged over the window: their paths, or null where the engine can't know them (a browser) */
 export type Drag = { type: 'over'; paths: string[] | null } | { type: 'drop'; paths: string[] | null } | { type: 'leave' };
@@ -34,8 +34,11 @@ export interface BbgenInfo {
 
 export interface Engine {
 	kind: 'tauri' | 'web';
-	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--wires`: every net a wire, no labels) */
-	build(path: string, schematic: boolean, wires: boolean): Promise<BuildOutput>;
+	/** run `bbgen build <path> --json`, with `--schematic` when asked (`--wires`: every net a wire, no labels); with
+	 * onStep, `--events`, and each step to onStep as bbgen takes it. A newer build stops the one running. */
+	build(path: string, schematic: boolean, wires: boolean, onStep?: (e: StepEvent) => void): Promise<BuildOutput>;
+	/** stop the build that's running: it ends with no exit status */
+	stop(): Promise<void>;
 	/** circuit files that come with bbgen (its examples and benchmarks), when it can find them */
 	examples(): Promise<string[]>;
 	/** call onChange when the file is saved; returns a function that stops watching */
@@ -60,13 +63,18 @@ function inTauri(): boolean {
 }
 
 async function tauriEngine(): Promise<Engine> {
-	const { invoke } = await import('@tauri-apps/api/core');
+	const { invoke, Channel } = await import('@tauri-apps/api/core');
 	const { listen } = await import('@tauri-apps/api/event');
 	const { open, save } = await import('@tauri-apps/plugin-dialog');
 	const { getCurrentWebview } = await import('@tauri-apps/api/webview');
 	return {
 		kind: 'tauri',
-		build: (path, schematic, wires) => invoke<BuildOutput>('build', { path, schematic, wires }),
+		build(path, schematic, wires, onStep) {
+			const steps = new Channel<StepEvent>();
+			if (onStep) steps.onmessage = onStep;
+			return invoke<BuildOutput>('build', { path, schematic, wires, events: !!onStep, onStep: steps });
+		},
+		stop: () => invoke('stop'),
 		examples: () => invoke<string[]>('examples'),
 		edit: (path, line) => invoke('edit', { path, line }),
 		useBbgen: (path) => invoke<BbgenInfo>('use_bbgen', { path }),
@@ -127,8 +135,29 @@ function webEngine(): Engine {
 	};
 	return {
 		kind: 'web',
-		build: (path, schematic, wires) =>
-			get<BuildOutput>(`/api/build?path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}&wires=${wires ? 1 : 0}`),
+		async build(path, schematic, wires, onStep) {
+			const q = `path=${encodeURIComponent(path)}&schematic=${schematic ? 1 : 0}&wires=${wires ? 1 : 0}`;
+			if (!onStep) return get<BuildOutput>(`/api/build?${q}`);
+			// newline-delimited JSON: the steps as bbgen takes them, then {"done": the build}
+			const r = await fetch(`/api/build?${q}&events=1`);
+			if (!r.ok || !r.body) throw new Error((await r.json().catch(() => null))?.error ?? r.statusText);
+			const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+			let rest = '';
+			for (;;) {
+				const { value, done } = await reader.read();
+				const lines = (rest + (value ?? '')).split('\n');
+				rest = done ? '' : lines.pop()!;
+				for (const line of lines.filter(Boolean)) {
+					const x = JSON.parse(line);
+					if (x.done) return x.done as BuildOutput;
+					onStep(x as StepEvent);
+				}
+				if (done) throw new Error('the dev server stopped before the build ended');
+			}
+		},
+		async stop() {
+			await get('/api/stop');
+		},
 		examples: () => get<string[]>('/api/examples').catch(() => []),
 		// a browser can't write where you choose: the files are downloads
 		async export(path, what, wires) {
