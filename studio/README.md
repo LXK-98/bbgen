@@ -7,7 +7,7 @@ inspector. The circuit file is watched, so saving it (from an editor, or Claude 
 The studio never links bbgen's library: every build runs the `bbgen` binary as `bbgen build FILE --json` and
 reads the scene it prints ([docs/scene-format.md](../docs/scene-format.md)). The plan, and what comes after
 inspecting (generation progress, the build guide, editing, an assistant), is in
-[docs/studio-plan.md](../docs/studio-plan.md).
+[docs/design/studio-plan.md](../docs/design/studio-plan.md).
 
 SvelteKit (a single page, `adapter-static`) with shadcn-svelte, in a Tauri 2 window.
 
@@ -41,6 +41,12 @@ opens it too.
 Which bbgen runs: the one picked in the "bbgen output" tab (Change…), else `$BBGEN` if set, else a `bbgen`
 beside the app, else this checkout's `bin/bbgen` (which builds bbgen first when its sources changed), else
 `bbgen` on `PATH`.
+
+Started with a circuit (`bbgen studio FILE`, or `bbgen-studio FILE`), the studio opens it rather than the one
+open last time. Started again while it's open, it hands the circuit to the open studio and exits: there's
+only ever one. The Open dialog lists bbgen's examples: an installed studio's (`share/bbgen/examples` beside
+its `bin/`), else this checkout's examples and benchmarks. The Linux package and its `install.sh` are made in
+[../packaging](../packaging); see [docs/development.md](../docs/development.md).
 
 ## Where things are
 

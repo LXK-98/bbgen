@@ -1,0 +1,60 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds the Linux package and publishes it as that release, with install.sh and
+# SHA256SUMS beside it: what `curl -fsSL .../releases/latest/download/install.sh | sh` downloads. The package is
+# built on Ubuntu 22.04, so it runs on glibc 2.35 and newer.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    steps:
+      - name: System packages
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends build-essential ca-certificates curl git pkg-config \
+            python3 file xz-utils libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libdbus-1-dev
+      - uses: actions/checkout@v4
+      - name: The tag is the version in Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, but Cargo.toml says $version"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: studio/package.json
+      - run: packaging/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            target/dist/bbgen-x86_64-linux.tar.gz
+            target/dist/install.sh
+            target/dist/SHA256SUMS
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: dist
+      - name: Release notes from CHANGELOG.md
+        run: |
+          # the section under "## <version>", up to the next "## "
+          awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## " v "( |$)" {on=1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for ${GITHUB_REF_NAME#v}"; exit 1; }
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "bbgen ${GITHUB_REF_NAME#v}" --notes-file notes.md

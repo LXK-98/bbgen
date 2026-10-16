@@ -74,7 +74,7 @@
 							<span {...props} class="flex h-7 items-center px-3 text-xs text-muted-foreground/70">{m.name}</span>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content>Planned: see docs/studio-plan.md</Tooltip.Content>
+					<Tooltip.Content>Planned: see docs/design/studio-plan.md</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
 		{/each}

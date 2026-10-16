@@ -2,7 +2,7 @@
 
 **Done: bbgen is Rust now, and the Python is gone.** This page is how it got there. The scripts it
 names (`hotspots.py`, `golden.py`, `rs_check.py`, `rs_trials.py`, `rs_outputs.py`) compared the two
-versions; they went with the Python and are in git history, last in commit `a2b3fae`. What
+versions; they went with the Python and are in git history, last in commit `5690f7b`. What
 holds bbgen to the same results now is `cargo test` (see Phase 2.5–2.7 at the end).
 
 ![Python and Rust, side by side](img/python-vs-rust.png)
@@ -87,7 +87,7 @@ Done on the `rust-port` branch with two new scripts, described in `benchmarks/RE
 - `benchmarks/hotspots.py` profiles every benchmark three ways (serial, serial under cProfile, and with
   the parallel search) and writes `benchmarks/hotspots.md` (now [python-hotspots.md](python-hotspots.md)).
 - `benchmarks/golden.py` records the golden corpus (below) into `benchmarks/golden/` (276 KB). The
-  recording hooks are in [bbgen/dump.py](../bbgen/dump.py).
+  recording hooks are in `bbgen/dump.py`.
 
 The recording hooks don't change any layout:
 - all 21 hashes match the untouched code's

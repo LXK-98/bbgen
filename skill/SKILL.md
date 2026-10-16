@@ -5,10 +5,10 @@ description: Lay out a circuit on a breadboard with bbgen. Write the circuit YAM
 
 # Breadboard layouts with bbgen
 
-`bbgen` (on PATH, source in `~/Documents/Code/bbgen`) turns a circuit YAML into a drawing, a
-build checklist and a wiring check. The full file format is in
-`~/Documents/Code/bbgen/README.md`. Read it before writing a circuit file, especially "Where
-parts land" and the rail columns under "Holes": placing parts needs both.
+`bbgen` (on PATH) turns a circuit YAML into a drawing, a build checklist and a wiring check.
+The full file format is in bbgen's circuit file reference: `bbgen docs` prints where it is.
+Read it before writing a circuit file, especially "Where parts land" and the rail columns under
+"Holes": placing parts needs both.
 
 ## The loop
 
@@ -19,7 +19,7 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    (`symbol: Timer:NE555P`; find names with `bbgen find <words>`): their pin names then come
    from KiCad, not from you. Two-lead parts and connectors stay bbgen's own types.
    Leave out `at`, two-lead parts' `pins` and `wires`: bbgen places and wires everything itself
-   (README, "Automatic placement"). Say what each supply and ground is: `rail: +` or `rail: -`
+   (the reference, "Automatic placement"). Say what each supply and ground is: `rail: +` or `rail: -`
    (bbgen picks the physical rail; each voltage gets its own), and `rail: none` for a net that only
    looks like one. Give a decoupling cap `near:` its chip.
    Only place a part yourself (`at`, `pins`) where you have a reason to, such as the user's
@@ -52,6 +52,10 @@ parts land" and the rail columns under "Holes": placing parts needs both.
    other, labels you can't read. Trust the check over your eye for which hole a wire is in.
 7. Hand over the `.png`/`.svg`, the schematic and the `.md` checklist. Say what you assumed, and list any
    `slant` reasons you gave.
+
+To show the user the board as you work, `bbgen studio <file>` opens it in bbgen studio and returns at
+once (a studio that's open already switches to the file). The studio rebuilds whenever the file is
+saved, so the user sees each of your edits.
 
 ## Rules
 

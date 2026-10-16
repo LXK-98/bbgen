@@ -101,7 +101,7 @@ net in its colour on hover and selection, so it's easy to match with the board.
 - **KiCad parts** (`symbol:`, 48 of them in the benchmarks) are drawn with their own symbol, as KiCad draws
   it. KiCad's symbols already put the pins where a schematic wants them: the 74LS173's inputs on the left,
   its outputs on the right, VCC at the top and GND at the bottom, and each pin says what it is
-  (`input`, `output`, `tri_state`, `power_in`, ...). [src/kicad.rs](../src/kicad.rs) reads only pin numbers,
+  (`input`, `output`, `tri_state`, `power_in`, ...). [src/kicad.rs](../../src/kicad.rs) reads only pin numbers,
   names and types today. It needs to read the graphics too (`rectangle`, `polyline`, `circle`, `arc`, `text`),
   each pin's position, direction, length and shape (inverted, clock), and `pin_names`/`pin_numbers` hiding.
   It should take De Morgan style 1, and read every unit: a symbol with several units (an LM358's two
@@ -214,7 +214,7 @@ none of these.
 Each step ends with drawings to look at: the examples and all 21 benchmarks, before and after.
 
 0. **Spike.** Done: elkjs in QuickJS from Rust, same output as Node, timings above.
-1. **Symbols.** Done (October 2026). [src/symbol.rs](../src/symbol.rs) has the symbols and draws them, turned and
+1. **Symbols.** Done (October 2026). [src/symbol.rs](../../src/symbol.rs) has the symbols and draws them, turned and
    mirrored; `kicad::drawing` reads KiCad's (cached apart from `kicad::symbol`, so placement is no slower).
    `bbgen dev symbols FILE OUT.svg [--rot N] [--mirror]` draws every part's symbol in a grid. Checked by eye on all
    21 benchmarks, and against `kicad-cli sym export svg` for the 74HC595, NE555P, LM358, DS18B20 and AP2112K:
@@ -229,11 +229,11 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      them beside the part when it's placed; that belongs to step 3.
    - The pins a symbol has no pin for are real gaps: the empty pin of a 5-pin chip on a 6-pin adapter, and two
      pins of the relay's footprint. None is in a net.
-2. **The engine.** Done (October 2026). [vendor/elkjs/](../vendor/elkjs) holds elkjs 0.12.0 unmodified, with its
-   licence, version and checksum. [build.rs](../build.rs) compiles it to QuickJS bytecode, and
-   [src/elk.rs](../src/elk.rs) has `layout(&Value) -> Result<Value, String>`. A thread loads ELK the first time
+2. **The engine.** Done (October 2026). `vendor/elkjs/` (since removed) holds elkjs 0.12.0 unmodified, with its
+   licence, version and checksum. `build.rs` compiles it to QuickJS bytecode, and
+   [src/elk.rs](../../src/elk.rs) has `layout(&Value) -> Result<Value, String>`. A thread loads ELK the first time
    it lays something out. `bbgen dev elk GRAPH.json [OUT.json] [--repeat N]` lays out a graph and times it.
-   [tests/elk.rs](../tests/elk.rs) holds three graphs to Node's layouts of them, number for number, and checks
+   [tests/elk.rs](../../tests/elk.rs) holds three graphs to Node's layouts of them, number for number, and checks
    that layouts are the same every time and on every thread, and that a broken graph says what's wrong.
    - Bytecode: parsing the 1.5 MB of JavaScript was 122 ms of the 128 ms load. Stripped bytecode (2 MB) loads in
      about 8 ms and lays out the same. Bytecode with its debug info would be 10 MB.
@@ -246,7 +246,7 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      numbered differently in each engine. It's left out of the output on both sides.
    - Costs: the stripped binary went from 3.1 MB to 6.2 MB, and a clean build from 14 s to 38 s (QuickJS is
      compiled for the build script too). Incremental builds are as before.
-3. **A first schematic.** Done (October 2026). [src/schematic.rs](../src/schematic.rs): each unit a node, its
+3. **A first schematic.** Done (October 2026). [src/schematic.rs](../../src/schematic.rs): each unit a node, its
    signal pins ports fixed on the node's edge (the pin is drawn on to the edge, so a node's box can take in its
    text and power symbols); supplies and grounds as power symbols; two-lead parts in line between signals or
    hanging from one; each net drawn from its driving pin, merged, with junction dots. `bbgen dev schematic FILE
@@ -298,7 +298,7 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      `BBGEN_RECORD=1 cargo test --release --test schematic` after looking at the new drawings.
 6. **The command line and the scene.** Done (October 2026).
    - `bbgen build FILE --schematic` writes `FILE.schematic.svg` (and `.png`); with `--json`, the scene gets a
-     `schematic` field ([scene-format.md](scene-format.md)). Still a flag, as planned; making it the default is
+     `schematic` field ([scene-format.md](../scene-format.md)). Still a flag, as planned; making it the default is
      a decision for when the drawings have been looked at by more than me.
    - The schematic is drawn on a thread of its own from `Circuit::netlist` (the file's parts and nets, not
      placed), while the main thread places and wires. With `--no-png`: 16 takes 2.62 s without and 2.69 s with

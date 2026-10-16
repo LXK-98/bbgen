@@ -15,8 +15,8 @@ https://claude.ai/artifact/JJiYFhnAVriMLC3m3ueWtc. It uses bbgen's real drawings
 from `bbgen dev frames --all`.
 
 **Where it stands (October 2026):** Phase 0 is done: `bbgen build --json` prints the scene
-([scene-format.md](scene-format.md)). Phase 1 is too: [studio/](../studio) is the Inspect mode, in SvelteKit
-with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), with light, dark and system
+([scene-format.md](../scene-format.md)). Phase 1 is too: [studio/](../../studio) is the Inspect mode, in SvelteKit
+with shadcn-svelte in a Tauri window ([studio/README.md](../../studio/README.md)), with light, dark and system
 themes, the board and the circuit's schematic side by side, opening by drop, Show in YAML, Export, a minimap
 and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps). Phase 2 is done
 too: `bbgen build --events` streams each step, and Generation mode shows the board as bbgen builds it, with
@@ -76,7 +76,7 @@ what changed on the way noted where it did.
 ### Then Phase 2 (generation), from bbgen's side first
 
 1. **Done (October 2026).** `--events` in bbgen: JSON lines from `trace::step`, a drawing on kept steps only,
-   as in Phase 0 §3 (written up in [scene-format.md](scene-format.md#steps-as-theyre-taken---events)).
+   as in Phase 0 §3 (written up in [scene-format.md](../scene-format.md#steps-as-theyre-taken---events)).
    Measured on benchmark 09: 0.27 s with `--json`, 0.30 s with `--events`, 0.52 s and 24 MB with a drawing
    on every step, so the rule stays. Benchmark 13 goes from 0.50 s to 0.68 s. Placement still builds its
    trials side by side with `--events` (a video builds them one at a time), and `tests/scene.rs` checks the
@@ -284,7 +284,7 @@ What the inspector shows:
 
 ## Inside the studio
 
-As built (see [studio/README.md](../studio/README.md)):
+As built (see [studio/README.md](../../studio/README.md)):
 
 ```
 studio/                       its own Cargo project and package.json, beside bbgen's

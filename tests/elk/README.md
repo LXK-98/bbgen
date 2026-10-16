@@ -5,7 +5,7 @@
 to 1e-14 px, and replaced them.
 
 - `eeprom` and `register`: `examples/eeprom.yaml` and benchmark 13 as the spike drew them
-  ([docs/circuit-view-plan.md](../../docs/circuit-view-plan.md)): each chip a box with its pins in DIP order, each
+  ([docs/design/circuit-view-plan.md](../../docs/design/circuit-view-plan.md)): each chip a box with its pins in DIP order, each
   signal net edges from its first pin.
 - `ports`: ports on every side, fixed in place or only to a side, edges from one port merged, a node on its own.
 

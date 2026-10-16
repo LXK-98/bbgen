@@ -1,4 +1,4 @@
-// Phase 1's done check (docs/studio-plan.md), on every example and benchmark (as placed, which builds without
+// Phase 1's done check (docs/design/studio-plan.md), on every example and benchmark (as placed, which builds without
 // placing): every part, wire and net lights something on the board, every part, net and pin something in the
 // schematic, and a file that can't be built says on which line. It needs bbgen built: `cargo build --release`.
 

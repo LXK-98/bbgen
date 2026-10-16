@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Breadboard layouts from YAML: a drawing, a build checklist and a wiring check"
 license = "MIT"
+repository = "https://github.com/LXK-98/bbgen"
+# its ELK comes from git, which crates.io doesn't take
+publish = false
 
 [[bin]]
 name = "bbgen"

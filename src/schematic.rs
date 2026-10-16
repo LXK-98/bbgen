@@ -1,4 +1,4 @@
-//! The circuit view: a schematic of the circuit, drawn from its parts and nets (docs/circuit-view-plan.md).
+//! The circuit view: a schematic of the circuit, drawn from its parts and nets (docs/design/circuit-view-plan.md).
 //!
 //! Each part's symbol (symbol.rs) becomes a node of a graph, one node per unit, with its pins on signal nets as
 //! ports fixed where the symbol has them. ELK's layered layout (elk.rs) places the nodes and routes the nets

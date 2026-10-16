@@ -7,8 +7,8 @@ a point says otherwise.
 
 bbgen has since been rewritten in Rust with exactly the same results ([rust-port-plan.md](rust-port-plan.md)):
 every layout and number below still holds, only the times are about 25× shorter. How placement and wiring
-work is described at the top of [src/autowire.rs](../src/autowire.rs), [src/search.rs](../src/search.rs)
-and [src/legs.rs](../src/legs.rs); every weight they trade off is in [src/costs.rs](../src/costs.rs).
+work is described at the top of [src/autowire.rs](../../src/autowire.rs), [src/search.rs](../../src/search.rs)
+and [src/legs.rs](../../src/legs.rs); every weight they trade off is in [src/costs.rs](../../src/costs.rs).
 Names below like `_relay` or `_Model.cost` are the Python's; in Rust they're `relay` and `Model::cost`.
 
 ## Measuring a change

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=bbgen studio
+Comment=Build a circuit with bbgen and inspect the breadboard
+Exec=bbgen-studio %f
+Icon=bbgen-studio
+Terminal=false
+Categories=Development;Electronics;
+Keywords=breadboard;circuit;wiring;electronics;
+StartupWMClass=bbgen-studio

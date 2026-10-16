@@ -41,7 +41,7 @@ which on one board covers one side's strips whole: 17 puts it across two boards 
 20 off the board on Dupont leads, and 21 on one board with flat wires run under it (`raised: true`).
 
 What the benchmarks still show (13's bus, 14's crowding, leads crossing, 16's size), what was tried
-for each and where to start: [docs/open-points.md](../docs/open-points.md).
+for each and where to start: [docs/design/open-points.md](../docs/design/open-points.md).
 ## The golden records
 
 `cargo test` holds bbgen to what's recorded in `golden/`:
@@ -56,7 +56,7 @@ for each and where to start: [docs/open-points.md](../docs/open-points.md).
   examples and the cases.
 
 The records were made with the Python bbgen this replaced, and the Rust one matched them before the
-Python was removed. That history is in [docs/rust-port-plan.md](../docs/rust-port-plan.md).
+Python was removed. That history is in [docs/design/rust-port-plan.md](../docs/design/rust-port-plan.md).
 
 A change that moves a wire fails the tests on purpose. First judge it with `run.py`, circuit by
 circuit, then record it and commit the records with the change:

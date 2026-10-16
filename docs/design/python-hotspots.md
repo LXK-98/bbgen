@@ -1,6 +1,6 @@
 # Where the time went (the Python bbgen)
 
-The profile of the Python bbgen that decided the Rust rewrite (docs/rust-port-plan.md, Phase 0). The
+The profile of the Python bbgen that decided the Rust rewrite (docs/design/rust-port-plan.md, Phase 0). The
 script that wrote it, `benchmarks/hotspots.py`, went with the Python.
 
 Written by `benchmarks/hotspots.py`. Serial: one process (`BBGEN_JOBS=1`). Shares are of the serial build under cProfile, in percent; the stages nest (autowire is part of the trial builds, `_relay` part of autowire), so they don't add up to 100. *Overhead* is rounding positions into keys and building and hashing `Hole`s. *Outputs*: check, drawing and checklist of the finished circuit. *Wasted*: trial builds a worker started that the search didn't use.

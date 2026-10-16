@@ -4,6 +4,9 @@
 //!
 //! Many choices are ties broken by comparing costs that came out of these, and the golden records were made
 //! with them: a last-bit difference would pick another wire.
+//!
+//! `hypot` is translated to Rust from CPython's vector_norm (Modules/mathmodule.c; PSF License, see
+//! THIRD-PARTY.md).
 
 /// `round(x, n)` for n >= 0: the double nearest the decimal x rounds to.
 pub fn round(x: f64, n: u32) -> f64 {
