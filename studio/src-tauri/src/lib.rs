@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// The bbgen checkout this was built in, if it's still there: its launcher, examples and benchmarks.
 fn repo() -> Option<PathBuf> {
@@ -128,12 +128,62 @@ fn unwatch(path: String, studio: State<'_, Studio>) {
     studio.watchers.lock().unwrap().remove(&path);
 }
 
+/// WebKitGTK zooms the whole page on a pinch, and the page can't stop it: there's no cancellable event, nor a
+/// setting. So its zoom gesture (which WebKitGTK keeps on the view as `wk-view-zoom-gesture`) is made to do
+/// nothing, and each step of a pinch goes to the page as what Chromium and Firefox send for one: a wheel event with
+/// Ctrl held, where the fingers are. Over a drawing, that zooms the drawing; anywhere else, nothing.
+#[cfg(target_os = "linux")]
+fn pinch_zooms_the_drawing(view: &webkit2gtk::WebView) {
+    use glib::translate::{FromGlibPtrNone, ToGlibPtr};
+    use gtk::prelude::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use webkit2gtk::WebViewExt;
+    let gesture = unsafe {
+        let view: *mut glib::gobject_ffi::GObject = view.upcast_ref::<glib::Object>().to_glib_none().0;
+        let p = glib::gobject_ffi::g_object_get_data(view, c"wk-view-zoom-gesture".as_ptr());
+        if p.is_null() {
+            return;
+        }
+        // WebKitGTK's own handlers: zooming the page
+        glib::gobject_ffi::g_signal_handlers_destroy(p as *mut _);
+        gtk::GestureZoom::from_glib_none(p as *mut gtk::ffi::GtkGestureZoom)
+    };
+    // a pinch's scale is since it began; the page wants each step's
+    let last = Rc::new(Cell::new(1.0f64));
+    gesture.connect_begin({
+        let last = last.clone();
+        move |_, _| last.set(1.0)
+    });
+    let view = view.clone();
+    gesture.connect_scale_changed(move |gesture, scale| {
+        let Some((x, y)) = gesture.bounding_box_center() else { return };
+        if scale <= 0.0 {
+            return;
+        }
+        let step = scale / last.replace(scale);
+        // Drawing zooms by exp(-deltaY * 0.0015)
+        let js = format!(
+            "document.elementFromPoint({x},{y})?.dispatchEvent(new WheelEvent('wheel',{{deltaY:{},clientX:{x},clientY:{y},ctrlKey:true,bubbles:true,cancelable:true}}))",
+            -step.ln() / 0.0015
+        );
+        view.evaluate_javascript(&js, None, None, None::<&gio::Cancellable>, |_| {});
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
         .invoke_handler(tauri::generate_handler![build, examples, watch, unwatch])
+        .setup(|app| {
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                window.with_webview(|w| pinch_zooms_the_drawing(&w.inner()))?;
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running bbgen studio");
 }
