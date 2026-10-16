@@ -146,6 +146,18 @@ fn outline(color: &str) -> &'static str {
     "#1d1d1d"
 }
 
+/// A label's text, its first `chars` characters (its last, when negative) in a muted grey, plain weight.
+fn muted(s: &str, chars: i32) -> String {
+    if chars == 0 {
+        return escape(s);
+    }
+    let at = if chars > 0 { chars as usize } else { s.chars().count().saturating_sub(chars.unsigned_abs() as usize) };
+    let split = s.char_indices().nth(at).map(|(k, _)| k).unwrap_or(s.len());
+    let (a, b) = s.split_at(split);
+    let dim = |t: &str| format!("<tspan fill=\"{}\" font-weight=\"normal\">{}</tspan>", MUTED, escape(t));
+    if chars > 0 { format!("{}{}", dim(a), escape(b)) } else { format!("{}{}", escape(a), dim(b)) }
+}
+
 fn text_box(gx: f64, gy: f64, s: &str, size: f64, anchor: &str, vertical: bool) -> (f64, f64, f64, f64) {
     let n = s.chars().count() as f64;
     let (w, h) = (n * size * 0.55 / P, size * 0.8 / P);
@@ -195,11 +207,13 @@ struct T<'a> {
     vertical: bool,
     halo: Option<&'a str>,
     late: bool,
+    /// how many characters at the start (or, negative, at the end) are drawn muted: a pin's number beside its name
+    muted: i32,
 }
 
 impl<'a> T<'a> {
     fn new(size: N) -> T<'a> {
-        T { size, anchor: "middle", fill: INK, weight: "normal", vertical: false, halo: None, late: false }
+        T { size, anchor: "middle", fill: INK, weight: "normal", vertical: false, halo: None, late: false, muted: 0 }
     }
     fn anchor(mut self, a: &'a str) -> Self {
         self.anchor = a;
@@ -227,6 +241,10 @@ impl<'a> T<'a> {
     }
     fn late(mut self) -> Self {
         self.late = true;
+        self
+    }
+    fn muted(mut self, chars: i32) -> Self {
+        self.muted = chars;
         self
     }
 }
@@ -304,7 +322,7 @@ impl Canvas {
             None => String::new(),
         };
         let svg = format!("<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"{}\" text-anchor=\"{}\" fill=\"{}\" font-weight=\"{}\"{}{}>{}</text>",
-                          x, y, t.size.s(), t.anchor, t.fill, t.weight, tr, extra, escape(s));
+                          x, y, t.size.s(), t.anchor, t.fill, t.weight, tr, extra, muted(s, t.muted));
         if t.late {
             // drawn after everything else, so it gets a group of its own
             let svg = match (&self.tag, self.annotate) {
@@ -631,19 +649,21 @@ fn offboard(cv: &mut Canvas, part: &Part) {
         let (dx, dy) = pin.label_dir;
         let warn = pin.name.ends_with('!');
         let (fill, weight) = if warn { ("#c62828", "bold") } else { (INK, "normal") };
-        let text = if pin.name == pin.num.to_string() {
-            pin.name.clone()
+        // pin numbers muted and apart from names, so `1 5V` can't be read as 15V
+        let num = pin.num.to_string();
+        let (text, dim) = if pin.name == num {
+            (num.clone(), num.len() as i32)
         } else if dx > 0 || (dx == 0 && dy < 0) {
-            format!("{} {}", pin.num, pin.name)
+            (format!("{} \u{b7} {}", num, pin.name), num.len() as i32 + 2)
         } else {
-            format!("{} {}", pin.name, pin.num)
+            (format!("{} \u{b7} {}", pin.name, num), -(num.len() as i32 + 2))
         };
         if dx == 0 {
             cv.text(x, y + dy as f64 * 0.85, &text, T::new(i(6)).anchor(if dy > 0 { "end" } else { "start" }).fill(fill).weight(weight)
-                .vertical(true).halo(Some("#ffffff")).late());
+                .vertical(true).halo(Some("#ffffff")).muted(dim).late());
         } else {
             cv.text(x + dx as f64 * 0.85, y, &text, T::new(i(6)).anchor(if dx > 0 { "start" } else { "end" }).fill(fill).weight(weight)
-                .halo(Some("#ffffff")).late());
+                .halo(Some("#ffffff")).muted(dim).late());
         }
     }
 }
