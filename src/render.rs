@@ -845,6 +845,11 @@ pub fn draw_annotated(c: &Circuit, result: &Result) -> (String, Canvas) {
     draw_with(c, result, None, None, &[], true, true)
 }
 
+/// draw_annotated(), with the parts and wires a step changed ringed: a step of `--events`.
+pub fn draw_annotated_focus(c: &Circuit, result: &Result, focus: &[String]) -> (String, Canvas) {
+    draw_with(c, result, None, None, focus, true, true)
+}
+
 /// Only the boards and what's on them: no title, legend or background, for a program that shows those itself
 /// (`--json`, `build --bare`).
 pub fn draw_bare(c: &Circuit, result: &Result, highlight: Option<&str>) -> (String, Canvas) {

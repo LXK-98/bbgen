@@ -107,3 +107,42 @@ fn scenes() {
         }
     }
 }
+
+/// `--events`: a line for each step as it's taken, then the scene `--json` prints. Placement builds its trials side
+/// by side with it as without, so the board is the same.
+#[test]
+fn events() {
+    for file in ["benchmarks/04-555-blinker.yaml", "benchmarks/09-pico-595-leds.yaml"] {
+        let run = |flag: &str| {
+            let out = std::process::Command::new(env!("CARGO_BIN_EXE_bbgen")).args(["build", file, flag]).output().unwrap();
+            String::from_utf8(out.stdout).unwrap().lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).collect::<Vec<_>>()
+        };
+        let (mut lines, json) = (run("--events"), run("--json"));
+        let mut scene = lines.pop().unwrap();
+        let mut plain = json[0].clone();
+        scene["stats"]["ms"] = Value::Null;
+        plain["stats"]["ms"] = Value::Null;
+        assert!(scene == plain, "{}: the scene after the events isn't the one --json prints", file);
+        assert!(lines.len() > 10, "{}: only {} events", file, lines.len());
+
+        let mut best = f64::INFINITY;
+        for (k, e) in lines.iter().enumerate() {
+            assert_eq!(e["event"], "step");
+            assert_eq!(e["n"], k as u64 + 1, "{}: the steps out of order", file);
+            let kept = e["kept"].as_bool().unwrap();
+            assert_eq!(e["svg"].is_string(), kept, "{}: step {}: a drawing with the kept steps, and only with them", file, k + 1);
+            let phase = e["phase"].as_str().unwrap();
+            assert!(["start", "turn", "repair", "wiring"].contains(&phase), "{}: phase {}", file, phase);
+            if phase == "wiring" {
+                assert!(kept && e["score"].is_null());
+                continue;
+            }
+            let score = e["score"].as_f64().unwrap();
+            if kept {
+                assert!(score <= best, "{}: step {} kept a worse layout", file, k + 1);
+                best = score;
+            }
+        }
+        assert!(lines.iter().any(|e| e["phase"] == "wiring") && lines.iter().any(|e| e["kept"] == false));
+    }
+}

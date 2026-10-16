@@ -861,7 +861,7 @@ impl<'a> Scorer<'a> {
     fn scan(&self, trials: Vec<Val>, mut visit: impl FnMut(usize, Val, Built) -> bool) {
         use rayon::prelude::*;
         let jobs = jobs();
-        if jobs <= 1 || dump::active() || crate::trace::active() {
+        if jobs <= 1 || dump::active() || (crate::trace::active() && !crate::trace::printing()) {
             for (i, t) in trials.into_iter().enumerate() {
                 let b = self.score(&t);
                 if visit(i, t, b) {
@@ -1232,8 +1232,10 @@ pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
     sc.scan(trials, |i, trial, b| {
         let kept = best.as_ref().map(|x| b.score < x.0).unwrap_or(true);
         if crate::trace::active() {
-            crate::trace::step(&b.circuit, &format!("starting layout {} of {}: score {:.0}{}", i + 1, n_starts, b.score,
-                                                    if kept { " ✓ best so far" } else { "" }), kept, &[], None, false);
+            crate::trace::scored(&b.circuit, &format!("starting layout {} of {}: score {:.0}{}", i + 1, n_starts, b.score,
+                                                      if kept { " ✓ best so far" } else { "" }),
+                                 crate::trace::Scored { phase: "start", what: format!("layout {} of {}", i + 1, n_starts),
+                                                        from: best.as_ref().map(|x| x.0), score: b.score }, kept, &[]);
         }
         if kept {
             if dump::active() {
@@ -1279,8 +1281,10 @@ fn turned(sc: &Scorer, model: &Model, mut score: f64, mut data: Val, mut c: Circ
             let better = b.score < score - 1e-9;
             if crate::trace::active() {
                 let refs: Vec<String> = combos[from + i].iter().map(|&k| flips[k].0.clone()).collect();
-                crate::trace::step(&b.circuit, &format!("turn {}: score {:.0} → {:.0} {}", refs.join(" and "), score, b.score,
-                                                        if better { "✓" } else { "✗" }), better, &refs, None, false);
+                crate::trace::scored(&b.circuit, &format!("turn {}: score {:.0} → {:.0} {}", refs.join(" and "), score, b.score,
+                                                          if better { "✓" } else { "✗" }),
+                                     crate::trace::Scored { phase: "turn", what: format!("turn {}", refs.join(" and ")),
+                                                            from: Some(score), score: b.score }, better, &refs);
             }
             if better {
                 if dump::active() {
@@ -1362,8 +1366,9 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
             if crate::trace::active() {
                 let (what, refs) = describe(model, &data, &ms[i].0, &ms[i].1);
                 let kept = s2 < score - 1e-9;
-                crate::trace::step(&c2, &format!("repair {}: {}: score {:.0} → {:.0} {}", builds, what, score, s2,
-                                                 if kept { "✓" } else { "✗" }), kept, &refs, None, false);
+                crate::trace::scored(&c2, &format!("repair {}: {}: score {:.0} → {:.0} {}", builds, what, score, s2,
+                                                   if kept { "✓" } else { "✗" }),
+                                     crate::trace::Scored { phase: "repair", what, from: Some(score), score: s2 }, kept, &refs);
             }
             if s2 < score - 1e-9 {
                 if dump::active() {

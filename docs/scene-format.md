@@ -64,6 +64,32 @@ included; empty when it couldn't be placed), `flex` (a flexible jumper), `flying
 `laid_by` (`you` or `bbgen`), `slant`, `under` (raised modules it runs under), `text` (its checklist line,
 after the number).
 
+## Steps as they're taken: `--events`
+
+`--events` is `--json` with a line before the scene for each step of placing and wiring, printed as it's
+taken, so a program can show the run live (bbgen studio's Generation mode). Each starts `{"event":`; the
+scene, or the error, is still the last line.
+
+```jsonc
+{"event": "step", "n": 21, "phase": "repair", "caption": "R6 into its 4th best legs", "kept": true,
+ "focus": ["R6"], "score": 250.2, "from": 256.0, "svg": "<svg ...>", "width": 1422, "height": 428}
+```
+
+| field | what it is |
+|---|---|
+| `n` | the step's number, from 1 |
+| `phase` | `start` (a starting layout), `turn` (footprint parts turned round), `repair` (a part moved), `wiring` (a wire laid or dropped, once the parts are placed) |
+| `caption` | what the step tried |
+| `kept` | whether bbgen kept it; a wiring step always is |
+| `focus` | the parts and wires it changed (ringed in the drawing) |
+| `score`, `from` | the layout's score (lower is better) and the score of the best before it; `from` is null for the first layout, and both are null for wiring |
+| `svg`, `width`, `height` | the board as it stands, drawn as the scene's `svg` is: with kept steps only |
+
+A drawing costs a check and a drawing of the whole circuit, so tried steps come without one: with them all
+drawn, benchmark 09 takes twice as long and prints 24 MB. As it is, `--events` adds about a tenth to its
+build (0.27 s to 0.30 s), a third to benchmark 13's. `tests/scene.rs` checks that the scene after the events
+is the one `--json` prints.
+
 ## The drawing's groups
 
 Every piece of the drawing that belongs to something is inside a group saying what:

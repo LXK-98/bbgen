@@ -3,6 +3,7 @@
 //!     bbgen build circuit.yaml [-o DIR] [--no-png] [--steps] [--bare] [--schematic] [--wires] [--video FILE] [--video-all]
 //!     bbgen check circuit.yaml                                  the check only
 //!     bbgen build|check circuit.yaml --json                     what was built, as JSON on stdout (docs/scene-format.md)
+//!     bbgen build|check circuit.yaml --events                   --json, after a JSON line for each step as it's taken
 //!     bbgen find WORDS... [--kicad DIR]                         search KiCad's library for a symbol
 //!
 //! For bbgen's own tests and benchmarks (benchmarks/README.md):
@@ -31,6 +32,7 @@ const USAGE: &str = "usage: bbgen {build,check,find} ...\n\n\
                                                     --wires: every net a wire, no labels)\n\
   check circuit.yaml                                check the wiring only\n\
   build|check circuit.yaml --json                   print what was built as JSON (no files unless -o)\n\
+  build|check circuit.yaml --events                 --json, after a JSON line for each step of placing and wiring\n\
   find WORDS... [--kicad DIR]                       search KiCad's library for a part's symbol: bbgen find ne555";
 
 fn main() -> ExitCode {
@@ -111,6 +113,7 @@ fn run(args: &[String]) -> i32 {
     let (mut circuit, mut out_dir, mut no_png, mut steps) = (None, None, false, false);
     let (mut video, mut video_all): (Option<PathBuf>, bool) = (None, false);
     let mut json = false;
+    let mut events = false;
     let mut bare = false;
     let mut schematic = false;
     let mut wires = false;
@@ -129,6 +132,10 @@ fn run(args: &[String]) -> i32 {
             }
             "--video-all" if cmd == "build" => video_all = true,
             "--json" => json = true,
+            "--events" => {
+                json = true;
+                events = true;
+            }
             "--bare" if cmd == "build" => bare = true,
             "--schematic" if cmd == "build" => schematic = true,
             "--wires" if cmd == "build" => {
@@ -159,7 +166,8 @@ fn run(args: &[String]) -> i32 {
         None
     };
     if json {
-        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)), drawing.map(|d| (d, style)));
+        return run_json(cmd, &circuit, out_dir.is_some().then(|| (out_dir.unwrap(), no_png)), drawing.map(|d| (d, style)),
+                        events);
     }
     if video.is_some() {
         bbgen::trace::start(video_all);
@@ -251,10 +259,16 @@ fn run(args: &[String]) -> i32 {
 /// build|check --json: the scene on stdout, nothing else. With -o, the drawing and checklist are written there too.
 type Drawing = std::thread::JoinHandle<(std::result::Result<bbgen::schematic::Schematic, String>, f64)>;
 
-fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: Option<(Drawing, bbgen::schematic::Style)>) -> i32 {
+fn run_json(cmd: &str, circuit: &Path, files: Option<(PathBuf, bool)>, drawing: Option<(Drawing, bbgen::schematic::Style)>,
+            events: bool) -> i32 {
     let path = circuit.to_string_lossy().into_owned();
     let start = Instant::now();
-    let c = match Circuit::load(&path) {
+    if events {
+        bbgen::trace::start_events();
+    }
+    let loaded = Circuit::load(&path);
+    bbgen::trace::finish();
+    let c = match loaded {
         Ok(c) => c,
         Err(e) => {
             println!("{}", bbgen::scene::error(&e, std::fs::read_to_string(&path).ok().as_deref()));
