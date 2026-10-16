@@ -234,7 +234,7 @@ one start, a start other than the one picked ends with a lower score (19: 45.1 �
 same exploits as above: 18's LEDs leave their row for three places and a label clashes, 02 stretches legs to save
 two wires, 09 spreads its LEDs over both halves, 19 packs everything into one corner with labels over the
 regulator. The 555s lose nothing (04's chosen start and its first two end within a point). So the verdict stands:
-the score, not the choice of start, is what to change first.
+the score, not the choice of start, is what to change first. Picked up as point 12.
 
 **Research (October 2026): measuring tidiness.**
 - Learning a layout score from examples is established for graphic design: an energy of design-principle
@@ -401,3 +401,47 @@ octal) is a user-facing behaviour, though: keep it unless the file format change
 - **`flying` is written as `0.0` where the Python wrote `0`** in `benchmarks/baseline.json`. They compare
   equal.
 
+## 12. The score doesn't see tidiness, so a stronger search makes messier boards
+
+**Issue.** bbgen repairs only the starting layout that scores best, and a start's score is a poor guide to
+where repair ends: in 12 of 22 circuits another start would end lower (point 4, "Checked again"). But the
+search can't simply be made stronger. Twice, repairing every start was tried and reverted (point 4): the
+lower scores came from layouts that read messier, since the score rewards short and few wires and hardly
+sees crowding, labels over parts, stretched legs or parts out of line. Today's weak choice of start happens
+to keep the placement estimate's tidy layouts (the estimate likes room around parts).
+
+**What the drawings show the score lacks** (the October 2026 check, each a start bbgen didn't pick):
+- 18: the three LEDs leave their row for three places, R3 stands on end, a label clashes (66.0 → 51.9).
+- 02: legs stretched to save two wires (57.0 → 50.0).
+- 09: the LEDs spread over both halves of the board (229.4 → 212.3).
+- 19: everything packed into one corner, labels over the regulator (45.1 → 29.3). Compact, but crowded.
+- 07, 08, 13, 17 also end lower from another start; not yet judged.
+
+So the missing terms are room around parts (the estimate has `CROWD_COST`, `ROOM_COST` and `SPACE_COST`, the
+built score in `autoplace::score` doesn't), labels over parts (it counts only two-lead parts' labels near each
+other), like parts in line (an LED bank in one row), and a leg's stretch priced against the wire it saves (3 a
+hole beyond `span_max`, while a wire costs 2 plus its length).
+
+**Research.** Point 4, "Research (October 2026): measuring tidiness": layout scores fitted to judged examples
+(O'Donovan et al. 2014), judgments as margin constraints (ranking SVM) or a Bradley–Terry fit when there are
+many, and breadboard and stripboard tools that keep tidiness out of the score by rule (clearance as a hard
+constraint, an empty row between parts, like parts on a grid).
+
+**Plan, in order.**
+1. **A tidiness test.** Pairs of placed layouts of one circuit, one judged tidier by a person, kept in
+   `benchmarks/` and checked by `cargo test`: score(tidier) < score(messier). The eight pairs above are the first
+   batch; they need judging (18, 02 and 09 are judged above, and the score ranks all three the wrong way
+   round). This keeps the judgment in the repo instead of re-learning it after each revert.
+2. **Score terms for what the pairs show**, one at a time. Keep a term only when every pair ranks right,
+   `run.py`'s numbers on today's layouts hold, and none of the 21 drawings reads worse.
+3. **Then the search:** repair the best two or three starts and pick by the full score, at about two to three
+   times today's placement time (repairing all of them cost four to six times: 8 s → 33–53 s for all 21).
+   Successive halving was simulated in point 4 and got a third of the gain; leave it out.
+
+**To make the pairs again.** In `search::autoplace`, where the starting layouts are scanned, temporarily
+replace `let kept = best.as_ref().map(|x| b.score < x.0).unwrap_or(true);` with a choice of `i == k` for
+`k` from a `BBGEN_START` variable, then build each benchmark with `BBGEN_START=0`, `1`, ... and `-o DIR`. The
+pairs above are (picked start, other start, both counted from 1): 18 (8, 5), 02 (1, 3), 09 (1, 4), 19 (4, 1),
+13 (2, 8), 17 (1, 7), 07 (1, 3), 08 (4, 3). Keep them as placed files, so the test doesn't depend on the search:
+`bbgen dev build FILE --dump OUT.jsonl` writes the layout as its `placed` event, which `benchmarks/record.py`
+turns into `golden/placed/<name>.yaml` the same way.
