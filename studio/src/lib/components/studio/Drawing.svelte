@@ -47,8 +47,20 @@
 	let viewport = $state<HTMLDivElement>();
 	let content = $state<HTMLDivElement>();
 	let scale = $state(1);
+	// the zoom the drawing is laid out at (CSS zoom: drawn sharp at its real size, but laid out afresh, which is
+	// slow on a big board); while you zoom, a scale() transform makes up the rest, and once you stop it's laid
+	// out at the new zoom. A transform alone stays blurred in WebKit (the desktop app): it stretches what it
+	// painted at the old size until something repaints it.
+	let sharp = $state(1);
+	$effect(() => {
+		const s = scale;
+		const t = setTimeout(() => (sharp = s), 150);
+		return () => clearTimeout(t);
+	});
 	let tx = $state(0);
 	let ty = $state(0);
+	/** where the drawing is, and while you zoom, how much more it's scaled than it's laid out */
+	const place = $derived(`translate(${tx}px, ${ty}px)${scale === sharp ? '' : ` scale(${scale / sharp})`}`);
 	let pointer = $state<{ x: number; y: number } | null>(null);
 	// the view's size, for the minimap
 	let vw = $state(0);
@@ -204,18 +216,16 @@
 		onpointerleave={leave}
 		onwheel={onwheel}
 	>
-		<!-- moved with a transform, zoomed with CSS zoom: a scale() transform lets WebKit (the desktop app) stretch the
-		     drawing it painted at the old size, blurred, until something repaints it; zoom draws it at its real size -->
-		<div class="absolute top-0 left-0" style:transform="translate({tx}px, {ty}px)">
-			<div class="relative" style:width="{width}px" style:height="{height}px" style:zoom={scale}>
+		<div class="absolute top-0 left-0 origin-top-left" style:transform={place}>
+			<div class="relative" style:width="{width}px" style:height="{height}px" style:zoom={sharp}>
 				<div bind:this={content} class="drawing-svg">{@html svg}</div>
 				{@render overlay?.(scale)}
 			</div>
 		</div>
 		{#if before !== undefined}
 			<div class="pointer-events-none absolute inset-0 overflow-hidden" style:clip-path="inset(0 {vw - splitX}px 0 0)">
-				<div class="absolute top-0 left-0" style:transform="translate({tx}px, {ty}px)">
-					<div style:width="{width}px" style:height="{height}px" style:zoom={scale}>
+				<div class="absolute top-0 left-0 origin-top-left" style:transform={place}>
+					<div style:width="{width}px" style:height="{height}px" style:zoom={sharp}>
 						<div class="drawing-svg">{@html before}</div>
 					</div>
 				</div>
