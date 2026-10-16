@@ -4,12 +4,13 @@
 import { toast } from 'svelte-sonner';
 import { getEngine, type BbgenInfo, type Drag, type Engine, type Export } from './engine';
 import { indexScene, type SceneIndex } from './lookup';
-import { isError, SCHEMA, type BuildOutput, type Key, type Scene, type SceneError, type StepEvent } from './scene';
+import { isError, SCHEMA, stepKey, type BuildOutput, type Key, type Scene, type SceneError, type StepEvent } from './scene';
 
 const RECENT = 'bbgen-studio.recent';
 const VIEW = 'bbgen-studio.view';
 const WIRES = 'bbgen-studio.wires';
 const BBGEN = 'bbgen-studio.bbgen';
+const FOLLOW = 'bbgen-studio.follow';
 
 function load<T>(key: string, fallback: T): T {
 	try {
@@ -57,8 +58,29 @@ export class Studio {
 	/** a kept step picked to compare with another (its number), and the two being compared, earlier first */
 	compareWith = $state<number | null>(null);
 	compare = $state<[number, number] | null>(null);
-	/** Inspect the last build, or watch bbgen generate it (every build then shows its steps) */
-	mode = $state<'inspect' | 'generation'>('inspect');
+	/** Inspect the last build, follow the build guide, or watch bbgen generate it (every build then shows its steps) */
+	mode = $state<'inspect' | 'guide' | 'generation'>('inspect');
+
+	/** Build guide: the step in hand, by its checklist item (`part:U1`), so it stays put across a rebuild */
+	guideItem = $state<string | null>(null);
+	/** the steps done (`stepKey`), as kept for this file */
+	done = $state.raw<Set<string>>(new Set());
+	/** the file `done` is of */
+	doneFor = $state<string | null>(null);
+	/** the guide's step in hand: its item's index in the checklist, else the first not done */
+	guideAt = $derived.by(() => {
+		const list = this.scene?.checklist ?? [];
+		const i = list.findIndex((s) => s.item === this.guideItem);
+		if (i >= 0) return i;
+		const next = list.findIndex((s) => !this.done.has(stepKey(s)));
+		return next >= 0 ? next : Math.max(0, list.length - 1);
+	});
+	/** how many of the checklist's steps are done */
+	doneCount = $derived((this.scene?.checklist ?? []).filter((s) => this.done.has(stepKey(s))).length);
+	/** the board zooms to each step as you go */
+	follow = $state<boolean>(load(FOLLOW, true));
+	/** the bench view: the board and the step in hand fill the screen */
+	bench = $state(false);
 	exporting = $state(false);
 	watching = $state(false);
 	builtAt = $state<Date | null>(null);
@@ -117,6 +139,17 @@ export class Studio {
 			this.stepsFor = null;
 			this.compareWith = null;
 			this.compare = null;
+			this.guideItem = null;
+			this.done = new Set();
+			this.doneFor = null;
+			this.engine.progress(path).then(
+				(done) => {
+					if (this.path !== path) return;
+					this.done = new Set(done);
+					this.doneFor = path;
+				},
+				() => (this.doneFor = path)
+			);
 			this.#unwatch = this.engine.watch(path, () => {
 				clearTimeout(this.#debounce);
 				this.#debounce = setTimeout(() => this.rebuild(), 150);
@@ -253,13 +286,75 @@ export class Studio {
 		}
 	}
 
-	/** switch modes; Generation runs bbgen step by step, unless it has for this file already, and Inspect builds
-	 * the board if there's none (a run stopped before it ended) */
-	setMode(mode: 'inspect' | 'generation') {
+	/** switch modes; Generation runs bbgen step by step, unless it has for this file already, and Inspect and the
+	 * build guide build the board if there's none (a run stopped before it ended) */
+	setMode(mode: 'inspect' | 'guide' | 'generation') {
 		this.mode = mode;
+		if (mode !== 'guide') this.setBench(false);
 		if (!this.path || this.building) return;
 		if (mode === 'generation' && this.stepsFor !== this.path) this.rebuild(true);
-		if (mode === 'inspect' && !this.scene && !this.error) this.rebuild(false);
+		if (mode !== 'generation' && !this.scene && !this.error) this.rebuild(false);
+	}
+
+	/** Build guide: take step i in hand (and show it in the inspector) */
+	guideGo(i: number) {
+		const list = this.scene?.checklist ?? [];
+		if (!list.length) return;
+		const s = list[Math.max(0, Math.min(list.length - 1, i))];
+		this.guideItem = s.item;
+		this.selected = s.item as Key;
+	}
+
+	/** the step in hand is done: on to the next */
+	guideNext() {
+		const list = this.scene?.checklist ?? [];
+		const at = this.guideAt;
+		if (!list[at]) return;
+		this.setDone(at, true);
+		if (at < list.length - 1) this.guideGo(at + 1);
+		else toast.success('Built', { description: `All ${list.length} steps are done.` });
+	}
+
+	guideBack() {
+		this.guideGo(this.guideAt - 1);
+	}
+
+	/** mark step i done or not */
+	setDone(i: number, on: boolean) {
+		const s = this.scene?.checklist[i];
+		if (!s) return;
+		const done = new Set(this.done);
+		if (on) done.add(stepKey(s));
+		else done.delete(stepKey(s));
+		this.#keep(done);
+	}
+
+	/** start the build over: no step done, the first in hand */
+	resetGuide() {
+		this.#keep(new Set());
+		this.guideGo(0);
+	}
+
+	/** keep the steps done, those of this checklist only (a step that changed is no longer one of them) */
+	#keep(done: Set<string>) {
+		const path = this.path;
+		if (!path || !this.engine) return;
+		const now = new Set((this.scene?.checklist ?? []).map(stepKey));
+		this.done = new Set([...done].filter((k) => now.has(k)));
+		this.doneFor = path;
+		this.engine.saveProgress(path, [...this.done]).catch((e) => toast.error("Couldn't keep the guide's progress", { description: String(e) }));
+	}
+
+	setFollow(on: boolean) {
+		this.follow = on;
+		save(FOLLOW, on);
+	}
+
+	/** the bench view: the board and the step in hand, filling the screen */
+	setBench(on: boolean) {
+		if (this.bench === on) return;
+		this.bench = on;
+		this.engine?.fullscreen(on).catch(() => {});
 	}
 
 	/** show the kept step at index i of the kept ones; the last means the latest, following a run along */

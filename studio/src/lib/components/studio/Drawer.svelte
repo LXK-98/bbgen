@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Under the board: the build checklist, the check's issues, and what bbgen said.
 	import { studio } from '#lib/studio.svelte.js';
-	import type { Key } from '#lib/scene.js';
+	import { SECTION_WORD, type Key } from '#lib/scene.js';
 	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
 	import Code from './Code.svelte';
@@ -9,7 +9,6 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 
 	const scene = $derived(studio.scene);
-	const SECTION: Record<string, string> = { parts: 'part', raised: 'raised', flex: 'jumper' };
 
 	function row(key: Key) {
 		return studio.selected === key ? 'bg-primary/10' : studio.hover === key ? 'bg-muted' : '';
@@ -34,7 +33,7 @@
 					{@const key = s.item as Key}
 					<button class="flex w-full items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left text-sm {row(key)}" {...studio.pointer(key)}>
 						<span class="w-6 shrink-0 text-right font-mono text-[11px] text-muted-foreground">{k + 1}</span>
-						<span class="w-16 shrink-0 truncate text-[11px] text-muted-foreground">{SECTION[s.section] ?? s.section}</span>
+						<span class="w-16 shrink-0 truncate text-[11px] text-muted-foreground">{SECTION_WORD[s.section] ?? s.section}</span>
 						<span class="w-11 shrink-0 font-mono text-xs font-semibold">{s.item.split(':')[1]}</span>
 						<span class="min-w-0 flex-1"><Code text={s.text} /></span>
 					</button>

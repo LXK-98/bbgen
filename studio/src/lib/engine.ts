@@ -56,6 +56,11 @@ export interface Engine {
 	useBbgen(path: string | null): Promise<BbgenInfo>;
 	/** call onDrag as files are dragged over the window and dropped on it */
 	onDrag(onDrag: (e: Drag) => void): void;
+	/** the build guide's steps done for a circuit (each its checklist item and text), kept in the app's data folder */
+	progress(path: string): Promise<string[]>;
+	saveProgress(path: string, done: string[]): Promise<void>;
+	/** fill the screen with the window, or stop */
+	fullscreen(on: boolean): Promise<void>;
 }
 
 function inTauri(): boolean {
@@ -78,6 +83,12 @@ async function tauriEngine(): Promise<Engine> {
 		examples: () => invoke<string[]>('examples'),
 		edit: (path, line) => invoke('edit', { path, line }),
 		useBbgen: (path) => invoke<BbgenInfo>('use_bbgen', { path }),
+		progress: (path) => invoke<string[]>('progress', { path }),
+		saveProgress: (path, done) => invoke('save_progress', { path, done }),
+		async fullscreen(on) {
+			const { getCurrentWindow } = await import('@tauri-apps/api/window');
+			await getCurrentWindow().setFullscreen(on);
+		},
 		async export(path, what, wires) {
 			let to: string | null;
 			if (what === 'all') {
@@ -176,6 +187,15 @@ function webEngine(): Engine {
 			return names;
 		},
 		useBbgen: (path) => get<BbgenInfo>(`/api/bbgen${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+		progress: (path) => get<string[]>(`/api/progress?path=${encodeURIComponent(path)}`),
+		async saveProgress(path, done) {
+			const r = await fetch(`/api/progress?path=${encodeURIComponent(path)}`, { method: 'POST', body: JSON.stringify({ done }) });
+			if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? r.statusText);
+		},
+		async fullscreen(on) {
+			if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+			else if (!on && document.fullscreenElement) await document.exitFullscreen();
+		},
 		edit: (path, line) => get(`/api/edit?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ''}`),
 		watch(path, onChange) {
 			const source = new EventSource(`/api/watch?path=${encodeURIComponent(path)}`);

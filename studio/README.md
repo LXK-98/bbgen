@@ -6,7 +6,7 @@ inspector. The circuit file is watched, so saving it (from an editor, or Claude 
 
 The studio never links bbgen's library: every build runs the `bbgen` binary as `bbgen build FILE --json` and
 reads the scene it prints ([docs/scene-format.md](../docs/scene-format.md)). The plan, and what comes after
-inspecting (generation progress, a build guide, editing, an assistant), is in
+inspecting (generation progress, the build guide, editing, an assistant), is in
 [docs/studio-plan.md](../docs/studio-plan.md).
 
 SvelteKit (a single page, `adapter-static`) with shadcn-svelte, in a Tauri 2 window.
@@ -50,6 +50,7 @@ beside the app, else this checkout's `bin/bbgen` (which builds bbgen first when 
 | [src/lib/scene.ts](src/lib/scene.ts) | the scene's types |
 | [src/lib/studio.svelte.ts](src/lib/studio.svelte.ts) | the state: the open file, its last good build, hover and selection |
 | [src/lib/lookup.ts](src/lib/lookup.ts) | strips, a part's wires, what a hover lights up, the hole under the pointer |
+| [src/lib/guide.ts](src/lib/guide.ts) | the build guide: the holes a step goes in, tagged on the board, and where to zoom to |
 | [src/lib/components/studio/](src/lib/components/studio) | the board, the circuit, the lists, the inspector, the checklist and issues drawer, the bars |
 | [Drawing.svelte](src/lib/components/studio/Drawing.svelte) | one of bbgen's drawings with pan, zoom, hover and selection: the board and the circuit are both one |
 | [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | the native side: runs bbgen, lists examples, watches files |
@@ -75,6 +76,14 @@ to stop. Saves rebuild step by step while
 Generation is on; Inspect's rebuilds don't ask for the steps, since on a placed file the drawings they carry
 make the build ten times longer. While a build runs, **Rebuild** is **Stop**, which kills bbgen and leaves the
 last board up.
+
+**Build guide** (top bar) walks you through building the board, step by step, in the checklist's building order
+(wires that parts go over, chips and modules, small parts, wires, flexible jumpers, flying leads). What's not in
+yet is drawn faint and dashed, the step in hand glows with its holes tagged in large type, and the board glides to
+it (**Follow**). **Done, next** (→, Space or Enter) ticks it off and moves on, **Back** (←) goes back; the drawer
+lists every step with a box to tick. What's done is kept per circuit in the app's data folder, so the guide picks
+up where you left off. **Bench view** (B, Esc to leave) fills the screen with the board and the step, in larger
+type.
 
 Zoomed in, a minimap in the bottom right shows where you are; drag on it to move the view.
 

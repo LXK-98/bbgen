@@ -30,6 +30,7 @@ are null when the message doesn't say where (a part that names a pin that doesn'
 | `nets` | `name`, `color` (hex), `pins`, `rails` (as the file asks), `polarity` (`+`, `-` or null), `guessed`, `line` |
 | `issues` | `level`, `code`, `message`, and what it's about: `parts`, `pins`, `holes`, and `line` when the message starts with an entry of the file (`nets.GND: ...`) |
 | `checklist` | the build's steps in building order: `section` (`under`: flat wires a part goes over; `chips`: chips and modules; `parts`: small parts; `wires`; `flex`: flexible jumpers; `leads`: each off-board part and its flying leads), `item` (`part:U1`, `wire:W6`), `text`. The order within each section is in `checklist::steps` |
+| `sections` | the checklist's sections in building order: `key` (a step's `section`), `title` (its heading in the checklist), `intro` (what the checklist says under it: the order within it) |
 | `schematic` | with `--schematic` or `--wires` only: `svg` (the circuit's schematic, on nothing, in `currentColor`), `width`, `height`, `style` (`symbols`, or `wires`: every net a wire, no labels), `labels` (the nets drawn as labels), `problems` (what reading the drawing back found wrong: nothing, unless bbgen has a bug), `ms`. `{"error": ...}` when it couldn't be drawn |
 | `stats` | `errors`, `warnings`, `parts`, `wires`, `nets`, `ms` (load, place, wire and check) |
 

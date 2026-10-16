@@ -5,7 +5,7 @@
 	import type { Snippet } from 'svelte';
 	import { studio } from '#lib/studio.svelte.js';
 	import { describe } from '#lib/describe.js';
-	import type { Key } from '#lib/scene.js';
+	import type { Key, Rect } from '#lib/scene.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Toggle } from '#lib/components/ui/toggle/index.js';
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
@@ -38,11 +38,14 @@
 		afterLabel?: string;
 		/** the minimap's drawing is in currentColor (the schematic): an image draws that black, so invert it in the dark */
 		ink?: boolean;
+		/** the build guide's marks: a part's or wire's key (`part:U1`, `wire:W6`) → `todo` (not in yet: drawn dashed)
+		 * or `now` (the step in hand) */
+		marks?: Map<string, 'todo' | 'now'>;
 		class?: string;
 	}
 
 	let { svg, width, height, name, selectors, under, onleave, quiet, overlay, children, ink = false, before, beforeLabel, afterLabel,
-		class: klass = '' }: Props = $props();
+		marks, class: klass = '' }: Props = $props();
 
 	let viewport = $state<HTMLDivElement>();
 	let content = $state<HTMLDivElement>();
@@ -81,6 +84,37 @@
 		ty = (h - height * scale) / 2;
 	}
 
+	/** glide the view to show a rectangle of the drawing, with room around it: no closer than `most`, and no
+	 * further out than the whole drawing fitted */
+	let glide = 0;
+	export function focus(box: Rect, most = 2.5) {
+		if (!viewport) return;
+		const { clientWidth: w, clientHeight: h } = viewport;
+		if (!w || !h) {
+			// not laid out yet
+			requestAnimationFrame(() => focus(box, most));
+			return;
+		}
+		const pad = 60;
+		const all = Math.min(w / width, h / height) * 0.96;
+		const to = Math.max(all, Math.min(most, w / (box[2] - box[0] + 2 * pad), h / (box[3] - box[1] + 2 * pad)));
+		const [cx, cy] = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+		const end = { scale: to, tx: w / 2 - cx * to, ty: h / 2 - cy * to };
+		const start = { scale, tx, ty };
+		const t0 = performance.now();
+		const run = ++glide;
+		const step = (now: number) => {
+			if (run !== glide) return;
+			const k = Math.min(1, (now - t0) / 280);
+			const e = 1 - (1 - k) ** 3;
+			scale = start.scale + (end.scale - start.scale) * e;
+			tx = start.tx + (end.tx - start.tx) * e;
+			ty = start.ty + (end.ty - start.ty) * e;
+			if (k < 1) requestAnimationFrame(step);
+		};
+		requestAnimationFrame(step);
+	}
+
 	function zoomBy(k: number, cx?: number, cy?: number) {
 		if (!viewport) return;
 		const x = cx ?? viewport.clientWidth / 2;
@@ -114,6 +148,20 @@
 		if (selected) mark(selected, 'sel');
 		if (hover) mark(hover, 'lit');
 		root.classList.toggle('dim', !!hover && dim && !quiet?.(hover));
+	});
+
+	// the build guide's marks on the parts and wires
+	$effect(() => {
+		const root = content;
+		const m = marks;
+		void svg;
+		if (!root) return;
+		for (const el of root.querySelectorAll<SVGElement>('[data-part],[data-wire]')) {
+			const d = el.dataset;
+			const mark = m?.get(d.part !== undefined ? `part:${d.part}` : `wire:${d.wire}`);
+			el.classList.toggle('todo', mark === 'todo');
+			el.classList.toggle('now', mark === 'now');
+		}
 	});
 
 	// the minimap: the drawing at a fixed size (an image, made once per build), the visible part outlined
@@ -164,6 +212,7 @@
 		if (e.button !== 0 && e.button !== 1) return;
 		const box = viewport!.getBoundingClientRect();
 		const key = under(e.target as Element, (e.clientX - box.left - tx) / scale, (e.clientY - box.top - ty) / scale);
+		glide++;
 		drag = { x: e.clientX, y: e.clientY, tx, ty, moved: false, key };
 		viewport?.setPointerCapture(e.pointerId);
 	}
@@ -182,6 +231,7 @@
 
 	function onwheel(e: WheelEvent) {
 		e.preventDefault();
+		glide++;
 		const box = viewport!.getBoundingClientRect();
 		zoomBy(Math.exp(-e.deltaY * 0.0015), e.clientX - box.left, e.clientY - box.top);
 	}
@@ -343,5 +393,20 @@
 	}
 	.drawing-svg :global(.lit) {
 		filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 2.5px var(--primary));
+	}
+	/* the build guide: what's not in yet, drawn dashed and faint; the step in hand, glowing */
+	.drawing-svg :global(.todo) {
+		opacity: 0.4;
+	}
+	.drawing-svg :global(.todo :is(path, line, rect, circle, ellipse, polygon, polyline)) {
+		stroke-dasharray: 3.5 2.5;
+		stroke-linecap: butt;
+		fill-opacity: 0.12;
+	}
+	.drawing-svg :global(.todo text) {
+		fill-opacity: 0.5;
+	}
+	.drawing-svg :global(.now) {
+		filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 4px var(--primary)) drop-shadow(0 0 7px var(--primary));
 	}
 </style>

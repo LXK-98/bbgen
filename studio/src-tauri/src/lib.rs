@@ -190,6 +190,40 @@ async fn export(path: String, what: String, wires: bool, to: String, studio: Sta
         .await.map_err(|e| e.to_string())?
 }
 
+/// Where the build guide keeps its progress: one file for every circuit (path → the steps done), in the app's data
+/// folder. A file beside the circuit would end up in git. `pnpm dev`'s server uses the same file (vite/bbgen-dev.ts).
+fn progress_file(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path().app_data_dir().map(|d| d.join("guide-progress.json")).map_err(|e| e.to_string())
+}
+
+fn read_progress(file: &Path) -> serde_json::Map<String, Value> {
+    std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.as_object().cloned()).unwrap_or_default()
+}
+
+/// The build guide's steps done for a circuit, each as its checklist item and text (`part:U1` and its line).
+#[tauri::command]
+fn progress(path: String, app: AppHandle) -> Result<Value, String> {
+    let all = read_progress(&progress_file(&app)?);
+    Ok(all.get(&path).and_then(|p| p.get("done")).cloned().unwrap_or(json!([])))
+}
+
+/// Keep the build guide's steps done for a circuit (none: forget it).
+#[tauri::command]
+fn save_progress(path: String, done: Vec<String>, app: AppHandle) -> Result<(), String> {
+    let file = progress_file(&app)?;
+    let mut all = read_progress(&file);
+    if done.is_empty() {
+        all.remove(&path);
+    } else {
+        all.insert(path, json!({"done": done}));
+    }
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&file, serde_json::to_string_pretty(&Value::Object(all)).unwrap()).map_err(|e| e.to_string())
+}
+
 /// The circuits that come with bbgen: its examples and benchmarks.
 #[tauri::command]
 fn examples() -> Vec<String> {
@@ -344,7 +378,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Studio::default())
-        .invoke_handler(tauri::generate_handler![build, stop, examples, watch, unwatch, edit, export, use_bbgen])
+        .invoke_handler(tauri::generate_handler![build, stop, examples, watch, unwatch, edit, export, use_bbgen, progress, save_progress])
         .setup(|app| {
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

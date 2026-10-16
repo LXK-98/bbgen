@@ -100,6 +100,11 @@ fn scenes() {
             };
             assert!(ok, "{}: checklist names {}", name, item);
         }
+        // the steps come section by section, in the sections' order
+        let order: Vec<&str> = s["sections"].as_array().unwrap().iter().map(|x| x["key"].as_str().unwrap()).collect();
+        let at: Vec<usize> = s["checklist"].as_array().unwrap().iter()
+            .map(|x| order.iter().position(|k| *k == x["section"].as_str().unwrap()).expect("a step in no section")).collect();
+        assert!(at.windows(2).all(|w| w[0] <= w[1]), "{}: steps out of their sections' order", name);
         assert_eq!(s["checklist"].as_array().unwrap().len(),
                    s["parts"].as_array().unwrap().len() + s["wires"].as_array().unwrap().len(), "{}", name);
         for b in s["boards"].as_array().unwrap() {

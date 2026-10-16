@@ -1,6 +1,6 @@
 <script lang="ts">
-	// The file, the mode (Inspect, or Generation: bbgen building the board step by step), the view (board, circuit or
-	// both, in Inspect), the check's result, Export, and Rebuild, which turns into Stop while it runs.
+	// The file, the mode (Inspect; Build guide, the board step by step as you build it; or Generation: bbgen building
+	// the board step by step), the view (board, circuit or both, in Inspect), the check's result, Export, and Rebuild, which turns into Stop while it runs.
 	import { studio } from '#lib/studio.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -9,6 +9,7 @@
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Footprints from '@lucide/svelte/icons/footprints';
+	import Hammer from '@lucide/svelte/icons/hammer';
 	import Square from '@lucide/svelte/icons/square';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import CircleX from '@lucide/svelte/icons/circle-x';
@@ -30,7 +31,7 @@
 	] as const;
 	const MODES = [
 		{ mode: 'inspect', name: 'Inspect', icon: Eye },
-		{ mode: null, name: 'Build guide' },
+		{ mode: 'guide', name: 'Build guide', icon: Hammer },
 		{ mode: 'generation', name: 'Generation', icon: Footprints },
 		{ mode: null, name: 'Edit' }
 	] as const;

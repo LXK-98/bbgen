@@ -8,6 +8,8 @@
 	import Board from '#lib/components/studio/Board.svelte';
 	import Circuit from '#lib/components/studio/Circuit.svelte';
 	import Generation from '#lib/components/studio/Generation.svelte';
+	import Guide from '#lib/components/studio/Guide.svelte';
+	import GuideSteps from '#lib/components/studio/GuideSteps.svelte';
 	import Progress from '#lib/components/studio/Progress.svelte';
 	import Drawer from '#lib/components/studio/Drawer.svelte';
 	import Inspector from '#lib/components/studio/Inspector.svelte';
@@ -36,6 +38,10 @@
 <svelte:head><title>{studio.scene ? `${studio.scene.title} · bbgen studio` : 'bbgen studio'}</title></svelte:head>
 
 <Tooltip.Provider delayDuration={300}>
+	{#if studio.bench && studio.mode === 'guide'}
+		<!-- the bench view: the board and the step in hand, filling the screen -->
+		<div class="h-screen overflow-hidden bg-background text-foreground"><Guide bench /></div>
+	{:else}
 	<div class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
 		<TopBar />
 		<Resizable.PaneGroup direction="horizontal" class="min-h-0 flex-1" autoSaveId="bbgen-studio.columns">
@@ -48,6 +54,8 @@
 					<Resizable.Pane defaultSize={72} minSize={30} class="relative">
 						{#if studio.mode === 'generation'}
 							<Generation />
+						{:else if studio.mode === 'guide'}
+							<Guide />
 						{:else if studio.view === 'both'}
 							<Resizable.PaneGroup direction="horizontal" autoSaveId="bbgen-studio.both">
 								<Resizable.Pane defaultSize={50} minSize={20}><Board /></Resizable.Pane>
@@ -63,7 +71,7 @@
 					</Resizable.Pane>
 					<Resizable.Handle />
 					<Resizable.Pane defaultSize={28} minSize={10}>
-						{#if studio.mode === 'generation'}<Progress />{:else}<Drawer />{/if}
+						{#if studio.mode === 'generation'}<Progress />{:else if studio.mode === 'guide'}<GuideSteps />{:else}<Drawer />{/if}
 					</Resizable.Pane>
 				</Resizable.PaneGroup>
 			</Resizable.Pane>
@@ -74,5 +82,6 @@
 		</Resizable.PaneGroup>
 		<StatusBar />
 	</div>
+	{/if}
 	<OpenDialog />
 </Tooltip.Provider>

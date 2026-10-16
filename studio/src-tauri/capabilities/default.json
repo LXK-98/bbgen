@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "what the studio's window may do",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+  "permissions": ["core:default", "core:window:allow-set-fullscreen", "dialog:allow-open", "dialog:allow-save"]
 }

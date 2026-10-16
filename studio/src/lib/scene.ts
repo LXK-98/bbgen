@@ -95,9 +95,33 @@ export interface Board {
 }
 
 export interface Step {
+	/** its stage of the build: one of SECTIONS */
 	section: string;
 	item: string;
 	text: string;
+}
+
+/** a stage of the build: a step's `section`, its heading, and the order within it */
+export interface Section {
+	key: string;
+	title: string;
+	intro: string;
+}
+
+/** a word for a step's section, in a row of the checklist */
+export const SECTION_WORD: Record<string, string> = {
+	under: 'under',
+	chips: 'chip',
+	parts: 'part',
+	wires: 'wire',
+	flex: 'jumper',
+	leads: 'lead'
+};
+
+/** A step as the build guide remembers it done: its item and its text, so a step that changed (a part moved, a wire
+ * renumbered) isn't done any more. */
+export function stepKey(s: Step): string {
+	return `${s.item}\n${s.text}`;
 }
 
 export interface Scene {
@@ -113,6 +137,8 @@ export interface Scene {
 	nets: Net[];
 	issues: Issue[];
 	checklist: Step[];
+	/** the checklist's sections in building order */
+	sections: Section[];
 	stats: { errors: number; warnings: number; parts: number; wires: number; nets: number; ms: number };
 	width: number;
 	height: number;

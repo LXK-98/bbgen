@@ -145,11 +145,13 @@ pub fn scene(c: &Circuit, result: &Result, text: Option<&str>, ms: f64) -> Value
 
     let checklist: Vec<Value> = crate::checklist::steps(c, result).into_iter()
         .map(|(section, item, text)| json!({"section": section, "item": item, "text": text})).collect();
+    let sections: Vec<Value> = crate::checklist::SECTIONS.iter()
+        .map(|(key, title, intro)| json!({"key": key, "title": title, "intro": intro})).collect();
 
     json!({
         "schema": SCHEMA, "bbgen": env!("CARGO_PKG_VERSION"), "source": c.source, "title": c.title, "notes": c.notes,
         "groups": c.groups, "boards": boards, "parts": parts, "wires": wires, "nets": nets, "issues": issues,
-        "checklist": checklist,
+        "checklist": checklist, "sections": sections,
         "stats": {"errors": result.errors(), "warnings": result.warnings(), "parts": c.parts.len(), "wires": c.wires.len(),
                   "nets": c.nets.len(), "ms": (ms * 10.0).round() / 10.0},
         "width": width, "height": height, "svg": svg,

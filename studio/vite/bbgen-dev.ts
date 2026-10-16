@@ -4,8 +4,8 @@
 // has them; the built app talks to Tauri instead (src-tauri/src/lib.rs).
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
@@ -149,6 +149,50 @@ export function examples(): string[] {
 	return out;
 }
 
+/** where the build guide keeps its progress: the file the desktop app uses (Tauri's app data folder for
+ * com.bbgen.studio), so the browser and the app share it */
+function progressFile(): string {
+	const id = 'com.bbgen.studio';
+	const base =
+		process.platform === 'darwin'
+			? join(homedir(), 'Library/Application Support')
+			: process.platform === 'win32'
+				? (process.env.APPDATA ?? join(homedir(), 'AppData/Roaming'))
+				: (process.env.XDG_DATA_HOME ?? join(homedir(), '.local/share'));
+	return join(base, id, 'guide-progress.json');
+}
+
+function readProgress(): Record<string, { done: string[] }> {
+	try {
+		return JSON.parse(readFileSync(progressFile(), 'utf8'));
+	} catch {
+		return {};
+	}
+}
+
+function saveProgress(path: string, done: string[]) {
+	const all = readProgress();
+	if (done.length) all[path] = { done };
+	else delete all[path];
+	mkdirSync(dirname(progressFile()), { recursive: true });
+	writeFileSync(progressFile(), JSON.stringify(all, null, 2));
+}
+
+/** a request's body, as JSON */
+function body(req: import('node:http').IncomingMessage): Promise<unknown> {
+	return new Promise((done, fail) => {
+		let text = '';
+		req.on('data', (d) => (text += d));
+		req.on('end', () => {
+			try {
+				done(JSON.parse(text));
+			} catch (e) {
+				fail(e);
+			}
+		});
+	});
+}
+
 export function bbgenDev(): Plugin {
 	return {
 		name: 'bbgen-dev',
@@ -173,6 +217,16 @@ export function bbgenDev(): Plugin {
 					const out = await run(path, schematic, wires, (line) => res.write(line + '\n'));
 					res.end(JSON.stringify({ done: out }) + '\n');
 					return;
+				}
+				if (url.pathname === '/api/progress') {
+					if (req.method !== 'POST') return json(200, readProgress()[path]?.done ?? []);
+					return body(req).then(
+						(b) => {
+							saveProgress(path, (b as { done: string[] }).done);
+							json(200, {});
+						},
+						(e) => json(400, { error: String(e) })
+					);
 				}
 				if (url.pathname === '/api/stop') {
 					running?.kill();

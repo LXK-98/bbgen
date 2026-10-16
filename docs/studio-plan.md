@@ -20,8 +20,9 @@ with shadcn-svelte in a Tauri window ([studio/README.md](../studio/README.md)), 
 themes, the board and the circuit's schematic side by side, opening by drop, Show in YAML, Export, a minimap
 and a setting for which bbgen runs. How Phase 1 was finished is under [Next steps](#next-steps). Phase 2 is done
 too: `bbgen build --events` streams each step, and Generation mode shows the board as bbgen builds it, with
-the score chart, a log and a scrubber. Phase 3, the build guide, is next. The sections after it are the plan as written, with what changed on the way
-noted where it did.
+the score chart, a log and a scrubber. Phase 3 is done: the build guide, with the checklist in a new building order
+([Phase 3](#phase-3-the-build-guide)). Phase 4, editing, is next. The sections after it are the plan as written, with
+what changed on the way noted where it did.
 
 ## Next steps
 
@@ -34,7 +35,7 @@ noted where it did.
    `onDragDropEvent` (the dev server: the window's HTML drag events); a drop opens the first `.yaml`/`.yml`
    and ignores the rest, and while files are dragged the centre says what a drop would open, or that it's not
    a circuit. In the browser a drop has no path, so it says so and brings up the Open dialog. Checked in a
-   browser, the Tauri path by calling `studio.drag` with paths; still to see in the desktop window.
+   browser and in the desktop window.
 3. **Show in YAML.** Done (October 2026). Parts, wires, nets and issues in the scene have a `line`
    (yaml.rs keeps each key's and list item's line, three levels deep), and an error's `line` comes from its
    path too (`parts.U1: ...`), not only from the YAML reader; `tests/scene.rs` holds every part, wire you laid
@@ -43,8 +44,8 @@ noted where it did.
    `$EDITOR` at the line as that editor takes it (`+N file`, VS Code's `--goto file:N`, Zed's `file:N`, ...);
    a terminal editor (nano, vim, helix, ...) gets a terminal window of its own (`$TERMINAL`, else the first of
    ptyxis, gnome-terminal, konsole, kitty, alacritty, foot, wezterm, xterm); with neither set, the system's
-   opener, at the top of the file. Checked in a browser, with the edit request caught; still to see in the
-   desktop window.
+   opener, at the top of the file. Checked in a browser, with the edit request caught, and in the desktop
+   window.
 4. **Export.** Done (October 2026). An Export menu in the top bar: the board as `bbgen build` draws it,
    the bare board, the checklist, the schematic (as the circuit view shows it, labels or not), and "All three"
    (what `bbgen build --schematic` writes) into a folder. The engine's `export(path, what, wires)` runs
@@ -52,8 +53,7 @@ noted where it did.
    copies the file to where the save dialog (or, for all three, a folder dialog) says; the bare board and the
    board have the same name, so they can't come from one build. A file the check finds errors on still exports.
    No PNG, as planned. In the browser the files are downloads. Checked: every item in a browser (the downloads
-   caught), and the native side's copy by calling it from a test; the dialogs are still to see in the desktop
-   window.
+   caught), the native side's copy by calling it from a test, and the dialogs in the desktop window.
 5. **Minimap.** Done (October 2026), in Drawing.svelte, so the board and the circuit both have one: the
    drawing as an image (a data URL made once per build) in the bottom right, at most 180 × 120 px, the visible
    part outlined; pressing or dragging on it moves the view there. Hidden while the whole drawing is in view.
@@ -97,7 +97,39 @@ noted where it did.
    end stops following along, and moving it back to the end follows again. The temporary **Step by step**
    button from step 2 is gone: in Generation mode every build, a save's included, shows its steps.
 
-Phases 3 to 5 stay as written below.
+### Phase 3: the build guide
+
+Done (October 2026).
+
+1. **The checklist in building order** (bbgen, `checklist::steps`), so the `.md` checklist and the guide agree:
+   - wires a part goes over: flat wires under a raised module, or under a two-lead part lying across them. They're
+     ordered by the part they're under, in the order the parts go in, then shortest first.
+   - chips and modules: anything with more than four pins, a body ten holes long, or raised. They go left to
+     right, raised modules last, since those stand over what's laid before them.
+   - small parts: resistors, capacitors, diodes, LEDs, and transistors, regulators, pots and buttons. The lowest
+     go first, so fingers reach past what's in: resistors and diodes, capacitors, transistors and the like, LEDs,
+     electrolytics. Parts of one value come together (all the 220R, then the 1k), left to right.
+   - wires flat on the board: shortest first, so the longer ones lie over them.
+   - flexible jumpers, those between boards included: shortest first, so the longer ones arch over them.
+   - flying leads, last: each off-board part, left to right, then its leads in its pins' order.
+
+   The scene's `sections` gives each section's heading and the order within it, as the checklist writes them.
+   Only the checklists changed; every layout, drawing and report is the same.
+2. **Build guide mode** (top bar). The board shows the steps before the one in hand as built, and what's not in
+   yet faint and dashed. The step in hand glows, and its holes are tagged in large type: both legs of a two-lead
+   part, every pin of a part with up to four (with its name: `E`, `B`, `C`), pin 1 of a chip, both ends of a
+   wire. The board glides to each step (Follow, on by default). Under the board are the step, its section and,
+   at a section's first step, the order within it. **Done, next** (→, Space, Enter) ticks the step and moves
+   on; **Back** (←). The drawer lists every step, section by section, with a box to tick, and Start over.
+3. **Progress** is kept per circuit in the app's data folder (`guide-progress.json`; `pnpm dev`'s server uses
+   the same file). A step is kept as its item and its text, so one that changed (a part moved, a wire
+   renumbered) is no longer done. Opening a circuit takes the first step not done in hand.
+4. **Bench view** (B; Esc leaves): the board and the step fill the screen, in larger type, and the window goes
+   full screen.
+5. Tests: `tests/scene.rs` holds the steps to their sections' order; `src/lib/guide.spec.ts` checks every step of
+   every example and benchmark has its place on the board and its holes tagged.
+
+Phases 4 and 5 stay as written below.
 
 ## What each side owns
 
@@ -270,7 +302,7 @@ studio/                       its own Cargo project and package.json, beside bbg
   as now and Tauri's few hundred dependencies stay out of bbgen's `Cargo.lock`.
 - **Finding bbgen**: `$BBGEN`, then a binary shipped next to the app (a Tauri sidecar for releases),
   then the checkout's `bin/bbgen` launcher, then `PATH`. Each scene says its schema, and the studio
-  refuses one it doesn't read. (A setting in the app is still to come.)
+  refuses one it doesn't read. The bbgen output tab has a setting to pick another.
 - **Builds**: one at a time; a new build or Stop kills the running one. A build that fails keeps the
   last good board on screen with the error over it, so a typo mid-edit doesn't blank the window.
 - **Watching**: rebuild about 150 ms after a save. This fits how bbgen is used today: Claude Code or an
