@@ -22,6 +22,14 @@
 	const wire = $derived(kind === 'wire' ? ix?.wire.get(name) : undefined);
 	const net = $derived(kind === 'net' ? ix?.net.get(name) : undefined);
 	const issue = $derived(kind === 'issue' ? scene?.issues[Number(name)] : undefined);
+	/** a pin, picked in the circuit view: its part and the pin */
+	const pinOf = $derived.by(() => {
+		if (kind !== 'pin' || !ix) return undefined;
+		const [ref, num] = name.split('.');
+		const p = ix.part.get(ref);
+		const pin = p?.pins.find((x) => String(x.num) === num);
+		return p && pin ? { part: p, pin } : undefined;
+	});
 
 	const step = $derived(sel ? (scene?.checklist.findIndex((s) => s.item === sel) ?? -1) + 1 : 0);
 	let allPins = $state(false);
@@ -261,6 +269,31 @@
 					{/if}
 				</section>
 				{@render checks(issuesOf((i) => new RegExp(`\\b${net.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(i.message)), net.name)}
+			{:else if pinOf && ix}
+				{@const { part: owner, pin } = pinOf}
+				{@const strip = pin.hole ? ix.strip.get(ix.stripOf.get(pin.hole) ?? '') : undefined}
+				<div>
+					<div class="flex flex-wrap items-baseline gap-2">
+						<h2 class="font-mono text-xl font-semibold">{owner.ref}.{pin.num}</h2>
+						{#if pin.name && pin.name !== String(pin.num)}<span class="font-mono text-sm text-muted-foreground">{pin.name}</span>{/if}
+					</div>
+					<div class="mt-1.5"><Badge variant="secondary">pin of {owner.ref} · {partName(owner)}</Badge></div>
+				</div>
+				<section>
+					{@render title('Where it goes')}
+					<div class="flex gap-3 py-0.5 text-sm">
+						<span class="w-24 shrink-0 text-muted-foreground">Part</span>{@render link(`part:${owner.ref}`, owner.ref)}
+					</div>
+					<div class="flex gap-3 py-0.5 text-sm">
+						<span class="w-24 shrink-0 text-muted-foreground">Net</span>
+						{#if pin.net}{@render link(`net:${pin.net}`, pin.net, ix.net.get(pin.net)?.color)}{:else}<span class="text-muted-foreground">in no net</span>{/if}
+					</div>
+					<div class="flex gap-3 py-0.5 text-sm">
+						<span class="w-24 shrink-0 text-muted-foreground">Hole</span>
+						{#if pin.hole}{@render link(`hole:${pin.hole}`, pin.hole)}{:else}<span class="text-muted-foreground">not on the board</span>{/if}
+					</div>
+					{#if strip}{@render fact('Its strip', `${strip.label}: ${strip.pins.map((p) => p.pin).join(', ')}${strip.wires.length ? ' · ' + strip.wires.join(', ') : ''}`, true)}{/if}
+				</section>
 			{:else if issue && ix}
 				<div>
 					<Badge variant={issue.level === 'error' ? 'destructive' : 'secondary'}>{issue.level}</Badge>

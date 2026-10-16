@@ -1,6 +1,6 @@
 # bbgen studio
 
-A desktop app for bbgen: open a circuit, build it, and inspect the breadboard. Hovering a part, wire, net,
+A desktop app for bbgen: open a circuit, build it, and inspect the breadboard and the circuit's schematic. Hovering a part, wire, net,
 issue or hole lights it up on the board and in every list; clicking it shows what matters about it in the
 inspector. The circuit file is watched, so saving it (from an editor, or Claude Code) rebuilds the board.
 
@@ -45,8 +45,14 @@ builds bbgen first when its sources changed), else `bbgen` on `PATH`.
 | [src/lib/scene.ts](src/lib/scene.ts) | the scene's types |
 | [src/lib/studio.svelte.ts](src/lib/studio.svelte.ts) | the state: the open file, its last good build, hover and selection |
 | [src/lib/lookup.ts](src/lib/lookup.ts) | strips, a part's wires, what a hover lights up, the hole under the pointer |
-| [src/lib/components/studio/](src/lib/components/studio) | the board, the lists, the inspector, the checklist and issues drawer, the bars |
+| [src/lib/components/studio/](src/lib/components/studio) | the board, the circuit, the lists, the inspector, the checklist and issues drawer, the bars |
+| [Drawing.svelte](src/lib/components/studio/Drawing.svelte) | one of bbgen's drawings with pan, zoom, hover and selection: the board and the circuit are both one |
 | [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | the native side: runs bbgen, lists examples, watches files |
+
+The top bar switches the centre between the **Board**, the **Circuit** (the schematic `bbgen build --schematic`
+draws; the studio asks for it only while it's shown) and **Both**, side by side. Hover and selection are one for
+both: a net or part lights in each, a wire on the board lights its net in the circuit, and a pin picked in the
+circuit (`pin:U1.5`) lights its hole and strip on the board.
 
 The board is bbgen's own SVG, put in the page once per build. Hover and selection add classes to its
 `data-part`, `data-wire`, `data-net` and `data-issue` groups; nothing is redrawn as the pointer moves.

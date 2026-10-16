@@ -3,12 +3,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { holeAt, indexScene, selectorsFor, stripId } from './lookup';
-import type { Scene } from './scene';
+import { circuitSelectors, holeAt, indexScene, pinHole, selectorsFor, stripId } from './lookup';
+import { hasSchematic, type Key, type Scene } from './scene';
 
 const bbgen = process.env.BBGEN ?? '../target/release/bbgen';
 const have = existsSync(bbgen);
-const scene: Scene = have ? JSON.parse(execFileSync(bbgen, ['build', '../examples/eeprom.yaml', '--json'], { encoding: 'utf8' })) : (null as never);
+const scene: Scene = have ? JSON.parse(execFileSync(bbgen, ['build', '../examples/eeprom.yaml', '--json', '--schematic'], { encoding: 'utf8' })) : (null as never);
 
 describe.skipIf(!have)('lookups on eeprom.yaml', () => {
 	const ix = indexScene(scene);
@@ -45,5 +45,29 @@ describe.skipIf(!have)('lookups on eeprom.yaml', () => {
 		const [x, y] = scene.boards[0].holes['f30'];
 		expect(holeAt(ix, x + 4, y - 4)).toBe('f30');
 		expect(holeAt(ix, -100, -100)).toBeNull();
+	});
+
+	it("finds a pin's hole", () => {
+		expect(pinHole('U1.5', ix)).toBe('e33');
+		expect(selectorsFor('pin:U1.5', scene, ix)).toContain('[data-wire="W6"]');
+	});
+
+	it('lights every part, net and pin in the schematic', () => {
+		expect(hasSchematic(scene)).toBe(true);
+		if (!hasSchematic(scene)) return;
+		const svg = scene.schematic.svg;
+		// a selector over data attributes, matched against the SVG's text: [data-x="v"] → data-x="v"
+		const found = (sel: string) => svg.includes(sel.slice(1, -1));
+		const keys: Key[] = [
+			...scene.parts.map((p) => `part:${p.ref}` as Key),
+			...scene.nets.map((n) => `net:${n.name}` as Key),
+			...scene.parts.flatMap((p) => p.pins.filter((x) => x.net).map((x) => `pin:${p.ref}.${x.num}` as Key))
+		];
+		for (const key of keys) {
+			const q = circuitSelectors(key, scene, ix);
+			expect(q.some(found), key).toBe(true);
+		}
+		// a wire on the board lights its net in the schematic
+		expect(circuitSelectors('wire:W6', scene, ix)[0]).toBe('[data-net="SDA"]');
 	});
 });

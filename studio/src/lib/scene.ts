@@ -109,6 +109,23 @@ export interface Scene {
 	width: number;
 	height: number;
 	svg: string;
+	/** with `--schematic`: the circuit's schematic, or why it couldn't be drawn */
+	schematic?: Schematic | { error: string };
+}
+
+export interface Schematic {
+	svg: string;
+	width: number;
+	height: number;
+	/** the nets drawn as labels */
+	labels: string[];
+	/** what reading the drawing back found wrong (nothing, unless bbgen has a bug) */
+	problems: string[];
+	ms: number;
+}
+
+export function hasSchematic(scene: Scene | null): scene is Scene & { schematic: Schematic } {
+	return !!scene?.schematic && 'svg' in scene.schematic;
 }
 
 export interface SceneError {
@@ -131,11 +148,13 @@ export function isError(x: Scene | SceneError | null): x is SceneError {
 	return !!x && 'error' in x;
 }
 
-/** What hovering or selecting can point at. */
-export type Key = `part:${string}` | `wire:${string}` | `net:${string}` | `issue:${number}` | `hole:${string}`;
+/** What hovering or selecting can point at. A pin is `pin:U1.5`, by its number. */
+export type Key = `part:${string}` | `wire:${string}` | `net:${string}` | `issue:${number}` | `hole:${string}` | `pin:${string}`;
 
-export function keyKind(key: Key | null): 'part' | 'wire' | 'net' | 'issue' | 'hole' | null {
-	return key ? (key.slice(0, key.indexOf(':')) as 'part' | 'wire' | 'net' | 'issue' | 'hole') : null;
+export type KeyKind = 'part' | 'wire' | 'net' | 'issue' | 'hole' | 'pin';
+
+export function keyKind(key: Key | null): KeyKind | null {
+	return key ? (key.slice(0, key.indexOf(':')) as KeyKind) : null;
 }
 
 export function keyName(key: Key): string {

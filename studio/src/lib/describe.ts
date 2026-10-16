@@ -1,6 +1,6 @@
 // One-line descriptions of what a key points at, for tooltips and the status bar.
 
-import type { SceneIndex } from './lookup';
+import { pinHole, pinNet, type SceneIndex } from './lookup';
 import { keyKind, keyName, type Key, type Part, type Scene, type Wire } from './scene';
 
 export interface Description {
@@ -77,6 +77,19 @@ export function describe(key: Key, scene: Scene, ix: SceneIndex): Description | 
 			const i = scene.issues[Number(name)];
 			if (!i) return null;
 			return { title: `${i.level}: ${i.code}`, lines: [i.message], color: null };
+		}
+		case 'pin': {
+			const [ref, num] = name.split('.');
+			const p = ix.part.get(ref);
+			const pin = p?.pins.find((x) => String(x.num) === num);
+			if (!p || !pin) return null;
+			const net = pinNet(name, ix);
+			const hole = pinHole(name, ix);
+			return {
+				title: `${ref}.${num}${pin.name && pin.name !== num ? ' ' + pin.name : ''}`,
+				lines: [`${partName(p)} · ${net ? 'net ' + net : 'in no net'}`, hole ? `in ${hole}` : 'not on the board'],
+				color: net ? (ix.net.get(net)?.color ?? null) : null
+			};
 		}
 		case 'hole': {
 			const s = ix.strip.get(ix.stripOf.get(name) ?? '');

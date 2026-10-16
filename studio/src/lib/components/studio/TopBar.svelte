@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The file, the mode (only Inspect so far), the check's result and Rebuild.
+	// The file, the mode (only Inspect so far), the view (board, circuit or both), the check's result and Rebuild.
 	import { studio } from '#lib/studio.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
@@ -11,11 +11,19 @@
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Eye from '@lucide/svelte/icons/eye';
+	import CircuitBoard from '@lucide/svelte/icons/circuit-board';
+	import Workflow from '@lucide/svelte/icons/workflow';
+	import Columns2 from '@lucide/svelte/icons/columns-2';
 	import ThemeMenu from './ThemeMenu.svelte';
 
 	const scene = $derived(studio.scene);
 	const file = $derived(studio.path?.split('/').pop());
 	const dir = $derived(studio.path?.split('/').slice(-2, -1)[0]);
+	const VIEWS = [
+		{ view: 'board', label: 'Board', icon: CircuitBoard },
+		{ view: 'circuit', label: 'Circuit', icon: Workflow },
+		{ view: 'both', label: 'Both', icon: Columns2 }
+	] as const;
 	const MODES = [
 		{ name: 'Inspect', ready: true },
 		{ name: 'Build guide', ready: false },
@@ -56,6 +64,22 @@
 			{/if}
 		{/each}
 	</nav>
+
+	<div role="group" aria-label="View" class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+		{#each VIEWS as v}
+			<button
+				type="button"
+				aria-pressed={studio.view === v.view}
+				onclick={() => studio.show(v.view)}
+				class="flex h-7 items-center gap-1.5 rounded-md px-3 text-xs {studio.view === v.view
+					? 'bg-background font-medium shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				<v.icon class="size-3.5" />
+				{v.label}
+			</button>
+		{/each}
+	</div>
 
 	<div class="ml-auto flex items-center gap-3">
 		{#if studio.watching && studio.builtAt}

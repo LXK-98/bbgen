@@ -132,10 +132,61 @@ export function selectorsFor(key: Key, scene: Scene, ix: SceneIndex): string[] {
 			const issue = scene.issues[Number(name)];
 			return [q('issue', name), ...(issue?.parts ?? []).map((r) => q('part', r))];
 		}
+		case 'hole':
+			return stripSelectors(name, ix);
+		case 'pin': {
+			// the pin's part, and what's in its strip
+			const hole = pinHole(name, ix);
+			return [q('part', name.split('.')[0]), ...(hole ? stripSelectors(hole, ix) : [])];
+		}
+	}
+	return [];
+}
+
+function stripSelectors(hole: string, ix: SceneIndex): string[] {
+	const q = (attr: string, v: string) => `[data-${attr}="${escape(v)}"]`;
+	const s = ix.strip.get(ix.stripOf.get(hole) ?? '');
+	if (!s) return [];
+	return [...new Set(s.pins.map((p) => p.part))].map((r) => q('part', r)).concat(s.wires.map((w) => q('wire', w)));
+}
+
+/** A pin's hole on the board: `U1.5` (its part and number) → `e33`. */
+export function pinHole(pin: string, ix: SceneIndex): string | null {
+	const [ref, num] = pin.split('.');
+	return ix.part.get(ref)?.pins.find((p) => String(p.num) === num)?.hole ?? null;
+}
+
+/** The net a pin is on: `U1.5` → `SDA`. */
+export function pinNet(pin: string, ix: SceneIndex): string | null {
+	const [ref, num] = pin.split('.');
+	return ix.part.get(ref)?.pins.find((p) => String(p.num) === num)?.net ?? null;
+}
+
+/**
+ * What the schematic should light up for a key. Its groups are `data-part` (a symbol), `data-net` (a net's wires,
+ * labels and power symbols) and `data-pin`. A wire has no place in a schematic, so it lights its nets; a hole
+ * lights the pins in its strip.
+ */
+export function circuitSelectors(key: Key, scene: Scene, ix: SceneIndex): string[] {
+	const q = (attr: string, v: string) => `[data-${attr}="${escape(v)}"]`;
+	const name = key.slice(key.indexOf(':') + 1);
+	const pinsOf = (pins: string[]) => pins.map((p) => q('pin', p.split(' ')[0]));
+	switch (key.slice(0, key.indexOf(':'))) {
+		case 'part':
+			return [q('part', name)];
+		case 'pin': {
+			const net = pinNet(name, ix);
+			return [q('pin', name), ...(net ? [q('net', net)] : [])];
+		}
+		case 'wire':
+			return (ix.wire.get(name)?.nets ?? []).flatMap((n) => [q('net', n), ...pinsOf(ix.net.get(n)?.pins ?? [])]);
+		case 'net':
+			return [q('net', name), ...pinsOf(ix.net.get(name)?.pins ?? [])];
+		case 'issue':
+			return (scene.issues[Number(name)]?.parts ?? []).map((r) => q('part', r));
 		case 'hole': {
 			const s = ix.strip.get(ix.stripOf.get(name) ?? '');
-			if (!s) return [];
-			return [...new Set(s.pins.map((p) => p.part))].map((r) => q('part', r)).concat(s.wires.map((w) => q('wire', w)));
+			return s ? s.pins.map((p) => q('pin', p.pin.split(' ')[0])) : [];
 		}
 	}
 	return [];

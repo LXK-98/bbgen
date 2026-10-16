@@ -306,8 +306,13 @@ Each step ends with drawings to look at: the examples and all 21 benchmarks, bef
      `tests/schematic.rs` checks the netlist gives every benchmark's recorded schematic.
    - README ("The schematic"), the scene format, and the skill: a new step 3 looks at the schematic to check the
      nets against the circuit meant, before building.
-7. **The studio.** Circuit and Both views, the shared drawing component, `pin:` keys, linked hover; lookup
-   tests over the schematic's groups.
+7. **The studio.** Done (October 2026). The top bar switches the centre between Board, Circuit and Both (side by
+   side, resizable); the studio builds with `--schematic` only while the circuit is shown. Board.svelte's pan,
+   zoom, hover and tooltip became `Drawing.svelte`, which the board and the new `Circuit.svelte` both use. A
+   new key, `pin:U1.5`, lights the pin and its net in the circuit and its part, hole and strip on the board; the
+   inspector shows a pin's part, net, hole and strip. `lookup.spec.ts` checks every part, net and pin of the
+   eeprom example lights something in its schematic. Checked by hand in a browser, both themes: hovering SDA in
+   the circuit lights W6, W8 and their parts on the board, and dims the rest in both.
 8. **Later.** Write a `.kicad_sch`: the positions and KiCad symbols are already there, so a circuit can be
    opened in KiCad and carried on with. Hints in the YAML if a layout needs a nudge (which side a connector
    goes, a symbol flipped), the way `at:` pins a part on the board; then dragging a symbol in the studio

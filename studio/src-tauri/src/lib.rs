@@ -41,13 +41,18 @@ struct Studio {
     watchers: Mutex<HashMap<String, notify::RecommendedWatcher>>,
 }
 
-/// `bbgen build <path> --json`: what it printed (a scene or an error), its stderr and exit status.
+/// `bbgen build <path> --json` (and `--schematic` when the circuit view wants it): what it printed (a scene or an
+/// error), its stderr and exit status.
 #[tauri::command]
-async fn build(path: String, studio: State<'_, Studio>) -> Result<Value, String> {
+async fn build(path: String, schematic: bool, studio: State<'_, Studio>) -> Result<Value, String> {
     let exe = bbgen();
-    let command = format!("bbgen build {} --json", path);
+    let mut args = vec!["build", path.as_str(), "--json"];
+    if schematic {
+        args.push("--schematic");
+    }
+    let command = format!("bbgen {}", args.join(" "));
     let started = Instant::now();
-    let mut child = Command::new(&exe).args(["build", &path, "--json"]).stdin(Stdio::null()).stdout(Stdio::piped())
+    let mut child = Command::new(&exe).args(&args).stdin(Stdio::null()).stdout(Stdio::piped())
         .stderr(Stdio::piped()).spawn().map_err(|e| format!("can't run {}: {}", exe.display(), e))?;
     let (mut out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
     let child = Arc::new(Mutex::new(child));
