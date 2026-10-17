@@ -111,12 +111,19 @@ if [ "$packaged" = no ]; then
     echo "downloading bbgen from $url"
     fetch "$url/bbgen-x86_64-linux.tar.gz" "$tmp/bbgen-x86_64-linux.tar.gz"
     fetch "$url/SHA256SUMS" "$tmp/SHA256SUMS"
+    # a download that can't be checked isn't installed
     if command -v sha256sum > /dev/null; then
-        (cd "$tmp" && grep ' bbgen-x86_64-linux.tar.gz$' SHA256SUMS | sha256sum -c --quiet -) || {
-            echo "the download doesn't match its checksum: not installed" >&2
-            exit 1
-        }
+        sha256="sha256sum"
+    elif command -v shasum > /dev/null; then
+        sha256="shasum -a 256"
+    else
+        echo "install.sh needs sha256sum or shasum to check the download: not installed" >&2
+        exit 1
     fi
+    (cd "$tmp" && grep ' bbgen-x86_64-linux.tar.gz$' SHA256SUMS | $sha256 -c - > /dev/null) || {
+        echo "the download doesn't match its checksum: not installed" >&2
+        exit 1
+    }
     tar -xzf "$tmp/bbgen-x86_64-linux.tar.gz" -C "$tmp"
     sh "$tmp"/bbgen-*-x86_64-linux/install.sh "$@"
     exit
