@@ -483,3 +483,67 @@ and when it helps, and a link to [studio/README.md](../../studio/README.md) for 
 already shows), keep them small enough for the repository (PNG, a few hundred KB each), and put them next to
 `examples/eeprom.png` or in a `docs/images/` folder. Check the README on GitHub afterwards: it renders HTML
 in Markdown its own way.
+
+**The studio is one-way for an agent** (from the Knight Rider feedback, point 15). An agent can open the studio
+and the user sees every rebuild. But the agent can't see what the user sees, whether they changed or moved
+anything there, or take a screenshot. A file the studio writes, or `bbgen studio --status`, would let
+"interactive" go both ways: the user moves a part and the agent fixes things around it. A bigger job than
+the README; settle what the studio is for first.
+
+## 15. Placement shorts a chip into a hand-placed part's strip
+
+**Issue.** From the first project built with the breadboard skill (a Knight Rider LED runner: an NE555, two
+CD4017s, 8 LEDs placed by hand, 42 parts, 39 nets; the feedback is in
+`~/Projects/knight-rider/bbgen-feedback/`). With the chips left to bbgen, placement put U3's pin 10 (Q4) in
+`e47`, the strip where L1's anode was placed by hand (`a47`). The result was `SHORT nets B_Q4, LED1`, at
+`BBGEN_JOBS=1` and the default alike. The reproduction is `repro-placer-short.yaml` in that folder; it still
+shorts on `main` (October 2026). With the three chips placed by hand, the same file builds without errors.
+"Place the LEDs, let bbgen do the rest" turned into "do the rest except the chips".
+
+**Diagnosis.** Placement's estimate (`Model::cost` in [src/search.rs](../../src/search.rs)) knows only the
+footprint parts given with `at:` (`fixed`, built in `Model::new`). Hand-placed legs of two-lead parts are read
+only for the rail plan (`legs`), so the estimate doesn't know that a strip already belongs to a net. The built
+score (`autoplace::score`) charges 1000 per error but doesn't forbid one. When every start shorts and repair
+can't get out, bbgen returns a layout that fails its own check. A small case (one 4017, four LEDs placed by
+hand) placed cleanly: on a roomy board the cheapest places just happen to miss the LEDs.
+
+**Starting points.**
+- The strip of every leg placed by hand, and of every wire end given by hand, belongs to that leg's net. In
+  `Model::cost`, a pin of another net in such a strip makes the layout impossible (infinite cost), as an
+  overlap of bodies does today.
+- If the only layouts placement finds have errors it made itself (none with every part as given), fail
+  with the part's name, "couldn't place U3 without shorting into L1's strip", rather than return one.
+- Add the reproduction as a test: no SHORT, and the LEDs where the file put them.
+
+## 16. More from the Knight Rider feedback
+
+The other points from that feedback that are worth doing (point 15 has the source). Left out: a
+`bbgen explore` mode for trying placements (a script does that once `--json` has a score) and repeating
+patterns of parts (a CAD tool's job).
+
+- **A layout score in `--json`.** `stats` has errors, warnings, parts, wires, nets and time. To compare
+  variants, the agent parsed the Markdown checklist for `Flexible jumpers (N)`; the count is in
+  `wires[].flex` but easy to miss. Add the flexible jumpers, jumpers over chips, total wire length and
+  `autoplace::score` to `stats`, and the jumper count to the `check:` line.
+- **Pin names in `bbgen find`** (or `bbgen pins Timer:NE555P`). Today the agent has to grep the
+  `.kicad_sym` files, which is awkward when a symbol extends another (`BC547` extends `Q_NPN_CBE`).
+  src/kicad.rs already resolves `extends`.
+- **`find` says when a footprint won't do.** `4xxx:4017` has no footprint and `BC547`'s TO-92_Inline is
+  off the grid; the build error names the fix (src/parts.rs), but only after a build. `find` could say
+  "no footprint: try Package_DIP:DIP-16_W7.62mm" or "off the grid: try TO-92_Inline_Wide". Keep the
+  footprint the file's choice rather than pick one silently.
+- **Document `near:` for every two-lead part.** circuit-file.md shows it only on a capacitor; it works on
+  resistors and diodes too.
+- **`near:` for one end:** `near: {pin: 2, to: L2}`. `near: L2` on a diode moved the whole diode to the
+  LEDs and stretched its other end across the board. Try this before groups.
+- **Groups of parts** (`groups: {LED2: [D1, D2, R2, L2]}` or `cluster: L2`): keep a repeated channel (an
+  LED with its resistor and diodes, a button input, an ADC channel) together around a part placed by hand.
+  The best of about 30 variants still had 10 flexible jumpers, with the diodes around counter A, far from
+  their LEDs. Not checked on the drawings yet; look at them first (point 12), then look up how other tools
+  group parts (tscircuit's grids, point 4's research) before designing.
+- **Labels over each other:** "L8" and "L7" printed as "L8L7" with the LEDs two columns apart. Reported,
+  not reproduced yet; the label check (`measure::label_clashes`) should have counted it.
+- **An LED across a rail** (row `j` to `bot-`, across `bot+`, with the rails `+-` on both edges): find out
+  whether bbgen allows this, warns, or says nothing, and say so in circuit-file.md.
+- **Say why a jumper is flexible**, as DIAGONAL warnings already do: "W44 is flexible because every
+  straight route from g34 to d26 is blocked by U3 and W39". That shows which part to move. Later.
