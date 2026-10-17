@@ -158,7 +158,9 @@ resistor, capacitor, diode or LED. A file can then be just parts and nets; bbgen
 (`autowire` comes on by itself) and checks it in a few seconds. Anything you do give is kept, so
 pin a part with `at:` where you want it and let bbgen fit the rest around it. A strip you put a leg or a
 wire end in is that net's: bbgen puts no other net's pin there, and no pin or body on a hole you've taken.
-If that leaves a part nowhere to go, the build stops and names what's in the way.
+If that leaves a part nowhere to go, the build stops and names what's in the way. A chip goes near what
+it's wired to, your hand-placed parts included: place the LEDs, and the chip driving them through resistors
+lands beside them.
 
 ```yaml
 parts:

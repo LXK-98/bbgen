@@ -4,7 +4,8 @@
 //! far each net's pins are apart, how far pins on a rail's net (or a two-lead part's trip to a rail)
 //! are from that rail and whether their column has rail holes at all, how many signal wires would
 //! run side by side past one column, how close parts sit, and how many signal nets have pins either
-//! side of a part no wire can lie across (a display whose pins' strips are under its body). Annealing
+//! side of a part no wire can lie across (a display whose pins' strips are under its body). Legs the file places
+//! count as fixed pins of their nets, and a chain of two-lead parts reaching one pulls too. Annealing
 //! from a few fixed seeds finds good placements by that estimate; the best few are built for real, wires and all.
 //!
 //! Two-lead parts are placed while the circuit is built, after the footprint parts: each leg goes in
@@ -102,6 +103,11 @@ pub struct Model {
     hand_strips: HashMap<(Half, i64), (Option<String>, Vec<String>)>,
     /// holes the file puts a leg or a wire end in, and whose
     hand_holes: HashMap<(i64, i64), String>,
+    /// the legs the file places in terminal holes, as fixed pins of their nets
+    anchors: Vec<(MPin, (i64, i64))>,
+    /// nets with no pin of their own placed (only two-lead parts bbgen places) on a chain of such parts from a leg the
+    /// file places, each with the nets it's linked to, in an order that has each one's neighbours first where it can
+    chained: Vec<(String, Vec<String>)>,
     lo: std::cell::Cell<i64>,
     hi: std::cell::Cell<i64>,
 }
@@ -253,10 +259,11 @@ impl Model {
         let mut m = Model {
             boards, below, above, offset, width, gaps, strips, parts, nets, net_of, free_supplies, plan, rail_y, links,
             to_rail, offboard, auto, choices: vec![], fixed: vec![], hand_strips: HashMap::default(), hand_holes: HashMap::default(),
-            lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
+            anchors: vec![], chained: vec![], lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
         };
         m.hi.set(m.boards[0].0.columns as i64);
         m.hand_placed(data)?;
+        m.chain();
         let mut choices = Vec::new();
         for r in m.auto.clone() {
             let pi = m.parts.get_index_of(&r).unwrap();
@@ -610,6 +617,7 @@ impl Model {
             if part.kind.is_lead() {
                 for (k, leg) in part.legs.iter().enumerate().take(part.pins.len()) {
                     if let Some(xy) = self.spot(leg) {
+                        self.anchors.push(((pi, k), xy));
                         claim(&mut strips, &mut holes, xy, self.net_of.get(&(pi, k)), &part.r#ref);
                     }
                 }
@@ -671,6 +679,41 @@ impl Model {
         self.hand_strips = strips;
         self.hand_holes = holes;
         Ok(())
+    }
+
+    /// The nets on chains of two-lead parts bbgen places that reach a leg the file places (an LED's anode, through a
+    /// resistor and a diode to a chip's pin): the estimate puts each between the nets it's linked to, as a placer
+    /// puts a movable cell between its neighbours, so the chain pulls the chip toward the leg.
+    fn chain(&mut self) {
+        let placed: HashSet<MPin> = self.anchors.iter().map(|(p, _)| *p)
+            .chain(self.parts.values().enumerate().filter(|(_, part)| part.kind.is_footprint())
+                .flat_map(|(pi, part)| (0..part.pins.len()).map(move |k| (pi, k)))).collect();
+        let known = |n: &String| self.nets[n].iter().any(|p| placed.contains(p));
+        let anchored: HashSet<&String> = self.anchors.iter().filter_map(|(p, _)| self.net_of.get(p)).collect();
+        let mut reached: Vec<String> = Vec::new();
+        let mut grew = true;
+        while grew {
+            grew = false;
+            for (a, b) in &self.links {
+                for (x, y) in [(a, b), (b, a)] {
+                    if (anchored.contains(x) || reached.contains(x)) && !known(y) && !self.plan.contains_key(y) && !reached.contains(y) {
+                        reached.push(y.clone());
+                        grew = true;
+                    }
+                }
+            }
+        }
+        self.chained = reached.iter().map(|n| {
+            let mut by: Vec<String> = Vec::new();
+            for (a, b) in &self.links {
+                for (x, y) in [(a, b), (b, a)] {
+                    if x == n && y != n && !self.plan.contains_key(y) && !by.contains(y) {
+                        by.push(y.clone());
+                    }
+                }
+            }
+            (n.clone(), by)
+        }).collect();
     }
 
     /// Whose placements in the file a layout of part pi runs into: a pin of another net (or of none) in a strip of
@@ -738,6 +781,9 @@ impl Model {
             }
         }
         let mut where_: IndexMap<MPin, (i64, i64)> = IndexMap::default();
+        for &(p, xy) in &self.anchors {
+            where_.insert(p, xy);
+        }
         for lay in &layouts {
             for &(p, xy) in &lay.xy {
                 where_.insert(p, xy);
@@ -796,9 +842,30 @@ impl Model {
         }
         let crowded: i64 = crowd.iter().map(|(k, n)| 0.max(n - 1.max(4 - taken.get(k).copied().unwrap_or(0)))).sum();
         cost += CROWD_COST * crowded as f64;
+        // a chained net sits at the median of its neighbours' points, where its links cost least
+        let mut between: HashMap<&str, (i64, i64)> = HashMap::default();
+        for (n, by) in &self.chained {
+            let pts: Vec<(i64, i64)> = by.iter().flat_map(|m| match between.get(m.as_str()) {
+                Some(&xy) => vec![xy],
+                None => self.nets[m].iter().filter_map(|p| where_.get(p).copied()).collect(),
+            }).collect();
+            if !pts.is_empty() {
+                let mid = |mut v: Vec<i64>| {
+                    v.sort();
+                    v[(v.len() - 1) / 2]
+                };
+                between.insert(n, (mid(pts.iter().map(|p| p.0).collect()), mid(pts.iter().map(|p| p.1).collect())));
+            }
+        }
+        let points = |n: &String| -> Vec<(i64, i64)> {
+            match between.get(n.as_str()) {
+                Some(&xy) => vec![xy],
+                None => self.nets[n].iter().filter_map(|p| where_.get(p).copied()).collect(),
+            }
+        };
         for (a, b) in &self.links {
-            let pa: Vec<(i64, i64)> = self.nets[a].iter().filter_map(|p| where_.get(p).copied()).collect();
-            let pb: Vec<(i64, i64)> = self.nets[b].iter().filter_map(|p| where_.get(p).copied()).collect();
+            let pa: Vec<(i64, i64)> = points(a);
+            let pb: Vec<(i64, i64)> = points(b);
             if !pa.is_empty() && !pb.is_empty() && !self.plan.contains_key(a) && !self.plan.contains_key(b) {
                 let m = pa.iter().flat_map(|&(x1, y1)| pb.iter().map(move |&(x2, y2)| (x1 - x2).abs() + (y1 - y2).abs())).min().unwrap();
                 cost += LEG_LINK_COST * m as f64;

@@ -39,6 +39,7 @@ fn clean_around_leds(name: &str) {
 fn chips_keep_out_of_the_strips_of_leds_placed_by_hand() {
     clean_around_leds("knight-rider.yaml");
     clean_around_leds("knight-rider-left.yaml");
+    clean_around_leds("decoder-leds.yaml");
 }
 
 #[test]

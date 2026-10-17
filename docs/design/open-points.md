@@ -524,9 +524,7 @@ set a cell can go to; a region that's too full is reported, not overlapped
 [US 7934188](https://patents.google.com/patent/US7934188B2)). A short is a hard constraint in the stripboard ASP
 work too ([arXiv 2512.04910](https://arxiv.org/html/2512.04910v1)).
 
-Left open: hand-placed legs don't pull their nets' pins in the estimate (`where_` holds only footprint pins), so
-chips aren't drawn toward what the file places; that's a layout change, to be judged on the drawings (point 17
-has the evidence from a second run). A
+Left open then: hand-placed legs didn't pull their nets' pins in the estimate; point 17 does that now. A
 hand-placed part lying across a chip bbgen places stays a warning (`OVER_PART`), priced by the score.
 
 The original report follows.
@@ -589,6 +587,26 @@ patterns of parts (a CAD tool's job).
   straight route from g34 to d26 is blocked by U3 and W39". That shows which part to move. Later.
 
 ## 17. Chips aren't drawn toward what the file places
+
+**Done (October 2026), with a regression kept on purpose.** The estimate now knows the legs the file places: each is a
+fixed pin of its net in `where_` (`Model::anchors`), so nets and the links through a resistor reach it. And a net
+with no pin of its own placed, on a chain of two-lead parts bbgen places that reaches such a leg (`Model::chained`),
+sits at the median of the nets it's linked to, as a placer puts a movable cell between its neighbours; the links
+through it pull too. No benchmark places legs by hand around chips bbgen places, so every record holds.
+- Run-2's circuit with only the LEDs placed (`tests/hand-placed/decoder-leds.yaml`): flexible jumpers at its seven
+  LED positions 10, 12, 8, 11, 11, 7, 10 → 6, 6, 8, 7, 7, 6, 7, and drawn as tidy as the run's hand-tuned final.
+- **The regression:** the first circuit, where each LED is two parts deep (counter → diode → resistor → LED, 12
+  diodes and 8 resistors), reads worse. `tests/hand-placed/knight-rider.yaml` goes 11 → 15 flexible jumpers: the
+  counters move toward the LEDs, the 20 small parts have no room between them, and jumpers cross both counters.
+  `knight-rider-left.yaml` goes 14 → 13, messy either way. Following the chains didn't fix it, nor did a weaker
+  pull along them (½, ¼) or the legs in the links only: 13-15 every time. The estimate pulls chips toward the
+  LEDs but keeps no room for the parts that go between. The user chose to keep the change, since a chip driving
+  each LED through one resistor is the common case. The way out is likely point 16's groups (each LED with its
+  resistor and diodes kept together, so they claim their room), or room for a chain's parts in the estimate
+  (`ROOMLESS_COST` looks for one free strip per link, not for a whole chain). Judge any fix on both Knight Rider
+  files' drawings.
+
+The analysis that led there follows.
 
 **Issue.** From a second run of the Knight Rider task (October 2026, a subagent with the fix from point 15; its
 report and every variant are in `~/Projects/knight-rider/bbgen-feedback/run-2/`). It designed a 555 → CD4040 →

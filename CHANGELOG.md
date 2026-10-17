@@ -9,6 +9,9 @@ fixes things. Each release's section here is its notes on GitHub.
   a pin or the chip's body on a hole the file takes: it used to short into LEDs placed by hand. When there's no
   other place for a chip, bbgen says so and names what's in the way, and it never returns a layout with a short
   of its own making.
+- Placement draws chips toward what the file places: a leg placed by hand counts as a fixed pin of its net, and
+  a chain of resistors or diodes bbgen places pulls the chip at its far end toward it. Place the LEDs, and the
+  chip driving them through resistors lands beside them.
 - A closed pipe (`bbgen check FILE --json | head`) ends bbgen quietly instead of panicking.
 
 ## 0.1.0 (2026-10-17)
