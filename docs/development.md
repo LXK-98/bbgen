@@ -76,10 +76,18 @@ by event, every trial layout placement builds and its score, and what `bbgen bui
 writes for the examples and 113 circuits built to break it. A change that moves a wire fails them
 by design; once the benchmarks say the change is better, record it with `benchmarks/record.py`.
 
+Some tests guard against attacks rather than bugs. A circuit file can come from anyone, or from an agent
+someone misled, so a colour that isn't one is an error and names are escaped in the drawing
+([tests/colors.rs](../tests/colors.rs)). A file can't use YAML aliases to fill memory. Every workflow action
+is pinned to a commit ([tests/workflows.rs](../tests/workflows.rs)), and `install.sh` installs only a download
+it has checked ([tests/install.rs](../tests/install.rs)).
+
 Most of the circuits take parts from KiCad's library, so the tests need it installed: the records were made with
 KiCad 10.0's. CI installs it from the [KiCad PPA](https://launchpad.net/~kicad) (`kicad-symbols`,
 `kicad-footprints`); a KiCad 10 install of any kind does. bbgen studio has its own checks and tests:
-`pnpm check` and `pnpm test` in `studio/`.
+`pnpm check` and `pnpm test` in `studio/`, and after `pnpm build`, `cargo test --manifest-path src-tauri/Cargo.toml`.
+These hold the studio to its Content Security Policy, check the paths its commands take, and check that the dev
+server answers only the studio's own page.
 
 ## Benchmarks
 
