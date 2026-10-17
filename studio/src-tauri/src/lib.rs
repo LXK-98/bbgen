@@ -94,12 +94,30 @@ fn opened(studio: State<'_, Studio>) -> Option<String> {
     studio.opened.lock().unwrap().take()
 }
 
+/// A path from the page, made absolute: bbgen and editors can't take an absolute path for an option (`-o`, vim's
+/// `+cmd`), whatever the page sends.
+fn absolute(path: &str) -> Result<String, String> {
+    std::path::absolute(path).map(|p| p.to_string_lossy().into_owned()).map_err(|e| format!("{path}: {e}"))
+}
+
+/// A circuit file from the page: an existing .yaml or .yml, as an absolute path.
+fn circuit_file(path: &str) -> Result<String, String> {
+    let file = absolute(path)?;
+    let p = Path::new(&file);
+    if p.is_file() && p.extension().is_some_and(|x| x == "yaml" || x == "yml") {
+        Ok(file)
+    } else {
+        Err(format!("not a circuit file: {path}"))
+    }
+}
+
 /// `bbgen build <path> --json` (and `--schematic`, or `--wires`, when the circuit view wants it): what it printed (a scene or an
 /// error), its stderr and exit status. With `events`, `--events`: each step's line goes to `on_step` as bbgen prints it.
 #[tauri::command]
 async fn build(path: String, schematic: bool, wires: bool, events: bool, on_step: Channel, studio: State<'_, Studio>)
                -> Result<Value, String> {
     let exe = studio.bbgen();
+    let path = absolute(&path)?;
     let mut args = vec!["build", path.as_str(), if events { "--events" } else { "--json" }];
     if schematic {
         args.push(if wires { "--wires" } else { "--schematic" });
@@ -197,11 +215,34 @@ fn export_files(exe: &Path, path: &str, what: &str, wires: bool, to: &Path) -> R
     copied
 }
 
+/// Export one of bbgen's files to a file you choose (`all`: into a folder you choose), offered as `name` (a `kind`, for
+/// the dialog's filter). The dialog is opened here, not by the page, so only you say where the files go. The files
+/// written, or null if you cancelled.
 #[tauri::command]
-async fn export(path: String, what: String, wires: bool, to: String, studio: State<'_, Studio>) -> Result<Vec<String>, String> {
+async fn export(path: String, what: String, wires: bool, name: Option<String>, kind: Option<String>, window: tauri::Window,
+                studio: State<'_, Studio>) -> Result<Option<Vec<String>>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if !matches!(what.as_str(), "board" | "bare" | "checklist" | "schematic" | "all") {
+        return Err(format!("nothing to export called {what}"));
+    }
     let exe = studio.bbgen();
-    tauri::async_runtime::spawn_blocking(move || export_files(&exe, &path, &what, wires, Path::new(&to)))
-        .await.map_err(|e| e.to_string())?
+    let path = absolute(&path)?;
+    let mut dialog = window.dialog().file().set_parent(&window);
+    if let Some(folder) = Path::new(&path).parent() {
+        dialog = dialog.set_directory(folder);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let to = if what == "all" {
+            dialog.set_title("Export into a folder").blocking_pick_folder()
+        } else {
+            let name = name.ok_or(format!("no name to export the {what} as"))?;
+            let ext = name.rsplit('.').next().unwrap_or_default().to_string();
+            dialog.set_file_name(&name).add_filter(kind.unwrap_or_default(), &[&ext]).blocking_save_file()
+        };
+        let Some(to) = to else { return Ok(None) };
+        let to = to.into_path().map_err(|e| e.to_string())?;
+        export_files(&exe, &path, &what, wires, &to).map(Some)
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Where the build guide keeps its progress: one file for every circuit (path → the steps done), in the app's data
@@ -344,6 +385,7 @@ fn editor(path: &str, line: Option<u32>) -> Command {
 /// Open the circuit file in an editor, at a line when it's given.
 #[tauri::command]
 fn edit(path: String, line: Option<u32>) -> Result<(), String> {
+    let path = circuit_file(&path)?;
     let mut command = editor(&path, line);
     let mut child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
         .map_err(|e| format!("can't run {}: {}", command.get_program().to_string_lossy(), e))?;
@@ -422,4 +464,52 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running bbgen studio");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The checkout's examples, for a circuit file that's there.
+    fn example() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/eeprom.yaml").to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn paths_from_the_page_cant_pass_for_options() {
+        // bbgen and editors take these for options (vim runs `+cmd`); absolute, they're only paths
+        for path in ["-o", "--video=x.mp4", "+!touch pwned", "circuit.yaml"] {
+            let p = absolute(path).unwrap();
+            assert!(Path::new(&p).is_absolute() && !p.starts_with('-') && !p.starts_with('+'), "{path} -> {p}");
+        }
+    }
+
+    #[test]
+    fn only_a_circuit_file_is_opened_in_an_editor() {
+        let file = circuit_file(&example()).unwrap();
+        assert!(Path::new(&file).is_absolute());
+        for path in ["+!touch pwned.yaml", "-c.yaml", "/no/such/circuit.yaml", env!("CARGO_MANIFEST_DIR")] {
+            assert!(circuit_file(path).is_err(), "{path}");
+        }
+        // there, but not a circuit
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        assert!(circuit_file(&manifest.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn the_page_runs_no_script_but_its_own() {
+        // the drawings go in the page as bbgen writes them: if markup ever got into one, the policy keeps it from
+        // running script, which could call the studio's commands
+        let conf: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = &conf["app"]["security"]["csp"];
+        assert!(csp.is_object(), "no Content Security Policy: {csp}");
+        let sources = |directive: &str| csp[directive].as_str().unwrap_or_default().split_whitespace().collect::<Vec<_>>();
+        let scripts = sources("script-src");
+        assert!(!scripts.is_empty(), "script-src isn't set");
+        for loose in ["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", "*", "data:", "blob:", "http:", "https:"] {
+            assert!(!scripts.contains(&loose), "script-src allows {loose}");
+        }
+        assert_eq!(sources("object-src"), ["'none'"]);
+        assert_eq!(sources("base-uri"), ["'none'"]);
+    }
 }

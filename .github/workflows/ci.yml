@@ -45,4 +45,5 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      # after the build: the app embeds it
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml

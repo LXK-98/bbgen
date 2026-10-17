@@ -16,7 +16,6 @@ const EXPORTS: Record<Exclude<Export, 'all'>, { ext: string; kind: string }> = {
 	schematic: { ext: 'schematic.svg', kind: 'SVG drawing' }
 };
 
-const folderOf = (path: string) => path.replace(/[\\/][^\\/]*$/, '');
 const stemOf = (path: string) => path.split(/[\\/]/).pop()!.replace(/\.ya?ml$/i, '');
 
 /** the name an export is saved under unless you pick another: `eeprom.svg`, `eeprom.bare.svg`, ... */
@@ -74,7 +73,7 @@ function inTauri(): boolean {
 async function tauriEngine(): Promise<Engine> {
 	const { invoke, Channel } = await import('@tauri-apps/api/core');
 	const { listen } = await import('@tauri-apps/api/event');
-	const { open, save } = await import('@tauri-apps/plugin-dialog');
+	const { open } = await import('@tauri-apps/plugin-dialog');
 	const { getCurrentWebview } = await import('@tauri-apps/api/webview');
 	return {
 		kind: 'tauri',
@@ -97,20 +96,15 @@ async function tauriEngine(): Promise<Engine> {
 			const { getCurrentWindow } = await import('@tauri-apps/api/window');
 			await getCurrentWindow().setFullscreen(on);
 		},
-		async export(path, what, wires) {
-			let to: string | null;
-			if (what === 'all') {
-				const dir = await open({ directory: true, defaultPath: folderOf(path), title: 'Export into a folder' });
-				to = typeof dir === 'string' ? dir : null;
-			} else {
-				const { ext, kind } = EXPORTS[what];
-				to = await save({
-					defaultPath: `${folderOf(path)}/${exportName(path, what)}`,
-					filters: [{ name: kind, extensions: [ext.split('.').pop()!] }]
-				});
-			}
-			return to ? invoke<string[]>('export', { path, what, wires, to }) : null;
-		},
+		// the native side asks where to write (its own dialog, so the page can't name a file to write over)
+		export: (path, what, wires) =>
+			invoke<string[] | null>('export', {
+				path,
+				what,
+				wires,
+				name: what === 'all' ? null : exportName(path, what),
+				kind: what === 'all' ? null : EXPORTS[what].kind
+			}),
 		watch(path, onChange) {
 			let stop: (() => void) | null = null;
 			let stopped = false;
