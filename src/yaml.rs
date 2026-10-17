@@ -18,6 +18,19 @@ pub struct Lines(Vec<(Vec<String>, usize)>);
 
 const DEPTH: usize = 3;
 
+/// The most values a file's aliases may add, all told. Far more than any circuit needs, but each alias copies what its
+/// anchor holds, so a few lines of aliases to aliases (a "billion laughs") would otherwise fill memory.
+const ALIASED: usize = 100_000;
+
+/// How many values `v` is: itself and everything in it.
+fn size(v: &Val) -> usize {
+    match v {
+        Val::List(items) => 1 + items.iter().map(size).sum::<usize>(),
+        Val::Map(items) => 1 + items.iter().map(|(k, v)| size(k) + size(v)).sum::<usize>(),
+        _ => 1,
+    }
+}
+
 impl Lines {
     pub fn get(&self, path: &[&str]) -> Option<usize> {
         self.0.iter().rev().find(|(p, _)| p.iter().map(String::as_str).eq(path.iter().copied())).map(|&(_, l)| l)
@@ -48,7 +61,7 @@ pub fn load_lines(text: &str) -> Result<(Val, Lines), String> {
         }
         let parser = parser.as_mut_ptr();
         yaml_parser_set_input_string(parser, text.as_ptr(), text.len() as _);
-        let mut b = Builder { stack: vec![], anchors: vec![], doc: None, docs: 0, lines: Lines::default() };
+        let mut b = Builder { stack: vec![], anchors: vec![], aliased: 0, doc: None, docs: 0, lines: Lines::default() };
         let out = loop {
             let mut event = MaybeUninit::<yaml_event_t>::uninit();
             if yaml_parser_parse(parser, event.as_mut_ptr()).fail {
@@ -82,7 +95,10 @@ enum Frame {
 
 struct Builder {
     stack: Vec<Frame>,
-    anchors: Vec<(String, Val)>,
+    /// each anchor's name, value and size
+    anchors: Vec<(String, Val, usize)>,
+    /// the values aliases have added so far
+    aliased: usize,
     doc: Option<Val>,
     docs: usize,
     lines: Lines,
@@ -119,14 +135,20 @@ impl Builder {
                     Val::Str(value)
                 };
                 if let Some(a) = cstr(s.anchor) {
-                    self.anchors.push((a, v.clone()));
+                    self.anchors.push((a, v.clone(), 1));
                 }
                 self.add(v, line)?;
             }
             YAML_ALIAS_EVENT => {
                 let name = cstr(ev.data.alias.anchor).unwrap_or_default();
-                let v = self.anchors.iter().rev().find(|(a, _)| *a == name).map(|(_, v)| v.clone())
+                let (_, v, n) = self.anchors.iter().rev().find(|(a, ..)| *a == name)
                     .ok_or(format!("found undefined alias {}", name))?;
+                self.aliased += n;
+                if self.aliased > ALIASED {
+                    return Err(format!("the aliases add more than {} values (line {}, column {})", ALIASED, line,
+                                       ev.start_mark.column + 1));
+                }
+                let v = v.clone();
                 self.add(v, line)?;
             }
             YAML_SEQUENCE_START_EVENT => self.stack.push(Frame::Seq(vec![], cstr(ev.data.sequence_start.anchor), line)),
@@ -137,7 +159,7 @@ impl Builder {
                     Frame::Map(items, _, a, l) => (Val::Map(items), a, l),
                 };
                 if let Some(a) = anchor {
-                    self.anchors.push((a, v.clone()));
+                    self.anchors.push((a, v.clone(), size(&v)));
                 }
                 self.add(v, line)?;
             }
@@ -427,5 +449,19 @@ mod tests {
 
         let (_, l) = load_lines("wires:\n  - [a1, a2]\n  - [a3, a4]\n").unwrap();
         assert_eq!(l.of_message("wires.wires[1]: unknown color 'x'"), Some(3));
+    }
+
+    #[test]
+    fn aliases_copy_their_anchor_up_to_a_limit() {
+        let v = load("pins: &p [U1.1, U1.2]\nnets:\n  A: *p\n  B: *p\n").unwrap();
+        assert_eq!(v.at("nets").at("B"), v.at("pins"));
+        // a "billion laughs": each level ten of the last, 10^9 values in a few lines
+        let mut text = "a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n".to_string();
+        for k in 1..10 {
+            let j = k - 1;
+            text += &format!("a{k}: &a{k} [*a{j}, *a{j}, *a{j}, *a{j}, *a{j}, *a{j}, *a{j}, *a{j}, *a{j}, *a{j}]\n");
+        }
+        let err = load(&text).unwrap_err();
+        assert!(err.starts_with("the aliases add more than 100000 values (line "), "{err}");
     }
 }
