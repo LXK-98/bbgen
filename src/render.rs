@@ -60,13 +60,19 @@ const fn f(x: f64) -> N {
     N(x, false)
 }
 
+/// Text escaped for the drawing, in an element or an attribute.
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// `data-<key>="value"`, the value escaped for an attribute.
 fn data(key: &str, value: &str) -> String {
-    format!("data-{}=\"{}\"", key, escape(value).replace('"', "&quot;"))
+    format!("data-{}=\"{}\"", key, escape(value))
+}
+
+/// A part's own colour (`color:`), if it has one, escaped for an attribute.
+fn part_color(part: &Part) -> Option<String> {
+    part.color.as_deref().filter(|c| !c.is_empty()).map(escape)
 }
 
 fn ohms_match(s: &str) -> Option<(String, String, String)> {
@@ -442,7 +448,7 @@ fn footprint(cv: &mut Canvas, part: &Part) {
         Kind::Dip | Kind::Kicad => "#24467a",
         _ => "#3d3d3d",
     };
-    cv.rect(x0, y0, x1, y1, part.color.as_deref().filter(|c| !c.is_empty()).unwrap_or(fill), "#111", i(1), 0.15, "");
+    cv.rect(x0, y0, x1, y1, part_color(part).as_deref().unwrap_or(fill), "#111", i(1), 0.15, "");
     if part.kind == Kind::Pico {
         let (a, b, cc, d) = placed_box(part, (-1.05, -4.5, 0.75, -2.5));
         cv.rect(a, b, cc, d, "#c9c9c9", "#6f6f6f", i(1), 0.08, "");
@@ -534,7 +540,7 @@ fn lead(cv: &mut Canvas, part: &Part) {
     let g = format!("<g transform=\"translate({:.1} {:.1}) rotate({:.1})\">", cv.x(cx), cv.y(cy), angle);
     cv.add(g);
     cv.add(format!("<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"{:.1}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-                   -w / 2.0, -h / 2.0, w, h, h / 3.0, part.color.as_deref().filter(|c| !c.is_empty()).unwrap_or(fill), stroke));
+                   -w / 2.0, -h / 2.0, w, h, h / 3.0, part_color(part).as_deref().unwrap_or(fill), stroke));
     let bands = if part.kind == Kind::Resistor { resistor_bands(&part.value) } else { None };
     if let Some(bands) = bands.filter(|b| !b.is_empty()) {
         let span = w - 2.0 * h / 3.0;
@@ -620,7 +626,7 @@ fn can(cv: &mut Canvas, part: &Part, a: Xy, b: Xy, u: Xy, n: Xy) {
     let ((ux, uy), (nx, ny)) = (u, n);
     let (cx, cy, r) = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0, 0.75f64);
     legs(cv, a, b, (cx, cy));
-    cv.circle(cx, cy, r, part.color.as_deref().filter(|c| !c.is_empty()).unwrap_or("#1c1c1c"), "#000000", i(1));
+    cv.circle(cx, cy, r, part_color(part).as_deref().unwrap_or("#1c1c1c"), "#000000", i(1));
     let (ang, spread) = (uy.atan2(ux), 40f64.to_radians());
     let (x1, y1) = (cx + r * (ang - spread).cos(), cy + r * (ang - spread).sin());
     let (x2, y2) = (cx + r * (ang + spread).cos(), cy + r * (ang + spread).sin());
@@ -732,7 +738,7 @@ fn wires(cv: &mut Canvas, c: &Circuit, result: &Result, highlight: Option<&str>)
     let mut drawn: Vec<(&Wire, Xy, String)> = Vec::new();
     for w in order {
         let dim = highlight.is_some() && Some(w.group.as_str()) != highlight;
-        let color = color_hex(&result.wire_color(c, w));
+        let color = escape(&color_hex(&result.wire_color(c, w)));
         let (d, pts, mid) = wire_d(cv, c, w);
         cv.begin(format!("{} {}", data("wire", &format!("W{}", w.num)), data("net", &result.wire_nets(c, w).join(" "))));
         cv.add(format!("<g opacity=\"{}\">", if dim { "0.14" } else { "1" }));
@@ -971,7 +977,7 @@ fn draw_with(c: &Circuit, result: &Result, highlight: Option<&str>, caption: Opt
         let y = legend_y + 0.8 * *line as f64;
         cv.begin(if *kind == "net" { data("net", text) } else { data("legend", kind) });
         if *kind == "net" {
-            let swatch = color_hex(&c.nets[text.as_str()].color);
+            let swatch = escape(&color_hex(&c.nets[text.as_str()].color));
             cv.rect(*x, y - 0.25, x + 0.9, y + 0.25, &swatch, outline(&swatch), i(1), 0.1, "");
         } else {
             let svg = format!("<path d=\"M {:.1} {:.1} Q {:.1} {:.1} {:.1} {:.1}\" fill=\"none\" stroke=\"#777777\" stroke-width=\"{:.1}\"/>",

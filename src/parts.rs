@@ -287,7 +287,7 @@ pub fn slant_reason(spec: &Val, where_: &str) -> Result<Option<String>, String> 
     }
 }
 
-fn is_hex_color(s: &str) -> bool {
+pub fn is_hex_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -322,6 +322,8 @@ pub fn make_part(r: &str, spec: &Val, library: Option<&[PathBuf]>) -> Result<Par
             }
             part.color = Some(name);
         }
+    } else if part.color.as_deref().is_some_and(|c| !c.is_empty() && !crate::circuit::is_color(c)) {
+        return Err(format!("parts.{}: unknown color {}", r, spec.at("color").py_repr()));
     }
     part.near = if spec.at("near").truthy() { Some(spec.at("near").py_str()) } else { None };
     if kind.is_footprint() {

@@ -26,6 +26,11 @@ const COLORS: [(&str, &str); 14] = [
 const SUPPLY_COLORS: [&str; 4] = ["red", "orange", "pink", "brown"];
 const NET_PALETTE: [&str; 10] = ["blue", "green", "yellow", "orange", "purple", "white", "brown", "cyan", "pink", "gray"];
 
+/// A colour a circuit file may give: one of the names above or `#rrggbb`. Nothing else reaches the drawing.
+pub fn is_color(color: &str) -> bool {
+    COLORS.iter().any(|(n, _)| !n.is_empty() && n.eq_ignore_ascii_case(color)) || parts::is_hex_color(color)
+}
+
 pub fn color_hex(color: &str) -> String {
     let low = color.to_lowercase();
     COLORS.iter().find(|(n, _)| !n.is_empty() && *n == low).map(|(_, h)| h.to_string()).unwrap_or(color.to_string())
@@ -140,6 +145,18 @@ impl Opt {
 }
 
 pub type Unresolved = String;
+
+/// The colour a net's `color:` gives it, if it gives one.
+pub fn net_color(name: &str, spec: &Val) -> Result<Option<String>, String> {
+    let color = spec.at("color");
+    if !color.truthy() {
+        return Ok(None);
+    }
+    if !is_color(&color.py_str()) {
+        return Err(format!("nets.{}: unknown color {}", name, color.py_repr()));
+    }
+    Ok(Some(color.py_str()))
+}
 
 /// (polarity, physical rails, guessed) from a net's `rail:`.
 pub fn net_polarity(name: &str, spec: &Val) -> Result<(Option<char>, Vec<String>, bool), String> {
@@ -313,6 +330,55 @@ fn bits(p: Xy) -> (u64, u64) {
     (p.0.to_bits(), p.1.to_bits())
 }
 
+/// The wires a circuit file lays itself, checked: the groups in order, and the wires (not on the board yet).
+/// The search checks them too, before it builds a trial with them.
+pub fn read_wires(wires: &Val) -> Result<(Vec<String>, Vec<Wire>), String> {
+    let groups: Vec<(String, Val)> = match wires {
+        Val::Map(m) => m.iter().map(|(k, v)| (k.py_str(), v.clone())).collect(),
+        Val::Null => vec![("wires".into(), Val::Null)],
+        other => vec![("wires".into(), other.clone())],
+    };
+    let (mut names, mut out) = (Vec::new(), Vec::new());
+    for (group, items) in groups {
+        names.push(group.clone());
+        let empty = vec![];
+        for (i, item) in items.as_list().unwrap_or(&empty).iter().enumerate() {
+            let where_ = format!("wires.{}[{}]", group, i);
+            let (mut slant, mut flex) = (None, false);
+            let (a, b, color, via) = match item {
+                Val::List(l) if l.len() == 2 || l.len() == 3 => (l[0].clone(), l[1].clone(),
+                    if l.len() == 3 { l[2].clone() } else { Val::Null }, vec![]),
+                Val::Map(_) if item.get("from").is_some() && item.get("to").is_some() => {
+                    slant = slant_reason(item, &where_)?;
+                    flex = match item.get("flex") {
+                        None => false,
+                        Some(Val::Bool(f)) => *f,
+                        Some(_) => return Err(format!("{}: flex is true or false", where_)),
+                    };
+                    let via: Vec<Val> = if item.at("via").truthy() { item.at("via").as_list().cloned().unwrap_or_default() } else { vec![] };
+                    if flex && !via.is_empty() {
+                        return Err(format!("{}: a flexible jumper arches straight over; give it no via", where_));
+                    }
+                    (item.at("from").clone(), item.at("to").clone(), item.at("color").clone(), via)
+                }
+                _ => return Err(format!("{}: expected [from, to], [from, to, color] or {{from, to, color, via, slant, flex}}", where_)),
+            };
+            if !color.is_null() {
+                let s = color.py_str();
+                if !is_color(&s) {
+                    return Err(format!("{}: unknown color {}", where_, color.py_repr()));
+                }
+            }
+            out.push(Wire {
+                id: out.len() as u64 + 1, num: out.len() as i64 + 1, group: group.clone(), spec: (a.py_str(), b.py_str()),
+                color: if color.truthy() { Some(color.py_str()) } else { None },
+                via: via.iter().map(Val::py_str).collect(), slant, auto: false, flex, a: None, b: None, via_xy: vec![],
+            });
+        }
+    }
+    Ok((names, out))
+}
+
 impl Circuit {
     pub fn load(path: &str) -> Result<Circuit, String> {
         // an OSError as Python writes it: [Errno 2] No such file or directory: 'missing.yaml'
@@ -484,49 +550,8 @@ impl Circuit {
     }
 
     fn load_wires(&mut self, wires: &Val) -> Result<(), String> {
-        let groups: Vec<(String, Val)> = match wires {
-            Val::Map(m) => m.iter().map(|(k, v)| (k.py_str(), v.clone())).collect(),
-            Val::Null => vec![("wires".into(), Val::Null)],
-            other => vec![("wires".into(), other.clone())],
-        };
-        for (group, items) in groups {
-            self.groups.push(group.clone());
-            let empty = vec![];
-            for (i, item) in items.as_list().unwrap_or(&empty).iter().enumerate() {
-                let where_ = format!("wires.{}[{}]", group, i);
-                let (mut slant, mut flex) = (None, false);
-                let (a, b, color, via) = match item {
-                    Val::List(l) if l.len() == 2 || l.len() == 3 => (l[0].clone(), l[1].clone(),
-                        if l.len() == 3 { l[2].clone() } else { Val::Null }, vec![]),
-                    Val::Map(_) if item.get("from").is_some() && item.get("to").is_some() => {
-                        slant = slant_reason(item, &where_)?;
-                        flex = match item.get("flex") {
-                            None => false,
-                            Some(Val::Bool(f)) => *f,
-                            Some(_) => return Err(format!("{}: flex is true or false", where_)),
-                        };
-                        let via: Vec<Val> = if item.at("via").truthy() { item.at("via").as_list().cloned().unwrap_or_default() } else { vec![] };
-                        if flex && !via.is_empty() {
-                            return Err(format!("{}: a flexible jumper arches straight over; give it no via", where_));
-                        }
-                        (item.at("from").clone(), item.at("to").clone(), item.at("color").clone(), via)
-                    }
-                    _ => return Err(format!("{}: expected [from, to], [from, to, color] or {{from, to, color, via, slant, flex}}", where_)),
-                };
-                if !color.is_null() {
-                    let s = color.py_str();
-                    if !COLORS.iter().any(|(n, _)| !n.is_empty() && *n == s.to_lowercase()) && !s.starts_with('#') {
-                        return Err(format!("{}: unknown color {}", where_, color.py_repr()));
-                    }
-                }
-                self.next_id += 1;
-                self.wires.push(Wire {
-                    id: self.next_id, num: self.wires.len() as i64 + 1, group: group.clone(), spec: (a.py_str(), b.py_str()),
-                    color: if color.truthy() { Some(color.py_str()) } else { None },
-                    via: via.iter().map(Val::py_str).collect(), slant, auto: false, flex, a: None, b: None, via_xy: vec![],
-                });
-            }
-        }
+        (self.groups, self.wires) = read_wires(wires)?;
+        self.next_id = self.wires.len() as u64;
         Ok(())
     }
 
@@ -558,8 +583,8 @@ impl Circuit {
             }
             let (polarity, rails, guessed) = net_polarity(&name, &spec)?;
             let supplies = self.nets.values().filter(|n| n.polarity == Some('+')).count();
-            let color = if spec.at("color").truthy() {
-                Some(spec.at("color").py_str())
+            let color = if let Some(color) = net_color(&name, &spec)? {
+                Some(color)
             } else if polarity == Some('-') {
                 Some("black".into())
             } else if polarity == Some('+') {

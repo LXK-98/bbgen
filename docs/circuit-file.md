@@ -292,8 +292,8 @@ resistor's `value` (`10k`, `4k7`, `330R`) is drawn as its colour bands. Two-lead
 ## Colours
 
 Wires, nets and parts take `red`, `black`, `blue`, `green`, `yellow`, `orange`, `white`, `purple`,
-`gray`, `brown`, `pink`, `cyan`, or `#rrggbb`. A wire is its net's colour unless it says
-otherwise. A net without a colour gets black if it's a ground, red if it's a supply (orange, pink
+`gray`, `brown`, `pink`, `cyan`, or `#rrggbb`; any other colour is an error. A wire is its net's
+colour unless it says otherwise. A net without a colour gets black if it's a ground, red if it's a supply (orange, pink
 and brown for a second, third and fourth supply), and otherwise a colour no other net has, until
 they run out.
 

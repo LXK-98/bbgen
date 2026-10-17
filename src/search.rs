@@ -23,7 +23,7 @@
 //! gets the same layout, however many cores build it.
 
 use crate::board::{parse_hole, Board, Row, RAILS, TERMINAL};
-use crate::circuit::{check_rail_count_for, library_for, net_polarity, pymax, Circuit};
+use crate::circuit::{check_rail_count_for, library_for, net_color, net_polarity, pymax, read_wires, Circuit};
 use crate::costs::*;
 use crate::dump;
 use crate::parts::{body_rect, make_part, rotate, Kind, Part, Rect};
@@ -181,6 +181,7 @@ impl Model {
             }
             nets.insert(name.clone(), pins);
             let (sign, physical, g) = net_polarity(&name, &spec)?;
+            net_color(&name, &spec)?;
             polarity.insert(name.clone(), sign);
             if g {
                 guessed.insert(name.clone());
@@ -1175,6 +1176,8 @@ fn polish(sc: &Scorer, leads: &[String], data: Val, mut score: f64, mut c: Circu
 /// The file with every part bbgen has to place placed.
 pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
     let model = Model::new(data)?;
+    // the model doesn't lay wires, but every trial does: a wire it can't read is the file's error, not a trial's
+    read_wires(data.at("wires"))?;
     let leads: Vec<String> = model.parts.iter().filter(|(_, p)| p.kind.is_lead() && p.legs.is_empty()).map(|(r, _)| r.clone()).collect();
     let mut base = data.clone();
     if base.get("autowire").is_none() {
