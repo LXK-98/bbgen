@@ -1,6 +1,6 @@
 [package]
 name = "bbgen"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Breadboard layouts from YAML: a drawing, a build checklist and a wiring check"
 license = "MIT"

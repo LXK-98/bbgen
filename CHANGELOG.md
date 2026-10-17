@@ -3,7 +3,7 @@
 Until 1.0, a new minor version (0.2.0) may change the circuit file or what bbgen writes; a patch (0.1.1) only
 fixes things. Each release's section here is its notes on GitHub.
 
-## Unreleased
+## 0.2.0 (2026-10-17)
 
 - **The board is drawn the way breadboards are made.** With column 1 at the left, row `j` is now at the top and
   row `a` at the bottom, and each pair of rails has its `-` rail above its `+` rail, as on BusBoard's BB830, the
