@@ -178,6 +178,16 @@ function saveProgress(path: string, done: string[]) {
 	writeFileSync(progressFile(), JSON.stringify(all, null, 2));
 }
 
+/** Whether a request comes from the studio's own page. Any page open in the browser can send requests here (it can't
+ * read the answers, but they do their work: run a program, open an editor), and the browser says where each comes
+ * from: Sec-Fetch-Site, or for a browser without it, the Origin of a POST or a script's fetch. */
+function fromStudio(req: import('node:http').IncomingMessage): boolean {
+	const site = req.headers['sec-fetch-site'];
+	if (site) return site === 'same-origin' || site === 'none';
+	const origin = req.headers.origin;
+	return !origin || origin === `http://${req.headers.host}`;
+}
+
 /** a request's body, as JSON */
 function body(req: import('node:http').IncomingMessage): Promise<unknown> {
 	return new Promise((done, fail) => {
@@ -200,12 +210,17 @@ export function bbgenDev(): Plugin {
 		configureServer(server) {
 			server.middlewares.use(async (req, res, next) => {
 				const url = new URL(req.url ?? '/', 'http://localhost');
-				const path = url.searchParams.get('path') ?? '';
 				const json = (status: number, body: unknown) => {
 					res.statusCode = status;
 					res.setHeader('content-type', 'application/json');
 					res.end(JSON.stringify(body));
 				};
+				if (!url.pathname.startsWith('/api/')) return next();
+				if (!fromStudio(req)) return json(403, { error: "only the studio's own page can ask this" });
+				// the progress is kept by the path as the page names it; everything else gets it absolute, so bbgen and
+				// editors can't take it for an option (`-o`, vim's `+cmd`)
+				const named = url.searchParams.get('path') ?? '';
+				const path = resolve(named);
 				if (url.pathname === '/api/examples') return json(200, examples());
 				if (url.pathname === '/api/build') {
 					if (!isCircuit(path)) return json(400, { error: `not a circuit file: ${path}` });
@@ -219,10 +234,10 @@ export function bbgenDev(): Plugin {
 					return;
 				}
 				if (url.pathname === '/api/progress') {
-					if (req.method !== 'POST') return json(200, readProgress()[path]?.done ?? []);
+					if (req.method !== 'POST') return json(200, readProgress()[named]?.done ?? []);
 					return body(req).then(
 						(b) => {
-							saveProgress(path, (b as { done: string[] }).done);
+							saveProgress(named, (b as { done: string[] }).done);
 							json(200, {});
 						},
 						(e) => json(400, { error: String(e) })
