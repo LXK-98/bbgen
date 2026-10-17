@@ -26,15 +26,20 @@ jobs:
         working-directory: studio
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Tauri's system libraries
+      # the tests build the examples and benchmarks with bbgen, and they have parts from KiCad's library
+      - name: Tauri's system libraries, and KiCad's
         run: |
-          sudo apt-get update -qq
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
           sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev libdbus-1-dev
+            libjavascriptcoregtk-4.1-dev libdbus-1-dev kicad-symbols kicad-footprints
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: studio/src-tauri
+          workspaces: |
+            .
+            studio/src-tauri
+      - run: cargo build --release --locked
+        working-directory: .
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24

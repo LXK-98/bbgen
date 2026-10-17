@@ -11,7 +11,8 @@ const have = existsSync(bbgen);
 const scene: Scene = have ? JSON.parse(execFileSync(bbgen, ['build', '../examples/eeprom.yaml', '--json', '--schematic'], { encoding: 'utf8' })) : (null as never);
 
 describe.skipIf(!have)('lookups on eeprom.yaml', () => {
-	const ix = indexScene(scene);
+	// a skipped describe's body still runs, to collect its tests
+	const ix = have ? indexScene(scene) : (null as never);
 
 	it('names strips', () => {
 		expect(stripId('e33', scene)).toEqual({ id: '1:top:33', label: 'a–e 33' });
