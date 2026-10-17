@@ -467,3 +467,19 @@ holes a part covers and where labels can't go (`src/circuit.rs`) and what the st
 board with the chip on it. Look at the drawings before and after (the examples, and 12, 13, 14 among the
 benchmarks). The drawings in `benchmarks/golden/expected/` will change on purpose; record them again with
 `benchmarks/record.py` ([benchmarks/README.md](../../benchmarks/README.md)).
+
+## 14. The README says too little about the studio
+
+**Issue.** The [README](../../README.md) gives bbgen studio a line in the list of outputs, one in Install and a
+short paragraph under Use, and shows no picture of it: someone reading it can't tell what the studio looks like
+or what it's for before installing it. The README as a whole could say more too: what a circuit file looks like
+before the Use section, and what the build checklist and the schematic look like.
+
+**What it should show.** Screenshots of the studio: a board with a part or net lit up on hover, the build view
+part way through a build, and placement and wiring as bbgen works. A sentence or two with each on what it shows
+and when it helps, and a link to [studio/README.md](../../studio/README.md) for the rest.
+
+**Where to start.** Take the screenshots from a built example (`examples/eeprom.yaml` is the one the README
+already shows), keep them small enough for the repository (PNG, a few hundred KB each), and put them next to
+`examples/eeprom.png` or in a `docs/images/` folder. Check the README on GitHub afterwards: it renders HTML
+in Markdown its own way.

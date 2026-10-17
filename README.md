@@ -1,4 +1,4 @@
-<img src="studio/src-tauri/icons/icon.svg" width="72" align="right" alt="">
+<p align="center"><img src="studio/src-tauri/icons/icon.svg" width="112" alt=""></p>
 
 # bbgen
 
