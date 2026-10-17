@@ -357,6 +357,19 @@ first, would lie straight without pushing another net off the board.
 - **Large KiCad modules hang off the board** in the drawing (the OLED in 17 and 21): their footprint
   body is the whole module. Harmless to the check; a module could be drawn as its header only, with the
   rest outlined.
+- **Labels over wires and pin names** (second Knight Rider run, point 17): in
+  [repro/knight-rider-run2-placed.yaml](repro/knight-rider-run2-placed.yaml), "U3 CD4070" lies over W9, "C1 1uF"
+  over U1's pin names, "R2 47k" over W20. The label check counts labels over wire ends and other labels only
+  (see "A label can sit on a flying lead" above).
+- **A resistor in adjacent holes stands up, and the checklist doesn't say so.** In the same run R2 47k sits in
+  `c10`/`c11` (0.1 in apart). Say "stand it up" in its checklist line, or keep two-lead parts from being placed
+  that close unless they're meant to stand.
+- **Long slants across the trench aren't warned about.** With `flex: false`, rigid wires slant 8-12 columns
+  across the trench with 0 warnings: a wire crossing the trench between different columns is exempt from
+  DIAGONAL, however far it slants. Warn past a few columns, or route it straight with a bend.
+- **A small edit reshuffles the board.** Moving one resistor (R14) a row moved three unrelated chips (f4/f12/e29
+  to f9/f16/f25). That's the search (point 12), but it makes tuning by hand slow; a way to freeze bbgen's
+  choices into the file (write `at:` back) would help.
 - **Two-board benchmarks are slow to place** (17: 31 s, against 7 s for 21, the same circuit on one
   board). Not looked into; likely suspects are the bigger search space (the model gives each board its
   own run of columns) and the jumpers between boards, each of which runs the relay search first.
@@ -512,7 +525,8 @@ set a cell can go to; a region that's too full is reported, not overlapped
 work too ([arXiv 2512.04910](https://arxiv.org/html/2512.04910v1)).
 
 Left open: hand-placed legs don't pull their nets' pins in the estimate (`where_` holds only footprint pins), so
-chips aren't drawn toward what the file places; that's a layout change, to be judged on the drawings. A
+chips aren't drawn toward what the file places; that's a layout change, to be judged on the drawings (point 17
+has the evidence from a second run). A
 hand-placed part lying across a chip bbgen places stays a warning (`OVER_PART`), priced by the score.
 
 The original report follows.
@@ -573,3 +587,68 @@ patterns of parts (a CAD tool's job).
   whether bbgen allows this, warns, or says nothing, and say so in circuit-file.md.
 - **Say why a jumper is flexible**, as DIAGONAL warnings already do: "W44 is flexible because every
   straight route from g34 to d26 is blocked by U3 and W39". That shows which part to move. Later.
+
+## 17. Chips aren't drawn toward what the file places
+
+**Issue.** From a second run of the Knight Rider task (October 2026, a subagent with the fix from point 15; its
+report and every variant are in `~/Projects/knight-rider/bbgen-feedback/run-2/`). It designed a 555 → CD4040 →
+CD4070 → CD4028 runner, with each decoder output driving an LED through a 1k resistor, and placed only the 8 LEDs.
+Every build was clean, but the decoder often landed at the far end of the board from the LEDs (LEDs at columns
+3-17 put U4 at column 58). Over 7 LED positions, flexible jumpers ranged from 7 to 12 with no pattern. Placing U4
+by hand next to the LEDs got 6, with the rest of the chips in signal order. The input file is
+[repro/knight-rider-run2.yaml](repro/knight-rider-run2.yaml), with U4 and R14 placed by hand; take their `at:` and
+`pins:` out to see it.
+
+**Diagnosis.** The estimate (`Model::cost`) only knows where footprint pins are: `where_` is built from the
+layouts, so a two-lead part's legs placed by hand count for nothing. A net like `L1: [R11.2, D1.A]`, with D1's anode
+placed by hand, has no known point. And `LEG_LINK_COST`, which pulls the two nets of a resistor together (here `O0`
+from the decoder and `L1` to the LED), needs a known pin on both sides, so it never pulls the decoder toward the
+LEDs.
+
+**Starting points.**
+- Put the holes of legs placed by hand into `where_` as fixed points of their nets (the hand-placed strips from
+  point 15, `hand_strips`, already have them), so nets and resistor links reach them.
+- A chain through a two-lead part (chip → resistor → hand-placed LED) is the usual case; check `LEG_LINK_COST`'s
+  weight once the far side is known.
+- No benchmark places legs by hand around chips bbgen places, so the records hold either way; judge it on
+  run-2's circuit and the two in `tests/hand-placed/` by their drawings, and research first (how placers weigh
+  fixed pins: anchors in analytical placement).
+
+## 18. A rigid wire crosses other rigid wires instead of going round or becoming a jumper
+
+**Issue.** In the second Knight Rider run's final layout,
+[repro/knight-rider-run2-placed.yaml](repro/knight-rider-run2-placed.yaml) (layout hash `950fcc074e` from
+`bbgen dev build`), W23 (CLK, orange) runs flat along row a from `a13` to `a22`. On the way it crosses W6 (VCC,
+`top+16` → `b16`) and W16 (GND, `b21` → `top-21`), lying over both, since wires go in by number. Two rows down
+(`c13` → `c22`) it would cross nothing. `bbgen dev measure` counts 4 crossings in this layout; the check says
+nothing.
+
+**What it should do** (the user's rule): a wire lying flat on the board doesn't cross another flat wire. If no
+straight route avoids them, it becomes a flexible jumper, which arches over them.
+
+**Diagnosis so far.** Wiring charges `CROSS_WIRE_COST` (1) per wire crossed, against `FLEX_COST` (10) for a
+jumper, so crossing two wires is the cheap choice by design. circuit-file.md says a wire "runs along no other
+wire" and nothing about crossing. Why `c13` → `c22` lost to `a13` → `a22` isn't known yet: print the candidates'
+costs for W23 (as in point 3's diagnosis).
+
+**To reproduce.** `bbgen build docs/design/repro/knight-rider-run2-placed.yaml -o OUT` and look at W23; the placed
+file fixes the parts, so it shows the wiring whatever placement does later. `bbgen check … --json` gives each
+wire's `points`.
+
+**Starting points.** Make a flat wire crossing another flat wire an obstacle, like a part's body: a straight route
+across one is out, and a bent route or a jumper takes its place. It moves wires in most benchmarks (104 crossings
+over all 21 in `baseline.json`), so judge it on run.py and the drawings, and check that jumpers don't multiply.
+Update circuit-file.md's promise either way.
+
+## 19. A wire under a two-lead part: the docs and the checklist line
+
+**Issue.** circuit-file.md says a wire bbgen lays on the board "crosses no part". But a flat wire may run under a
+two-lead part lying across it, on purpose: the checklist lists it under "Wires under parts", to lay first. The
+second Knight Rider run reported this as a bug (variant `v8-u4-e42.yaml` in run-2: W4 `bot+42` → `i42` under R14
+at `j41`/`j44`, W17 `bot-58` → `top-58` under R18 at `e56`/`e59`, with no warning).
+
+**What's missing.** The docs should say a flat wire may run under a resistor or diode lying across it. And the
+wire's checklist line should name the part, as it does for a raised module (`runs under U1: lay it flat, before
+it goes in`): `checklist::line` uses `Circuit::under_of`, which knows only raised modules and holes under bodies,
+while the section's sorting (`below` in checklist.rs) also counts two-lead parts crossed (`measure::cross`).
+

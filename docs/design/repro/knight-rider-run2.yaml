@@ -1,0 +1,81 @@
+title: Knight Rider LED runner (8 LEDs)
+notes:
+  - "9 V battery (or 9 V bench supply) on J1. All chips are CD4000-series CMOS, fine from 5 V to 15 V."
+  - "U1 (NE555) clocks U2 (CD4040) at about 15 Hz (R1 1k, R2 47k, C1 1uF)."
+  - "U3 (CD4070) XORs counter bits Q1-Q3 with Q4, so U4 (CD4028) counts 0..7 then 7..0: the light runs back and forth."
+  - "Unused XOR gate inputs (U3 pins 12, 13) are tied to ground; the 4028's D input is tied to ground."
+  - "LEDs: long leg (anode) in row a, short leg (cathode) in the ground rail beside it."
+
+parts:
+  J1: {type: offboard, title: 9V battery, labels: ["+9V", GND]}
+  U1: {symbol: Timer:NE555P, title: NE555}
+  U2: {symbol: 4xxx:4040, footprint: Package_DIP:DIP-16_W7.62mm, title: CD4040}
+  U3: {symbol: 4xxx:4070, footprint: Package_DIP:DIP-14_W7.62mm, title: CD4070}
+  # U4 placed by hand: left to bbgen it landed at the far end of the board from the LEDs (10 flexible jumpers).
+  U4: {symbol: 4xxx:4028, at: e42, rot: 180, footprint: Package_DIP:DIP-16_W7.62mm, title: CD4028}
+
+  R1: {type: resistor, value: 1k}
+  R2: {type: resistor, value: 47k}
+  C1: {type: capacitor, value: 1uF}
+  C2: {type: capacitor, value: 10nF}
+  C3: {type: capacitor, value: 100nF, near: U1}
+  C4: {type: capacitor, value: 100nF, near: U2}
+  C5: {type: capacitor, value: 100nF, near: U3}
+  C6: {type: capacitor, value: 100nF, near: U4}
+  C7: {type: electrolytic, value: 100uF}
+
+  # The LEDs, placed by hand: a row of 8 along the top edge, anode in row a, cathode in the ground rail.
+  D1: {type: led, pins: [a45, top-45]}
+  D2: {type: led, pins: [a47, top-47]}
+  D3: {type: led, pins: [a49, top-49]}
+  D4: {type: led, pins: [a51, top-51]}
+  D5: {type: led, pins: [a53, top-53]}
+  D6: {type: led, pins: [a55, top-55]}
+  D7: {type: led, pins: [a57, top-57]}
+  D8: {type: led, pins: [a59, top-59]}
+
+  R11: {type: resistor, value: 1k}
+  R12: {type: resistor, value: 1k}
+  R13: {type: resistor, value: 1k}
+  # R14 placed by hand: where bbgen put it (j41-j44), the VCC drop to U4 pin 16 ran across its body (no warning).
+  R14: {type: resistor, value: 1k, pins: [i41, i44]}
+  R15: {type: resistor, value: 1k}
+  R16: {type: resistor, value: 1k}
+  R17: {type: resistor, value: 1k}
+  R18: {type: resistor, value: 1k}
+
+nets:
+  VCC: {pins: [J1.+9V, U1.8, U1.4, U2.16, U3.14, U4.16, R1.1, C3.1, C4.1, C5.1, C6.1, C7.+], rail: +}
+  GND: {pins: [J1.GND, U1.1, U2.8, U2.11, U3.7, U3.12, U3.13, U4.8, U4.11, C1.2, C2.2,
+               C3.2, C4.2, C5.2, C6.2, C7.-, D1.K, D2.K, D3.K, D4.K, D5.K, D6.K, D7.K, D8.K], rail: -}
+  # NE555 astable
+  DIS: [U1.7, R1.2, R2.1]
+  TIM: [U1.2, U1.6, R2.2, C1.1]
+  CV: [U1.5, C2.1]
+  CLK: [U1.3, U2.10]
+  # counter bits into the XOR "reflector"
+  Q1: [U2.9, U3.1]
+  Q2: [U2.7, U3.5]
+  Q3: [U2.6, U3.8]
+  DIR: [U2.5, U3.2, U3.6, U3.9]
+  # reflected count into the decoder
+  A: [U3.3, U4.10]
+  B: [U3.4, U4.13]
+  C: [U3.10, U4.12]
+  # decoder outputs Q0..Q7 to the LEDs through their resistors
+  O0: [U4.3, R11.1]
+  O1: [U4.14, R12.1]
+  O2: [U4.2, R13.1]
+  O3: [U4.15, R14.1]
+  O4: [U4.1, R15.1]
+  O5: [U4.6, R16.1]
+  O6: [U4.7, R17.1]
+  O7: [U4.4, R18.1]
+  L1: [R11.2, D1.A]
+  L2: [R12.2, D2.A]
+  L3: [R13.2, D3.A]
+  L4: [R14.2, D4.A]
+  L5: [R15.2, D5.A]
+  L6: [R16.2, D6.A]
+  L7: [R17.2, D7.A]
+  L8: [R18.2, D8.A]
