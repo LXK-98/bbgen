@@ -1,0 +1,110 @@
+# knight-rider.yaml with the LEDs where the user first had them, further left (columns 39-53): placement used to
+# short counter A into two of their strips.
+title: Knight Rider LED runner (555 + 2x CD4017, 8 LEDs)
+notes:
+  - "Runs on 9 V (a 9 V battery or a bench supply); the CD4017s drive the LEDs straight from their outputs, ~6 mA each at 9 V."
+  - "Scan: U2 (counter A) lights L1-L5, stops itself at Q5 (Q5 -> CKEN) and lets U3 (counter B) run via Q1. U3 lights L6, L7, L8, L7 ... L2; its Q9 resets U2 and the cycle starts again: 14 steps, L1..L8..L2."
+  - "L6 sinks into U2's carry out (Cout is low only while U2 is parked at Q5), so U3's Q0 lights it only in the step between the two counters."
+  - "Speed: about 10 steps/s with RB = 68k and CT = 1 uF. A bigger RB or CT scans slower."
+  - "The LEDs' long leg is the anode; the diodes' band is the cathode. Q1 is a BC547 (pins C-B-E, flat side facing you); check yours, other NPNs differ."
+  - "Assumed: rails printed + then - from the top on both edges, not split in the middle. Check your board."
+
+parts:
+  U1: {symbol: Timer:NE555P, title: NE555}
+  U2: {symbol: 4xxx:4017, footprint: Package_DIP:DIP-16_W7.62mm, title: CD4017 A}
+  U3: {symbol: 4xxx:4017, footprint: Package_DIP:DIP-16_W7.62mm, title: CD4017 B}
+  Q1: {symbol: Transistor_BJT:BC547, footprint: Package_TO_SOT_THT:TO-92_Inline_Wide}
+
+  RA: {type: resistor, value: 1k}
+  RB: {type: resistor, value: 68k}
+  CT: {type: capacitor, value: 1uF}
+  CV: {type: capacitor, value: 10nF}
+  C1: {type: capacitor, value: 100nF, near: U1}
+  C2: {type: capacitor, value: 100nF, near: U2}
+  C3: {type: capacitor, value: 100nF, near: U3}
+  RBASE: {type: resistor, value: 10k}
+  RPULL: {type: resistor, value: 10k}
+
+  # The LEDs, placed by hand: a row at the top, right of the middle, cathodes in the top ground rail
+  # (L6's cathode goes to U2's carry out instead, so it lies along row a).
+  L1: {type: led, pins: [a39, top-39]}
+  L2: {type: led, pins: [a41, top-41]}
+  L3: {type: led, pins: [a43, top-43]}
+  L4: {type: led, pins: [a45, top-45]}
+  L5: {type: led, pins: [a47, top-47]}
+  L6: {type: led, pins: [a49, a50]}
+  L7: {type: led, pins: [a51, top-51]}
+  L8: {type: led, pins: [a53, top-53]}
+
+  R1: {type: resistor, value: 1k}
+  R2: {type: resistor, value: 1k}
+  R3: {type: resistor, value: 1k}
+  R4: {type: resistor, value: 1k}
+  R5: {type: resistor, value: 1k}
+  R6: {type: resistor, value: 1k}
+  R7: {type: resistor, value: 1k}
+  R8: {type: resistor, value: 1k}
+
+  D1: {type: diode, value: 1N4148}
+  D2: {type: diode, value: 1N4148}
+  D3: {type: diode, value: 1N4148}
+  D4: {type: diode, value: 1N4148}
+  D5: {type: diode, value: 1N4148}
+  D6: {type: diode, value: 1N4148}
+  D7: {type: diode, value: 1N4148}
+  D8: {type: diode, value: 1N4148}
+  D9: {type: diode, value: 1N4148}
+  D10: {type: diode, value: 1N4148}
+  D11: {type: diode, value: 1N4148}
+  D12: {type: diode, value: 1N4148}
+
+  J1: {type: offboard, title: 9 V supply, labels: [+9V, GND]}
+
+nets:
+  VCC: {pins: [J1.+9V, U1.VCC, U1./RST, U2.VDD, U3.VDD, RA.1, RPULL.1, C1.1, C2.1, C3.1], rail: +}
+  GND: {pins: [J1.GND, U1.GND, U2.VSS, U3.VSS, U3.CKEN, CT.2, CV.2, C1.2, C2.2, C3.2, Q1.E,
+               L1.K, L2.K, L3.K, L4.K, L5.K, L7.K, L8.K], rail: -}
+
+  # 555 astable clock
+  DIS: [U1.DISCH, RA.2, RB.1]
+  TIMING: [U1.THRES, U1.TRIG, RB.2, CT.1]
+  CTRL: [U1.CONT, CV.1]
+  CLK: [U1.OUT, U2.CLK, U3.CLK]
+
+  # Hand-over between the counters
+  A_STOP: [U2.Q5, U2.CKEN, RBASE.1]
+  BASE: [RBASE.2, Q1.B]
+  B_RESET: [Q1.C, RPULL.2, U3.Reset]
+  A_RESET: [U3.Q9, U2.Reset]
+  A_CARRY: [U2.Cout, L6.K]
+
+  # LED drive: counter outputs, OR-ed through diodes where an LED lights twice per cycle
+  A_Q0: [U2.Q0, R1.1]
+  A_Q1: [U2.Q1, D1.A]
+  B_Q8: [U3.Q8, D2.A]
+  N2: [D1.K, D2.K, R2.1]
+  A_Q2: [U2.Q2, D3.A]
+  B_Q7: [U3.Q7, D4.A]
+  N3: [D3.K, D4.K, R3.1]
+  A_Q3: [U2.Q3, D5.A]
+  B_Q6: [U3.Q6, D6.A]
+  N4: [D5.K, D6.K, R4.1]
+  A_Q4: [U2.Q4, D7.A]
+  B_Q5: [U3.Q5, D8.A]
+  N5: [D7.K, D8.K, R5.1]
+  B_Q0: [U3.Q0, D9.A]
+  B_Q4: [U3.Q4, D10.A]
+  N6: [D9.K, D10.K, R6.1]
+  B_Q1: [U3.Q1, D11.A]
+  B_Q3: [U3.Q3, D12.A]
+  N7: [D11.K, D12.K, R7.1]
+  B_Q2: [U3.Q2, R8.1]
+
+  LED1: [R1.2, L1.A]
+  LED2: [R2.2, L2.A]
+  LED3: [R3.2, L3.A]
+  LED4: [R4.2, L4.A]
+  LED5: [R5.2, L5.A]
+  LED6: [R6.2, L6.A]
+  LED7: [R7.2, L7.A]
+  LED8: [R8.2, L8.A]

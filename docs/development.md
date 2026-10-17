@@ -76,6 +76,10 @@ by event, every trial layout placement builds and its score, and what `bbgen bui
 writes for the examples and 113 circuits built to break it. A change that moves a wire fails them
 by design; once the benchmarks say the change is better, record it with `benchmarks/record.py`.
 
+A few tests check what placement must do rather than what it did: a chip bbgen places keeps out of strips the file
+gives another net, and says what's in the way when nothing else fits ([tests/hand_placed.rs](../tests/hand_placed.rs),
+its circuits in `tests/hand-placed/`).
+
 Some tests guard against attacks rather than bugs. A circuit file can come from anyone, or from an agent
 someone misled, so a colour that isn't one is an error and names are escaped in the drawing
 ([tests/colors.rs](../tests/colors.rs)). A file can't use YAML aliases to fill memory. Every workflow action

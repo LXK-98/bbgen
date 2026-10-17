@@ -156,7 +156,9 @@ Many flexible jumpers say the same: parts that talk to each other are far apart 
 Leave out a part's place and bbgen places it: `at` (and `rot`) on a Pico, DIP or SIP, `pins` on a
 resistor, capacitor, diode or LED. A file can then be just parts and nets; bbgen places, wires
 (`autowire` comes on by itself) and checks it in a few seconds. Anything you do give is kept, so
-pin a part with `at:` where you want it and let bbgen fit the rest around it.
+pin a part with `at:` where you want it and let bbgen fit the rest around it. A strip you put a leg or a
+wire end in is that net's: bbgen puts no other net's pin there, and no pin or body on a hole you've taken.
+If that leaves a part nowhere to go, the build stops and names what's in the way.
 
 ```yaml
 parts:

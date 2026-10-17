@@ -3,6 +3,13 @@
 Until 1.0, a new minor version (0.2.0) may change the circuit file or what bbgen writes; a patch (0.1.1) only
 fixes things. Each release's section here is its notes on GitHub.
 
+## Unreleased
+
+- Placement no longer puts a chip's pin in a strip where the file has put a leg or a wire end of another net, or
+  a pin or the chip's body on a hole the file takes: it used to short into LEDs placed by hand. When there's no
+  other place for a chip, bbgen says so and names what's in the way, and it never returns a layout with a short
+  of its own making.
+
 ## 0.1.0 (2026-10-17)
 
 The first public release.

@@ -1,0 +1,24 @@
+# As no-room.yaml, with one LED and a chain of wires from its strip: each wire end's strip carries the LED's
+# net, so the chip has nowhere to go.
+title: No room left for the chip, by wires
+boards: [half]
+parts:
+  U1: {type: dip, pins: 8, labels: [GND, TRIG, OUT, RST, CTRL, THR, DIS, VCC]}
+  L1: {type: led, pins: [a3, top-]}
+wires:
+  - [b3, a6]
+  - [b6, a9]
+  - [b9, a12]
+  - [b12, a15]
+  - [b15, a18]
+  - [b18, a21]
+  - [b21, a24]
+  - [b24, a27]
+  - [b27, a30]
+nets:
+  GND: {pins: [U1.GND, L1.K], rail: -}
+  VCC: {pins: [U1.VCC, U1.RST], rail: +}
+  OUT: [U1.OUT]
+  ANODE: [L1.A]
+  TIMING: [U1.TRIG, U1.THR, U1.DIS]
+  CTRL: [U1.CTRL]

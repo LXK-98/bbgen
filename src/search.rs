@@ -97,8 +97,21 @@ pub struct Model {
     pub auto: Vec<String>,
     pub choices: Vec<Vec<Rc<Layout>>>,
     fixed: Vec<Rc<Layout>>,
+    /// strips the file puts a leg or a wire end in: the net there (None if it can't be told, or the file puts two
+    /// nets there) and whose they are
+    hand_strips: HashMap<(Half, i64), (Option<String>, Vec<String>)>,
+    /// holes the file puts a leg or a wire end in, and whose
+    hand_holes: HashMap<(i64, i64), String>,
     lo: std::cell::Cell<i64>,
     hi: std::cell::Cell<i64>,
+}
+
+/// Names in a message: the first six, then how many more.
+fn few(names: &[String]) -> String {
+    match names.len() {
+        0..=6 => names.join(", "),
+        n => format!("{} and {} more", names[..6].join(", "), n - 6),
+    }
 }
 
 fn ceil_i(x: f64) -> i64 {
@@ -239,9 +252,11 @@ impl Model {
             .map(|(r, _)| r.clone()).collect();
         let mut m = Model {
             boards, below, above, offset, width, gaps, strips, parts, nets, net_of, free_supplies, plan, rail_y, links,
-            to_rail, offboard, auto, choices: vec![], fixed: vec![], lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
+            to_rail, offboard, auto, choices: vec![], fixed: vec![], hand_strips: HashMap::default(), hand_holes: HashMap::default(),
+            lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
         };
         m.hi.set(m.boards[0].0.columns as i64);
+        m.hand_placed(data)?;
         let mut choices = Vec::new();
         for r in m.auto.clone() {
             let pi = m.parts.get_index_of(&r).unwrap();
@@ -249,6 +264,22 @@ impl Model {
             if ch.is_empty() {
                 return Err(format!("parts.{}: there's no place on the board where its pins all land in holes without two of \
                                     them sharing a strip; give it at:, or use another footprint", r));
+            }
+            // a pin of another net in a strip the file uses, or a pin or the body on a hole it takes, is an error
+            // nothing later can mend: those places are out
+            let mut blocking: Vec<String> = Vec::new();
+            let ch: Vec<Layout> = ch.into_iter().filter(|l| {
+                let who = m.clashes(pi, l);
+                for w in &who {
+                    if !blocking.contains(w) {
+                        blocking.push(w.clone());
+                    }
+                }
+                who.is_empty()
+            }).collect();
+            if ch.is_empty() {
+                return Err(format!("parts.{}: every place for it would short a pin into a strip, or take a hole, of what the \
+                                    file places itself ({}); give it at:, or move those", r, few(&blocking)));
             }
             choices.push(ch.into_iter().map(Rc::new).collect());
         }
@@ -544,6 +575,138 @@ impl Model {
         let (b, _, col) = parse_hole(at).unwrap();
         let id = b.unwrap_or(self.boards[0].0.id.clone());
         self.offset.get(&id).copied().unwrap_or(0) + col.unwrap() as i64
+    }
+
+    /// Where a hole the file names is in the model, if it's a terminal hole (rails take no chip's pins).
+    fn spot(&self, text: &str) -> Option<(i64, i64)> {
+        let (bid, row, col) = parse_hole(text)?;
+        if row.is_rail() {
+            return None;
+        }
+        let bi = match &bid {
+            None => 0,
+            Some(b) => self.boards.iter().position(|(x, _)| &x.id == b)?,
+        };
+        Some((self.offset[&self.boards[bi].0.id] + col? as i64, row.terminal_y() as i64))
+    }
+
+    /// What the file places at holes itself, which placement mustn't put another net's pin beside: the legs of two-lead
+    /// parts given `pins:`, and wire ends. A wire end's strip carries the net at its other end (a pin, a rail one net
+    /// has, or a strip known already), followed along chains of wires.
+    fn hand_placed(&mut self, data: &Val) -> Result<(), String> {
+        fn claim(strips: &mut HashMap<(Half, i64), (Option<String>, Vec<String>)>, holes: &mut HashMap<(i64, i64), String>,
+                 (x, y): (i64, i64), net: Option<&String>, who: &str) {
+            holes.entry((x, y)).or_insert_with(|| who.to_string());
+            let slot = strips.entry((half_of(y), x)).or_insert_with(|| (net.cloned(), vec![]));
+            if slot.0.as_ref() != net {
+                slot.0 = None;
+            }
+            if !slot.1.iter().any(|w| w == who) {
+                slot.1.push(who.to_string());
+            }
+        }
+        let (mut strips, mut holes) = (HashMap::default(), HashMap::default());
+        for (pi, part) in self.parts.values().enumerate() {
+            if part.kind.is_lead() {
+                for (k, leg) in part.legs.iter().enumerate().take(part.pins.len()) {
+                    if let Some(xy) = self.spot(leg) {
+                        claim(&mut strips, &mut holes, xy, self.net_of.get(&(pi, k)), &part.r#ref);
+                    }
+                }
+            }
+        }
+        enum End {
+            At((i64, i64)),
+            Net(String),
+            Nothing,
+        }
+        let end = |text: &str| -> End {
+            if let Some(xy) = self.spot(text) {
+                return End::At(xy);
+            }
+            if let Some((_, row, _)) = parse_hole(text).filter(|h| h.1.is_rail()) {
+                let on: Vec<&String> = self.plan.iter().filter(|(_, rails)| rails.iter().any(|r| r == row.name())).map(|(n, _)| n).collect();
+                return if on.len() == 1 { End::Net(on[0].clone()) } else { End::Nothing };
+            }
+            let (r, token) = text.split_once('.').unwrap_or((text, ""));
+            let net = self.parts.get_index_of(r).and_then(|pi| self.parts[pi].find(token).first().and_then(|&k| self.net_of.get(&(pi, k))));
+            net.map(|n| End::Net(n.clone())).unwrap_or(End::Nothing)
+        };
+        let (_, wires) = read_wires(data.at("wires"))?;
+        let wires: Vec<(String, [End; 2])> = wires.iter().map(|w| (format!("W{}", w.num), [end(&w.spec.0), end(&w.spec.1)]))
+            .filter(|(_, ends)| ends.iter().any(|e| matches!(e, End::At(_)))).collect();
+        let mut nets: Vec<Option<String>> = vec![None; wires.len()];
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (i, (who, ends)) in wires.iter().enumerate() {
+                if nets[i].is_some() {
+                    continue;
+                }
+                let known = ends.iter().find_map(|e| match e {
+                    End::Net(n) => Some(n.clone()),
+                    End::At((x, y)) => strips.get(&(half_of(*y), *x)).and_then(|s: &(Option<String>, Vec<String>)| s.0.clone()),
+                    End::Nothing => None,
+                });
+                if let Some(n) = known {
+                    for e in ends {
+                        if let End::At(xy) = e {
+                            claim(&mut strips, &mut holes, *xy, Some(&n), who);
+                        }
+                    }
+                    nets[i] = Some(n);
+                    changed = true;
+                }
+            }
+        }
+        for (i, (who, ends)) in wires.iter().enumerate() {
+            if nets[i].is_none() {
+                for e in ends {
+                    if let End::At(xy) = e {
+                        claim(&mut strips, &mut holes, *xy, None, who);
+                    }
+                }
+            }
+        }
+        self.hand_strips = strips;
+        self.hand_holes = holes;
+        Ok(())
+    }
+
+    /// Whose placements in the file a layout of part pi runs into: a pin of another net (or of none) in a strip of
+    /// theirs, or a pin or the part's body on a hole they take.
+    fn clashes(&self, pi: usize, l: &Layout) -> Vec<String> {
+        let mut who: Vec<String> = Vec::new();
+        let mut add = |w: &String| {
+            if !who.contains(w) {
+                who.push(w.clone());
+            }
+        };
+        for &(p, xy) in &l.xy {
+            if let Some(w) = self.hand_holes.get(&xy) {
+                add(w);
+            }
+            if let Some((net, owners)) = self.hand_strips.get(&(half_of(xy.1), xy.0)) {
+                if net.is_none() || net.as_ref() != self.net_of.get(&p) {
+                    owners.iter().for_each(&mut add);
+                }
+            }
+        }
+        let part = &self.parts[pi];
+        if let (Some(rect), false) = (body_rect(part), self.hand_holes.is_empty()) {
+            let (bid, row, _) = parse_hole(&l.at).unwrap();
+            let bi = bid.and_then(|b| self.boards.iter().position(|(x, _)| x.id == b)).unwrap_or(0);
+            let (x0, y0, x1, y1) = Model::bx(rect, l.rot, l.x, row.terminal_y() as i64);
+            let pins: HashSet<(i64, i64)> = l.xy.iter().map(|(_, p)| *p).collect();
+            let mut under: Vec<(&(i64, i64), &String)> = self.hand_holes.iter().filter(|(&(x, y), _)| !pins.contains(&(x, y))
+                && self.views(bi).iter().any(|&(shift, dx, lo, hi)| lo.max(ceil_i(x0 + dx as f64 + 1e-6)) <= x
+                    && x <= hi.min(floor_i(x1 + dx as f64 - 1e-6)) && y0 < (y + shift) as f64 && ((y + shift) as f64) < y1)).collect();
+            under.sort();
+            for (_, w) in under {
+                add(w);
+            }
+        }
+        who
     }
 
     /// The estimate for a placement of the parts bbgen places (in this order), the file's own placements first.
@@ -1248,11 +1411,45 @@ pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
         }
         false
     });
-    let (score, data, c, k) = best.ok_or("bbgen found no way to fit these parts on the board without overlapping; place the \
-                                          biggest yourself (at:), or use more boards")?;
+    let (score, data, c, k) = best.ok_or_else(|| format!("bbgen found no way to fit these parts on the board without overlapping{}; \
+                                                        place the biggest yourself (at:), or use more boards",
+                                                        if model.hand_holes.is_empty() { "" } else { " or running into what the file places itself" }))?;
     let model = all_models[k];
     let (score, data, c) = turned(&sc, model, score, data, c);
-    Ok(repair(&sc, model, &leads, score, data, c))
+    let (data, c) = repair(&sc, model, &leads, score, data, c);
+    if let Some(e) = own_error(&c, &model.auto, &leads) {
+        return Err(e);
+    }
+    Ok(data)
+}
+
+/// An error between a part bbgen placed and one the file places (a short, a stray pin, a hole taken twice), which
+/// placement should never make: a message saying so, rather than a layout that fails its own check. It names the
+/// chips bbgen placed in the error, else its two-lead parts.
+fn own_error(c: &Circuit, auto: &[String], leads: &[String]) -> Option<String> {
+    let result = crate::check::check(c);
+    for issue in result.issues.iter().filter(|i| i.level == "error" && matches!(i.code, "SHORT" | "STRAY" | "HOLE_TAKEN")) {
+        let mut refs: Vec<String> = issue.pins.iter().map(|p| c.parts[p.part as usize].r#ref.clone()).collect();
+        refs.extend(words(&issue.message).into_iter().filter(|w| c.part_index.contains_key(w)));
+        let mut ours: Vec<String> = Vec::new();
+        let mut theirs: Vec<String> = Vec::new();
+        for r in refs {
+            let side = if auto.contains(&r) || leads.contains(&r) { &mut ours } else { &mut theirs };
+            if !side.contains(&r) {
+                side.push(r);
+            }
+        }
+        theirs.retain(|r| c.parts[c.part_index[r] as usize].kind != Kind::Offboard);
+        if ours.iter().any(|r| auto.contains(r)) {
+            ours.retain(|r| auto.contains(r));
+        }
+        if !ours.is_empty() && !theirs.is_empty() {
+            return Some(format!("couldn't place {} without an error against {}, which the file places: {} {}; give {} a \
+                                 place yourself, or move {}", ours.join(", "), theirs.join(", "), issue.code, issue.message,
+                                if ours.len() == 1 { "it" } else { "them" }, theirs.join(", ")));
+        }
+    }
+    None
 }
 
 /// The best layout with its footprint parts turned round where they are, in every combination.
@@ -1342,7 +1539,7 @@ mod tests {
     }
 }
 
-fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data: Val, mut c: Circuit) -> Val {
+fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data: Val, mut c: Circuit) -> (Val, Circuit) {
     let (mut builds, mut since, mut polishes) = (0usize, 0usize, 0usize);
     let mut improved = true;
     while improved && builds < REPAIR_BUILDS && since < PATIENCE {
@@ -1393,7 +1590,7 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
     if !leads.is_empty() && data.get("_leg_rank").is_none() {
         data = with(&data, &pinned(&c, leads));
     }
-    data
+    (data, c)
 }
 
 #[allow(dead_code)]

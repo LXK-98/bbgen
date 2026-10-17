@@ -492,6 +492,31 @@ the README; settle what the studio is for first.
 
 ## 15. Placement shorts a chip into a hand-placed part's strip
 
+**Done (October 2026).** `Model::new` reads what the file places at holes itself (`hand_placed`): each leg of a
+two-lead part given `pins:`, and each wire end, whose strip carries the net at the wire's other end (a pin, a rail
+only one net has, or a strip known already, followed along chains of wires; a strip whose net can't be told, or
+holds two, takes no chip pin at all). A chip's place is dropped from its choices (`clashes`) when a pin lands in
+such a strip of another net (or of none), or a pin or its body on a taken hole. Dropping places up front does what
+an infinite cost would, more simply, since hand placements never move: annealing, turning and repair all choose
+from the same lists. When a chip has no place left, the build fails naming what's in the way. After repair,
+`own_error` fails the build too if a SHORT, STRAY or HOLE_TAKEN still names a part bbgen placed and one the file
+places; that should now be unreachable, and the user chose a failure over a drawing with the error. No benchmark
+places legs or wires by hand around chips bbgen places, so every record holds. Tests: `tests/hand_placed.rs`, with
+the reproduction (now 0 errors, 11 flexible jumpers against 10 with the chips placed by hand) and an earlier
+variant of it, and small circuits for the error and for wire chains.
+
+Prior art: chip placers treat parts placed beforehand as fixed obstacles and take the sites they block out of the
+set a cell can go to; a region that's too full is reported, not overlapped
+([US 7036103](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7036103),
+[US 7934188](https://patents.google.com/patent/US7934188B2)). A short is a hard constraint in the stripboard ASP
+work too ([arXiv 2512.04910](https://arxiv.org/html/2512.04910v1)).
+
+Left open: hand-placed legs don't pull their nets' pins in the estimate (`where_` holds only footprint pins), so
+chips aren't drawn toward what the file places; that's a layout change, to be judged on the drawings. A
+hand-placed part lying across a chip bbgen places stays a warning (`OVER_PART`), priced by the score.
+
+The original report follows.
+
 **Issue.** From the first project built with the breadboard skill (a Knight Rider LED runner: an NE555, two
 CD4017s, 8 LEDs placed by hand, 42 parts, 39 nets; the feedback is in
 `~/Projects/knight-rider/bbgen-feedback/`). With the chips left to bbgen, placement put U3's pin 10 (Q4) in
@@ -541,8 +566,9 @@ patterns of parts (a CAD tool's job).
   The best of about 30 variants still had 10 flexible jumpers, with the diodes around counter A, far from
   their LEDs. Not checked on the drawings yet; look at them first (point 12), then look up how other tools
   group parts (tscircuit's grids, point 4's research) before designing.
-- **Labels over each other:** "L8" and "L7" printed as "L8L7" with the LEDs two columns apart. Reported,
-  not reproduced yet; the label check (`measure::label_clashes`) should have counted it.
+- **Labels over each other:** "L8" and "L7" printed as "L8L7" with the LEDs two columns apart.
+  `tests/hand-placed/knight-rider.yaml` shows it (L7 at `a59`, L8 at `a61`); the label check
+  (`measure::label_clashes`) should have counted it.
 - **An LED across a rail** (row `j` to `bot-`, across `bot+`, with the rails `+-` on both edges): find out
   whether bbgen allows this, warns, or says nothing, and say so in circuit-file.md.
 - **Say why a jumper is flexible**, as DIAGONAL warnings already do: "W44 is flexible because every
