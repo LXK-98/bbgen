@@ -62,3 +62,22 @@ fn no_room_is_an_error_naming_what_is_in_the_way() {
         assert!(err.starts_with("parts.U1: every place for it would short a pin into a strip") && err.contains(first), "{}: {}", name, err);
     }
 }
+
+#[test]
+fn resistors_repeated_around_leds_are_placed_alike() {
+    let (code, err, json) = run("decoder-leds.yaml");
+    assert_eq!(code, 0, "{}", err);
+    let json = json.unwrap();
+    let col = |h: &str| -> (String, i64) {
+        let i = h.find(|ch: char| ch.is_ascii_digit()).unwrap();
+        (h[..i].to_string(), h[i..].parse().unwrap())
+    };
+    let mut shapes = Vec::new();
+    for k in 1..=8 {
+        let led = col(part(&json, &format!("D{}", k))["legs"][0].as_str().unwrap());
+        let legs: Vec<(String, i64)> = part(&json, &format!("R1{}", k))["legs"].as_array().unwrap().iter()
+            .map(|l| col(l.as_str().unwrap())).map(|(row, c)| (row, c - led.1)).collect();
+        shapes.push(legs);
+    }
+    assert!(shapes.iter().all(|s| *s == shapes[0]), "{:?}", shapes);
+}

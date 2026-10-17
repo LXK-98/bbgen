@@ -86,7 +86,7 @@ fn drops(c: &Circuit, plan: &IndexMap<String, Vec<String>>, net_of: &HashMap<Pin
 }
 
 /// Pins' straight drops to their rails, indexed for quick lookups.
-struct Drops {
+pub(crate) struct Drops {
     ends: HashMap<Hole, usize>,
     lines: HashMap<(u8, i64), Vec<(f64, f64)>>,
 }
@@ -106,7 +106,7 @@ impl Drops {
     }
 
     /// How many drops a part with legs in a and b would be in the way of.
-    fn blocked(&self, a: Hole, b: Hole, pa: Xy, pb: Xy) -> usize {
+    pub(crate) fn blocked(&self, a: Hole, b: Hole, pa: Xy, pb: Xy) -> usize {
         let mut n = self.ends.get(&a).copied().unwrap_or(0) + self.ends.get(&b).copied().unwrap_or(0);
         if let Some((k, lo, hi)) = line(pa, pb) {
             if let Some(v) = self.lines.get(&k) {
@@ -117,7 +117,7 @@ impl Drops {
     }
 }
 
-fn strips_of(c: &Circuit, net: &str, extra: &HashMap<String, Vec<Strip>>) -> HashSet<Strip> {
+pub(crate) fn strips_of(c: &Circuit, net: &str, extra: &HashMap<String, Vec<Strip>>) -> HashSet<Strip> {
     let mut out: HashSet<Strip> = c.nets[net].pins.iter().filter_map(|&p| c.pin(p).hole).filter(|h| !h.is_rail())
         .map(|h| c.boards[h.board as usize].strip(h)).collect();
     if let Some(e) = extra.get(net) {
@@ -409,7 +409,8 @@ pub fn place_legs(c: &mut Circuit, parts: &[usize]) {
     let mut extra: HashMap<String, Vec<Strip>> = HashMap::default();
     let drops = Drops::new(c, &drops(c, &plan, &net_of));
     let mut served: Vec<PinId> = Vec::new();
-    for &pi in parts {
+    let done = crate::repeats::place(c, parts, &net_of, &plan, &drops, &mut extra);
+    for &pi in parts.iter().filter(|p| !done.contains(p)) {
         let r = c.parts[pi].r#ref.clone();
         let kind = c.parts[pi].kind;
         let nets: Vec<Option<String>> = (0..c.parts[pi].pins.len()).map(|k| net_of.get(&PinId { part: pi as u16, pin: k as u16 }).cloned()).collect();

@@ -65,6 +65,9 @@ pub const HALF_WALL_COST: f64 = 3.0;
 pub const KEEP_COST: f64 = 1.5;
 /// a two-lead part between two signal nets with no free strip in reach
 pub const ROOMLESS_COST: f64 = 20.0;
+/// per strip a footprint part takes across the trench from a leg the file places, which the parts bbgen hangs on
+/// that leg need (an LED's resistor stands across the trench under it)
+pub const FRONT_COST: f64 = 10.0;
 /// per free row short of four in the strip of a pin in a net (a wide part a row off centre gives its busy side more)
 pub const ROOM_COST: f64 = 2.0;
 

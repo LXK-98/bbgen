@@ -576,8 +576,8 @@ patterns of parts (a CAD tool's job).
 - **Groups of parts** (`groups: {LED2: [D1, D2, R2, L2]}` or `cluster: L2`): keep a repeated channel (an
   LED with its resistor and diodes, a button input, an ADC channel) together around a part placed by hand.
   The best of about 30 variants still had 10 flexible jumpers, with the diodes around counter A, far from
-  their LEDs. Not checked on the drawings yet; look at them first (point 12), then look up how other tools
-  group parts (tscircuit's grids, point 4's research) before designing.
+  their LEDs. **Done (October 2026), as repeated groups found in the netlist and placed alike, with no new
+  syntax:** see "Repeated groups" below.
 - **Labels over each other:** "L8" and "L7" printed as "L8L7" with the LEDs two columns apart.
   `tests/hand-placed/knight-rider.yaml` shows it (L7 at `a59`, L8 at `a61`); the label check
   (`measure::label_clashes`) should have counted it.
@@ -585,6 +585,51 @@ patterns of parts (a CAD tool's job).
   whether bbgen allows this, warns, or says nothing, and say so in circuit-file.md.
 - **Say why a jumper is flexible**, as DIAGONAL warnings already do: "W44 is flexible because every
   straight route from g34 to d26 is blocked by U3 and W39". That shows which part to move. Later.
+
+**Repeated groups (done, October 2026; kept by the user's choice, with the decoder circuit's extra wires).**
+Instead of `groups:` in the file, bbgen finds the groups and places the ones that repeat the same way
+(src/repeats.rs). This also covers "`near:` for one end" above: a diode's end sits by its LED as part of its group.
+- *A group* is the two-lead parts bbgen places that hang together, through nets no chip, rail or lead reaches, on
+  one two-lead part the file places (an LED with its resistor and diodes). Groups are copies when their parts are of
+  the same kinds and joined the same way, with each net leaving the group going to the same kind of thing (the same
+  rail, or a chip), and their hand-placed parts the same shape. Knight Rider's first circuit has 6 copies of
+  LED ← resistor ← two diodes (L6's cathode goes to a chip, so its LED lies differently and it's alone) and 2 of
+  LED ← resistor; run 2's has 8 of LED ← resistor.
+- *One shape for the copies:* the legs of the first n parts out from the hand-placed part, as holes relative to it,
+  each part lying straight at its natural span. A search (a beam of leg pairs per part, branch and bound) finds
+  the shape that fits the most copies, then covers the most parts, then costs least (the leg costs of legs.rs),
+  trying each group as the pattern. A copy it doesn't fit, and the parts beyond n, get the usual leg placement.
+  Copies stay together through repair: they're not re-ranked one at a time (`Circuit::repeated`, carried through
+  the trials as `_repeated`).
+- *Room:* the estimate charges `FRONT_COST` for each strip a chip takes across the trench from a hand-placed leg
+  that bbgen hangs parts on, since that's where an LED's resistor stands.
+- *Found on the way:* with the LEDs two columns apart, every copy shares its rows, so no part longer than two holes
+  can lie along a row without running into the next copy: the only straight places are down the LED's own column,
+  across the trench. An LED with a resistor and two diodes can't repeat without slanted diodes, so only the
+  resistor repeats there.
+- *Results* (flexible jumpers / wires; main → repeats only → room only → both): `knight-rider.yaml` 16/35 → 13/36
+  → 16/36 → 13/36; `knight-rider-left.yaml` 16/35 → 15/36 → 13/37 → 12/41; `decoder-leds.yaml` 6/41 → 7/50 →
+  6/41 → 7/50. No benchmark places parts by hand, so every record holds. On the drawings: the resistors stand in a
+  row under the LEDs, but run 2's decoder circuit now needs a wire from each resistor's lower strip to the decoder
+  (on main the resistors lay from the decoder's strips to the LEDs', doing the wires' job); the two-diode circuits
+  keep their diodes scattered in the lower half with long jumpers.
+- *Next:* the diodes. They can't repeat beside LEDs two columns apart; a second pattern placed by the chip pins
+  that drive them (each diode from its counter's strip, the wire to the LED's strip) might, which means a shape
+  anchored on a chip rather than on a hand-placed part. Groups with no hand-placed part (a button input, an ADC
+  channel) need the same: bbgen would choose where each copy goes, probably in a row in front of the pins that
+  drive them, and that would move the benchmarks. And judge the decoder circuit's extra wires again once point 12
+  gives the score a sense of tidiness.
+
+**Prior art.** Datapath placers find repeated subcircuits (templates, bit slices) before placing, since a general
+placer scatters them, and lay them out as identical slices ([Hassoun & McCreary, ICCAD 1999](https://www.cs.tufts.edu/~soha/paperArchive/1999%20Regularity%20extraction%20via%20clan-based%20structural%20circuit%20decomposition.pdf);
+structural versus functional extraction, [UT Austin](https://www.cerc.utexas.edu/utda/publications/C135.pdf); a
+survey in [US 8589855](https://patents.justia.com/patent/8589855)). PCB tools copy one channel's layout to the
+others by hand: Altium's Copy Room Formats with channel classes ([Altium](https://resources.altium.com/p/how-to-simplify-your-circuit-replication-with-multi-channel-design)),
+KiCad 9's Repeat Multi-Channel Layout ([forum](https://forum.kicad.info/t/v9-0-0-multi-channel-layout-how/59749)),
+which refuses copies whose outside connections differ ("topology mismatch",
+[forum](https://forum.kicad.info/t/multi-channel-im-getting-a-topology-mismatch-status-when-attempting-to-repeat-layout/58795)),
+as bbgen leaves L6 alone. bbgen's groups are small, so a signature and a backtracking match do instead of the
+general subgraph search those papers need.
 
 ## 17. Chips aren't drawn toward what the file places
 

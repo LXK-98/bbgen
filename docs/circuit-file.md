@@ -180,6 +180,11 @@ nets: ...
   would cover one side's strips whole, so give it `at:` (or use two boards, as builders do).
 - A decoupling cap (both nets on rails) goes next to a pin of its supply that has none yet;
   `near:` overrides that.
+- Parts that repeat around parts you place are placed alike: eight LEDs placed by hand, each with its own
+  resistor to a chip, get their resistors the same way round each LED (here standing across the trench under
+  it), as far as the board leaves room. Each part in such a pattern lies straight; with the LEDs two columns
+  apart there's room for one resistor each that way, and further parts (a diode per LED) are placed as usual.
+  Chips keep off the strip across the trench from a leg you place, where those parts go.
 - With several boards (`boards: [full, full]`), bbgen places parts on any of them, each part on
   one board; a net's rails run on every board, linked across at their ends.
 - The same file always gives the same layout. The checklist says where everything went.

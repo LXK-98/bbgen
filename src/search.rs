@@ -108,6 +108,8 @@ pub struct Model {
     /// nets with no pin of their own placed (only two-lead parts bbgen places) on a chain of such parts from a leg the
     /// file places, each with the nets it's linked to, in an order that has each one's neighbours first where it can
     chained: Vec<(String, Vec<String>)>,
+    /// the strips across the trench from legs the file places that two-lead parts bbgen places hang on
+    front: HashSet<(Half, i64)>,
     lo: std::cell::Cell<i64>,
     hi: std::cell::Cell<i64>,
 }
@@ -259,7 +261,7 @@ impl Model {
         let mut m = Model {
             boards, below, above, offset, width, gaps, strips, parts, nets, net_of, free_supplies, plan, rail_y, links,
             to_rail, offboard, auto, choices: vec![], fixed: vec![], hand_strips: HashMap::default(), hand_holes: HashMap::default(),
-            anchors: vec![], chained: vec![], lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
+            anchors: vec![], chained: vec![], front: HashSet::default(), lo: std::cell::Cell::new(1), hi: std::cell::Cell::new(0),
         };
         m.hi.set(m.boards[0].0.columns as i64);
         m.hand_placed(data)?;
@@ -714,6 +716,11 @@ impl Model {
             }
             (n.clone(), by)
         }).collect();
+        let hung = |n: &String| self.links.iter().any(|(a, b)| (a == n || b == n) && a != b
+            && !self.plan.contains_key(a) && !self.plan.contains_key(b));
+        self.front = self.anchors.iter().filter(|(p, _)| self.net_of.get(p).map(|n| !self.plan.contains_key(n) && hung(n)).unwrap_or(false))
+            .map(|&(_, (x, y))| (if half_of(y) == Half::Top { Half::Bot } else { Half::Top }, x))
+            .filter(|k| !self.hand_strips.contains_key(k)).collect();
     }
 
     /// Whose placements in the file a layout of part pi runs into: a pin of another net (or of none) in a strip of
@@ -840,6 +847,7 @@ impl Model {
                 *taken.entry(*k).or_insert(0) += n;
             }
         }
+        cost += FRONT_COST * taken.keys().filter(|k| self.front.contains(k)).count() as f64;
         let crowded: i64 = crowd.iter().map(|(k, n)| 0.max(n - 1.max(4 - taken.get(k).copied().unwrap_or(0)))).sum();
         cost += CROWD_COST * crowded as f64;
         // a chained net sits at the median of its neighbours' points, where its links cost least
@@ -1125,6 +1133,15 @@ impl<'a> Scorer<'a> {
     }
 }
 
+/// The file with every two-lead part's legs written in, and which of them are copies of a repeated group.
+fn pin(data: &Val, c: &Circuit, leads: &[String]) -> Val {
+    let data = with(data, &pinned(c, leads));
+    if c.repeated.is_empty() {
+        return data;
+    }
+    set_key(&data, "_repeated", Val::List(c.repeated.iter().map(|r| Val::Str(r.clone())).collect()))
+}
+
 fn pinned(c: &Circuit, leads: &[String]) -> Vec<(String, Vec<(&'static str, Val)>)> {
     let mut out = Vec::new();
     for r in leads {
@@ -1248,7 +1265,8 @@ fn moves(model: &Model, leads: &[String], c: &Circuit, result: &crate::check::Re
     for change in shifted(model, &state) {
         out.push((merge(&unpinned, change), vec![]));
     }
-    let mut by_rank: Vec<&String> = leads.iter().collect();
+    // a copy of a repeated group moves with the chips, not on its own
+    let mut by_rank: Vec<&String> = leads.iter().filter(|r| !c.repeated.contains(r)).collect();
     by_rank.sort_by_key(|r| rank(r));
     for r in by_rank {
         for k in 0..4 {
@@ -1362,13 +1380,13 @@ fn without_rank(mut v: Val) -> Val {
 /// A few leg-pair moves on a fresh layout, greedily: (score, data, circuit, builds spent).
 fn polish(sc: &Scorer, leads: &[String], data: Val, mut score: f64, mut c: Circuit, budget: usize) -> (f64, Val, Circuit, usize) {
     let mut spent = 0;
-    let mut data = with(&data, &pinned(&c, leads));
+    let mut data = pin(&data, &c, leads);
     let mut improved = true;
     while improved && spent < budget {
         improved = false;
         let order = trouble(&c, &crate::check::check(&c));
         let rank = |r: &str| order.iter().position(|x| x == r).unwrap_or(order.len());
-        let mut refs: Vec<&String> = leads.iter().collect();
+        let mut refs: Vec<&String> = leads.iter().filter(|r| !c.repeated.contains(r)).collect();
         refs.sort_by_key(|r| rank(r));
         let here = data.clone();
         let mut trials = Vec::new();
@@ -1396,7 +1414,7 @@ fn polish(sc: &Scorer, leads: &[String], data: Val, mut score: f64, mut c: Circu
         if let Some((s2, trial, c2)) = kept {
             score = s2;
             c = c2;
-            data = without_rank(with(&trial, &pinned(&c, leads)));
+            data = without_rank(pin(&trial, &c, leads));
             improved = true;
         }
     }
@@ -1487,6 +1505,8 @@ pub fn autoplace(data: &Val, source: &str) -> Result<Val, String> {
     if let Some(e) = own_error(&c, &model.auto, &leads) {
         return Err(e);
     }
+    let mut data = data;
+    data.map_remove("_repeated");
     Ok(data)
 }
 
@@ -1608,6 +1628,9 @@ mod tests {
 
 fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data: Val, mut c: Circuit) -> (Val, Circuit) {
     let (mut builds, mut since, mut polishes) = (0usize, 0usize, 0usize);
+    if !c.repeated.is_empty() {
+        data = set_key(&data, "_repeated", Val::List(c.repeated.iter().map(|r| Val::Str(r.clone())).collect()));
+    }
     let mut improved = true;
     while improved && builds < REPAIR_BUILDS && since < PATIENCE {
         improved = false;
@@ -1650,12 +1673,12 @@ fn repair(sc: &Scorer, model: &Model, leads: &[String], mut score: f64, mut data
         if let Some((s2, trial, c2)) = kept {
             score = s2;
             c = c2;
-            data = without_rank(with(&trial, &pinned(&c, leads)));
+            data = without_rank(pin(&trial, &c, leads));
             improved = true;
         }
     }
     if !leads.is_empty() && data.get("_leg_rank").is_none() {
-        data = with(&data, &pinned(&c, leads));
+        data = pin(&data, &c, leads);
     }
     (data, c)
 }

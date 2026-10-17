@@ -48,7 +48,7 @@ ln -s "$PWD/bbgen/skill" ~/.claude/skills/breadboard
 | [src/](../src) | bbgen. [main.rs](../src/main.rs) is the command line; the rest is the library it calls |
 | [src/circuit.rs](../src/circuit.rs), [yaml.rs](../src/yaml.rs), [val.rs](../src/val.rs) | reading a circuit file, with every pin placed |
 | [src/board.rs](../src/board.rs), [parts.rs](../src/parts.rs), [kicad.rs](../src/kicad.rs) | the breadboard's geometry, bbgen's own parts, and parts from KiCad's library |
-| [src/search.rs](../src/search.rs), [autoplace.rs](../src/autoplace.rs), [legs.rs](../src/legs.rs) | placing what the file leaves unplaced, and which nets run on which rails |
+| [src/search.rs](../src/search.rs), [autoplace.rs](../src/autoplace.rs), [legs.rs](../src/legs.rs), [repeats.rs](../src/repeats.rs) | placing what the file leaves unplaced (groups that repeat, alike), and which nets run on which rails |
 | [src/autowire.rs](../src/autowire.rs) | the wires for every net the file leaves unconnected |
 | [src/costs.rs](../src/costs.rs) | every weight placement and wiring trade off, in one place |
 | [src/check.rs](../src/check.rs), [measure.rs](../src/measure.rs) | the wiring check, and the measures of how a layout reads |
@@ -77,7 +77,8 @@ writes for the examples and 113 circuits built to break it. A change that moves 
 by design; once the benchmarks say the change is better, record it with `benchmarks/record.py`.
 
 A few tests check what placement must do rather than what it did: a chip bbgen places keeps out of strips the file
-gives another net, and says what's in the way when nothing else fits ([tests/hand_placed.rs](../tests/hand_placed.rs),
+gives another net, says what's in the way when nothing else fits, and parts repeated around hand-placed LEDs are
+placed alike ([tests/hand_placed.rs](../tests/hand_placed.rs),
 its circuits in `tests/hand-placed/`).
 
 Some tests guard against attacks rather than bugs. A circuit file can come from anyone, or from an agent

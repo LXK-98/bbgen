@@ -15,6 +15,7 @@ pub mod parts;
 pub mod pyf;
 pub mod pyrand;
 pub mod render;
+pub mod repeats;
 pub mod scene;
 pub mod schematic;
 pub mod search;

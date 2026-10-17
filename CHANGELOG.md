@@ -18,6 +18,9 @@ fixes things. Each release's section here is its notes on GitHub.
 - A wire running under a resistor or other two-lead part says so in the checklist, naming the part to put in
   after it, as one under a raised module does.
 - A closed pipe (`bbgen check FILE --json | head`) ends bbgen quietly instead of panicking.
+- Parts that repeat around parts the file places are placed alike: each LED's resistor the same way round its
+  LED, where the board leaves room. Chips keep off the strip across the trench from a hand-placed leg, where
+  those parts go.
 
 ## 0.1.0 (2026-10-17)
 

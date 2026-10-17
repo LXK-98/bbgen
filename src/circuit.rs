@@ -324,6 +324,8 @@ pub struct Circuit {
     pub leg_rank: HashMap<String, i64>,
     /// the middles of round parts (LEDs, cans) placed so far, for leg placement
     pub rounds: Vec<Xy>,
+    /// two-lead parts placed as copies of a repeated group (repeats.rs), which placement's repair leaves together
+    pub repeated: Vec<String>,
 }
 
 fn bits(p: Xy) -> (u64, u64) {
@@ -429,7 +431,7 @@ impl Circuit {
             wires: vec![], groups: vec![], nets: IndexMap::default(), lead_plan: IndexMap::default(), lead_room: HashSet::default(), autowire: false,
             ends: HashSet::default(), lain: HashSet::default(), pin_strips: HashSet::default(), strip_at: HashMap::default(), wired: 0,
             empty: None, step_blocked: HashMap::default(), straight_strips: HashMap::default(), next_id: 0,
-            leg_rank: HashMap::default(), rounds: vec![],
+            leg_rank: HashMap::default(), rounds: vec![], repeated: vec![],
         };
         if let Some(m) = data.at("_leg_rank").as_map() {
             for (k, v) in m {
@@ -447,6 +449,14 @@ impl Circuit {
             for r in placed {
                 if let Some(&i) = c.part_index.get(&r.py_str()) {
                     c.parts[i as usize].auto = true;
+                }
+            }
+        }
+        // copies of a repeated group that placement has since written into the file
+        if let Some(copies) = data.at("_repeated").as_list() {
+            for r in copies {
+                if c.part_index.get(&r.py_str()).map(|&i| !c.parts[i as usize].legs.is_empty()).unwrap_or(false) {
+                    c.repeated.push(r.py_str());
                 }
             }
         }
