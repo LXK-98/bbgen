@@ -64,6 +64,10 @@ saved, so the user sees each of your edits.
   header pins, which way the user's rails are printed) are assumptions. Put them in `notes` and
   tell the user to check them. An SMD part on an adapter says its mapping in `adapter: {map:}`;
   the checklist prints it as an assumption.
+- The drawing shows the board with column 1 at the left: row `j` at the top, row `a` nearest the
+  builder, and the `-` rail above the `+` rail on both sides, as breadboards are printed. Tell the
+  user to hold theirs that way. If their rails run `+` above `-` held like that, say so with
+  `rails: {top: "+-", bottom: "+-"}` on the board.
 - Use part pins (`U1.VCC`) for wire ends and let bbgen pick the holes. Give explicit holes only
   where you need a specific position, such as junction strips or both ends on rails.
 - Mark dangerous off-board pins with a trailing `!` in their label (drawn in red).

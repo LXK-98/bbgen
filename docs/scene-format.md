@@ -53,7 +53,7 @@ chips, modules and off-board parts), `text` (its checklist line, after the ref),
 
 - `placed_by`: `you` when the file gives its place (`at:` for a chip or module, `pins:` for a two-lead part),
   `bbgen` when bbgen placed it.
-- `legs`: a two-lead part's legs as the file writes them (`Pico.GP15`, `j27`); the holes they ended up in
+- `legs`: a two-lead part's legs as the file writes them (`Pico.GP15`, `b27`); the holes they ended up in
   are its pins'.
 - `pins`: `num`, `name`, `hole`, `xy`, `net` (null when the pin is in no net).
 
