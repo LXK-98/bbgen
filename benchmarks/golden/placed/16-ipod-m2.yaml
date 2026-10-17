@@ -116,7 +116,7 @@ parts:
     value: 1uF
     near: U11
     pins:
-    - j43
+    - i43
     - bot-43
   C6:
     type: capacitor
@@ -139,8 +139,8 @@ parts:
     adapter:
       pins: 24
       width: 6
-    at: 2:b35
-    rot: 180
+    at: 2:f24
+    rot: 0
   U3:
     symbol: Logic_LevelTranslator:SN74LVC8T245
     footprint: Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm
@@ -165,7 +165,7 @@ parts:
     type: resistor
     value: 10k
     pins:
-    - 2:i51
+    - 2:i52
     - 2:i56
   C7:
     type: capacitor
@@ -179,36 +179,36 @@ parts:
     value: 100nF
     near: U1
     pins:
-    - i60
-    - i58
+    - h60
+    - h57
   C9:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - 2:g36
-    - 2:g33
+    - 2:j25
+    - 2:bot-25
   C10:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - 2:i34
-    - 2:i33
+    - 2:h51
+    - 2:h50
   C11:
     type: capacitor
     value: 100nF
     near: U3
     pins:
-    - 2:h38
-    - 2:h41
+    - 2:a53
+    - 2:top-53
   C12:
     type: capacitor
     value: 100nF
     near: U3
     pins:
-    - 2:h51
-    - 2:h50
+    - 2:j51
+    - 2:bot-51
   C13:
     type: capacitor
     value: 100nF
@@ -221,8 +221,8 @@ parts:
     value: 100nF
     near: U4
     pins:
-    - 2:a6
-    - 2:top-6
+    - 2:b6
+    - 2:b4
   J1:
     type: offboard
     title: Interposer J1

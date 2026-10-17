@@ -12,6 +12,9 @@ fixes things. Each release's section here is its notes on GitHub.
 - Placement draws chips toward what the file places: a leg placed by hand counts as a fixed pin of its net, and
   a chain of resistors or diodes bbgen places pulls the chip at its far end toward it. Place the LEDs, and the
   chip driving them through resistors lands beside them.
+- A flat wire no longer crosses another flat wire: it moves to other holes in the same strips, or becomes a
+  flexible jumper where none clear it. A signal wired along the board's outer row used to block the supply wires
+  laid after it.
 - A wire running under a resistor or other two-lead part says so in the checklist, naming the part to put in
   after it, as one under a raised module does.
 - A closed pipe (`bbgen check FILE --json | head`) ends bbgen quietly instead of panicking.

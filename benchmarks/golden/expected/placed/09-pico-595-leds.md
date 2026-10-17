@@ -34,29 +34,26 @@ Lowest first: resistors and diodes, capacitors, transistors, buttons and the lik
 - [ ] **C1** 100nF: legs in `top+28` and `top-28`
 - [ ] **D1** led: legs in `e25` and `e23` (anode first)
 - [ ] **D3** led: legs in `f25` and `f23` (anode first)
-- [ ] **D4** led: legs in `b24` and `top-24` (anode first)
+- [ ] **D4** led: legs in `i26` and `i23` (anode first)
 - [ ] **D2** led: legs in `j24` and `bot-24` (anode first)
 - [ ] **D8** led: legs in `a27` and `top-27` (anode first)
 - [ ] **D5** led: legs in `i37` and `i36` (anode first)
 - [ ] **D6** led: legs in `a37` and `top-37` (anode first)
 - [ ] **D7** led: legs in `a39` and `top-39` (anode first)
 
-## Wires (17)
+## Wires (14)
 
 Shortest first, so the longer ones lie over them.
 
-- [ ] **W15** blue: `c22` → `c24` · LED3 (jumper junction ↔ D4.1 A)
-- [ ] **W5** black: `top-23` → `a23` · GND (top- rail ↔ D1.2 K)
-- [ ] **W6** black: `a42` → `top-42` · GND (Pico.18 GND ↔ top- rail)
+- [ ] **W6** black: `top-23` → `a23` · GND (top- rail ↔ D1.2 K)
+- [ ] **W5** black: `a42` → `top-42` · GND (Pico.18 GND ↔ top- rail)
 - [ ] **W1** red: `j55` → `bot+55` · 3V3 (Pico.36 3V3 ↔ bot+ rail)
-- [ ] **W14** blue: `f22` → `e22` · LED3 (jumper junction ↔ jumper junction)
-- [ ] **W7** black: `bot-23` → `j23` · GND (bot- rail ↔ D3.2 K)
+- [ ] **W7** black: `bot-23` → `j23` · GND (bot- rail ↔ D3.2 K, D4.2 K)
 - [ ] **W2** red: `a29` → `top+29` · 3V3 (U1.16 VCC ↔ top+ rail)
 - [ ] **W3** red: `top+35` → `a35` · 3V3 (top+ rail ↔ U1.10 /SRCLR)
 - [ ] **W8** black: `j36` → `bot-36` · GND (U1.8 GND, D5.2 K ↔ bot- rail)
-- [ ] **W16** brown: `f39` → `e39` · LED6 (R7.2 ↔ D7.1 A)
-- [ ] **W13** blue: `i26` → `i22` · LED3 (R4.2 ↔ jumper junction)
-- [ ] **W17** cyan: `i35` → `i27` · QH (U1.7 QH ↔ R8.1)
+- [ ] **W13** brown: `f39` → `e39` · LED6 (R7.2 ↔ D7.1 A)
+- [ ] **W14** cyan: `i35` → `i27` · QH (U1.7 QH ↔ R8.1)
 - [ ] **W9** black: `d23` → `d32` · GND (D1.2 K ↔ U1.13 /OE)
 - [ ] **W4** red: `bot+3` → `top+3` · 3V3 (bot+ rail ↔ top+ rail)
 - [ ] **W10** black: `top-4` → `bot-4` · GND (top- rail ↔ bot- rail)
@@ -67,5 +64,5 @@ Shortest first, so the longer ones lie over them.
 
 Shortest first: they arch over the rest.
 
-- [ ] **W19** orange: `g33` → `e38`, 10 cm flexible jumper · QF (U1.5 QF ↔ R6.1)
-- [ ] **W18** blue: `c56` → `c31`, 20 cm flexible jumper · SER (Pico.4 GPIO2 ↔ U1.14 SER)
+- [ ] **W16** orange: `g33` → `e38`, 10 cm flexible jumper · QF (U1.5 QF ↔ R6.1)
+- [ ] **W15** blue: `c56` → `c31`, 20 cm flexible jumper · SER (Pico.4 GPIO2 ↔ U1.14 SER)

@@ -17,12 +17,12 @@
  "04-555-blinker": {
   "hash": "f19f7bd532",
   "score": 45.718304780321,
-  "events": 167
+  "events": 157
  },
  "05-555-4017-chaser": {
-  "hash": "21b742e42f",
-  "score": 208.12423123402294,
-  "events": 214
+  "hash": "f8ea7a20f3",
+  "score": 200.9163068251589,
+  "events": 278
  },
  "06-lm386-amp": {
   "hash": "3a7a49dd1a",
@@ -30,19 +30,19 @@
   "events": 247
  },
  "07-lm358-amp": {
-  "hash": "406c4e4be5",
-  "score": 95.16210239385873,
-  "events": 207
+  "hash": "3994a0016e",
+  "score": 99.49563245643888,
+  "events": 227
  },
  "08-relay-driver": {
   "hash": "32d7701fc7",
   "score": 59.11803544230423,
-  "events": 206
+  "events": 201
  },
  "09-pico-595-leds": {
-  "hash": "c0c7e9b716",
-  "score": 229.40312423743285,
-  "events": 201
+  "hash": "5379ec46e3",
+  "score": 222.40312423743285,
+  "events": 197
  },
  "10-atmega328-breadboard": {
   "hash": "b2f2d3ccdf",
@@ -50,9 +50,9 @@
   "events": 192
  },
  "11-l293d-motors": {
-  "hash": "99c5624baf",
-  "score": 200.8350135580331,
-  "events": 213
+  "hash": "af26b73a82",
+  "score": 203.95804702645185,
+  "events": 185
  },
  "12-pico-i2c": {
   "hash": "85fb99b1e6",
@@ -60,8 +60,8 @@
   "events": 214
  },
  "13-ben-eater-register": {
-  "hash": "706ed154eb",
-  "score": 783.138377724692,
+  "hash": "9cee4673df",
+  "score": 837.2454114753848,
   "events": 328
  },
  "14-7seg-multiplexed": {
@@ -70,14 +70,14 @@
   "events": 322
  },
  "15-ipod-m1": {
-  "hash": "fb9de91c76",
-  "score": 249.86514465165303,
-  "events": 230
+  "hash": "77ccadb9b5",
+  "score": 273.7285087085695,
+  "events": 277
  },
  "16-ipod-m2": {
-  "hash": "bef1411b52",
-  "score": 2433.42218404242,
-  "events": 697
+  "hash": "089d20f16b",
+  "score": 2401.177874009707,
+  "events": 594
  },
  "17-esp32-devkit": {
   "hash": "400881a370",
@@ -102,7 +102,7 @@
  "21-esp32-under": {
   "hash": "23f6488a6f",
   "score": 110.0,
-  "events": 180
+  "events": 178
  },
  "_kicad": [
   "/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/5a7d69b241b1417e15f791cb32499119ec931accda6a18544b2f9969d60da867/files"

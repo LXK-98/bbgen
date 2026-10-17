@@ -14,7 +14,7 @@ parts:
     value: 10k
     pins:
     - top+57
-    - b57
+    - a57
   R2:
     type: resistor
     value: 10k
@@ -25,26 +25,26 @@ parts:
     type: resistor
     value: 100k
     pins:
-    - j62
-    - j60
+    - h56
+    - h59
   R4:
     type: resistor
     value: 10k
     pins:
-    - h63
-    - h60
+    - i63
+    - i60
   R5:
     type: resistor
     value: 100k
     pins:
-    - a60
-    - a61
+    - d60
+    - d61
   C1:
     type: capacitor
     value: 1uF
     pins:
-    - c62
-    - c59
+    - b62
+    - b59
   C3:
     type: capacitor
     value: 100nF

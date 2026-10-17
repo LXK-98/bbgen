@@ -17,8 +17,8 @@ parts:
     value: 100nF
     near: U1
     pins:
-    - top+31
-    - top-31
+    - b30
+    - b33
   C2:
     type: electrolytic
     value: 100uF
@@ -30,8 +30,8 @@ parts:
     value: 100nF
     near: U1
     pins:
-    - j37
-    - j34
+    - i37
+    - i34
   J1:
     type: offboard
     title: Motor A

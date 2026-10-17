@@ -61,8 +61,8 @@ parts:
   D4:
     type: led
     pins:
-    - b24
-    - top-24
+    - i26
+    - i23
   R5:
     type: resistor
     value: 330R

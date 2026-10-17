@@ -51,8 +51,8 @@ parts:
   D1:
     type: led
     pins:
-    - h42
-    - h41
+    - i42
+    - i41
   R2:
     type: resistor
     value: 330R
@@ -62,8 +62,8 @@ parts:
   D2:
     type: led
     pins:
-    - j53
-    - j54
+    - i53
+    - i52
   R3:
     type: resistor
     value: 330R
@@ -112,8 +112,8 @@ parts:
     type: resistor
     value: 330R
     pins:
-    - c31
-    - c33
+    - g38
+    - g33
   D7:
     type: led
     pins:

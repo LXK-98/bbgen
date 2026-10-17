@@ -1,4 +1,6 @@
-check: 0 errors, 0 warnings
+warning OVER_PART    W13 ends in j34, under R8: move one of them
+warning OVER_PART    W39 ends in h54, under R2: move one of them
+check: 0 errors, 2 warnings
 wrote OUT/13-ben-eater-register.svg
 wrote OUT/13-ben-eater-register.md
 exit 0

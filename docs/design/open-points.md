@@ -652,6 +652,27 @@ back to the diodes left in the middle. A partial pull distorts: the estimate nee
 
 ## 18. A rigid wire crosses other rigid wires instead of going round or becoming a jumper
 
+**Done (October 2026), with a search miss in 13.** The cause was wiring order: nets without a rail are wired first,
+so W23 (CLK) took row a before the supply drops W6 and W16, which then had to cross it on their way up to the rail.
+With flexible jumpers on, wiring's `cost` doesn't charge for crossing wires at all (`CROSS_WIRE_COST` counts only
+with `flex: false`), so nothing steered it to a row further in. Of the benchmarks' flat crossings (not counting
+jumpers), all 8 were this pattern: a rail's wire crossing a signal's wire laid before it.
+
+`settle_crossings` in src/autowire.rs runs once the board's wires are in. Each flat wire crossing another is laid
+again: the cheapest pair of holes in the same two strips, each flat wire crossed priced at `CROSS_WIRE_COST`, kept
+if it costs less and crosses fewer (W23 goes to `d13` → `d22`). Where no holes clear it, it becomes a flexible
+jumper between the same holes; a wire to a rail crossing a signal's wire leaves the jumper to the signal, so a drop
+to the rail stays short and flat. On the benchmarks' placed layouts, wiring alone leaves no flat crossing.
+
+With placement: 05, 07, 09 and 16 read better (16: 75 → 44 crossings, 384 → 240 with a lead; 07 loses its jumper
+over the op-amp), 11 and 15 about the same, flexible jumpers 93 → 92 over all 21. **13 is a search miss**: it takes
+2 OVER_PART warnings (wire ends under R2 and R8), but its old layout, wired the new way, still has none and scores
+795.1 against 837.2 for the one found. As in point 4, a change to what trials score reshuffles which start wins
+and where repair goes (point 12). Kept by the user's choice; the baseline holds 13's warnings until the search
+finds the better layout again.
+
+The report follows.
+
 **Issue.** In the second Knight Rider run's final layout,
 [repro/knight-rider-run2-placed.yaml](repro/knight-rider-run2-placed.yaml) (layout hash `950fcc074e` from
 `bbgen dev build`), W23 (CLK, orange) runs flat along row a from `a13` to `a22`. On the way it crosses W6 (VCC,

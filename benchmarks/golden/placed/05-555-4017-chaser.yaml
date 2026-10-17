@@ -55,8 +55,8 @@ parts:
     type: resistor
     value: 470R
     pins:
-    - c43
-    - c46
+    - j42
+    - bot-42
   D1:
     type: led
     pins:
@@ -70,13 +70,13 @@ parts:
   D3:
     type: led
     pins:
-    - a42
-    - a43
+    - f43
+    - e43
   D4:
     type: led
     pins:
-    - f43
-    - e43
+    - c55
+    - c53
   D5:
     type: led
     pins:
@@ -90,8 +90,8 @@ parts:
   D7:
     type: led
     pins:
-    - j41
-    - j42
+    - a42
+    - a43
   D8:
     type: led
     pins:

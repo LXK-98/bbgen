@@ -14,7 +14,9 @@
 //! FLEX_COST (and FLEX_OVER_COST a part it arches over) in trouble, a flexible jumper arches over
 //! instead: it may slant and cross, but needs a hole at each end like any wire (`flex: false` at the
 //! top of the file turns them off). A slant that no choice of holes could avoid (between two columns,
-//! across the trench) costs little: a short rigid wire is fine there. Off-board pins come last, each
+//! across the trench) costs little: a short rigid wire is fine there. Once the board's wires are in, a flat wire
+//! that crosses another is laid again in the same strips where other holes clear it, and becomes a flexible
+//! jumper where none do (settle_crossings). Off-board pins come last, each
 //! with a flying lead to the nearest free hole of its net, so a connector pin is never the junction
 //! between two parts of the board.
 //!
@@ -172,6 +174,9 @@ pub fn autowire(c: &mut Circuit) {
             let rs = rails.get(name).cloned().unwrap_or_default();
             wire_net(c, &mut dsu, &net, &rs, &node_pins, flying);
         }
+        if !flying {
+            settle_crossings(c, &node_pins, first);
+        }
     }
     settle_leads(c, &node_pins, first);
     let net_pos: HashMap<&String, usize> = c.nets.keys().enumerate().map(|(i, n)| (n, i)).collect();
@@ -259,6 +264,86 @@ fn joined(c: &Circuit) -> (Dsu<Node>, NodePins) {
 
 fn wire_index(c: &Circuit, id: u64) -> Option<usize> {
     c.wires.iter().position(|w| w.id == id)
+}
+
+/// Lay each flat wire that crosses another flat wire again, now that every wire on the board is in: the cheapest
+/// pair of holes in the same two strips, kept if it costs less and crosses fewer. Nets without a rail are wired
+/// first, so one can take the row a rail's wire, laid later, has to cross on its way to the rail (a wire along row a
+/// over the strip a chip's supply pin drops from); a row further in crosses nothing. Where no other holes clear it,
+/// it becomes a flexible jumper: one flat wire never crosses another.
+fn settle_crossings(c: &mut Circuit, node_pins: &NodePins, first: usize) {
+    let to_rail = |w: &Wire| [&w.a, &w.b].iter().any(|e| e.as_ref().and_then(|e| e.hole).map(|h| h.is_rail()).unwrap_or(false));
+    let crossing = |c: &Circuit, a: Xy, b: Xy| -> Vec<Wire> {
+        c.wires.iter().filter(|w| !w.flex && w.on_board() && w.a.is_some() && w.b.is_some()).filter(|w| {
+            let mut n = 0;
+            c.for_each_segment(w, |p, q| n += cross((a, b), (p, q)) as usize);
+            n > 0
+        }).cloned().collect()
+    };
+    let flat_crossed = |c: &Circuit, a: Xy, b: Xy| crossing(c, a, b).len();
+    for _ in 0..LEAD_PASSES {
+        let mut moved = false;
+        let ids: Vec<u64> = c.wires[first..].iter().filter(|w| {
+            w.auto && !w.flex && w.via.is_empty() && w.on_board()
+                && [&w.a, &w.b].iter().all(|e| e.as_ref().map(|e| e.hole.is_some() && e.pin.is_none()).unwrap_or(false))
+        }).map(|w| w.id).collect();
+        for id in ids {
+            let w = c.wires[wire_index(c, id).unwrap()].clone();
+            let (a, b) = (w.a.clone().unwrap(), w.b.clone().unwrap());
+            let before = flat_crossed(c, c.end_xy(&a), c.end_xy(&b));
+            if before == 0 {
+                continue;
+            }
+            let net = c.nets[&w.group].clone();
+            let (na, nb) = (end_node(c, &a), end_node(c, &b));
+            unwire(c, id);
+            let (oa, ob) = (options(c, na, &net, node_pins), options(c, nb, &net, node_pins));
+            let (sa, sb) = (strip_holes_of(c, oa.iter()), strip_holes_of(c, ob.iter()));
+            let unavoidable = !sa.iter().any(|&x| sb.iter().any(|&y| could_be_straight(c, x, y)));
+            let now = oa.iter().find(|o| o.o.hole == a.hole).zip(ob.iter().find(|o| o.o.hole == b.hole));
+            // cost charges for crossed wires only without flexible jumpers; here every flat wire crossed counts
+            let priced = |c: &Circuit, p: &Cand, q: &Cand| {
+                let key = cost(c, &p.o, &q.o, unavoidable);
+                let n = flat_crossed(c, p.o.xy, q.o.xy);
+                (Key(key.0 + if c.flex { CROSS_WIRE_COST * n as f64 } else { 0.0 }, key.1, key.2, key.3), n)
+            };
+            let mut best: Option<(Key, usize, Cand, Cand)> = None;
+            for p in &oa {
+                for q in &ob {
+                    let (key, n) = priced(c, p, q);
+                    if key.0 < f64::INFINITY && best.as_ref().map(|x| key.lt(&x.0)).unwrap_or(true) {
+                        best = Some((key, n, *p, *q));
+                    }
+                }
+            }
+            let old = now.map(|(p, q)| priced(c, p, q).0 .0).unwrap_or(f64::INFINITY);
+            match best {
+                Some((key, n, p, q)) if key.0 < old - 1e-9 && n < before => {
+                    let nid = lay(c, None, &net, &p, &q, false, false, true);
+                    moved = true;
+                    if crate::trace::active() {
+                        let num = c.wires[wire_index(c, nid).unwrap()].num;
+                        crate::trace::step(c, &format!("wiring {}: a wire again, crossing less", net.name), true,
+                                           &[format!("W{}", num)], None, true);
+                    }
+                }
+                // no other holes clear it: a flexible jumper arches over what it would cross, unless it's a wire to
+                // a rail crossing a signal's wire, which goes over instead (a drop to the rail stays short and flat)
+                _ if c.flex && now.map(|(p, q)| !p.o.under && !q.o.under
+                    && !over_keepout(c, p.o.xy, q.o.xy)).unwrap_or(false)
+                    && !(to_rail(&w) && crossing(c, c.end_xy(&a), c.end_xy(&b)).iter().any(|x| !to_rail(x))) => {
+                    let (p, q) = now.unwrap();
+                    let (p, q) = (*p, *q);
+                    lay(c, None, &net, &p, &q, true, false, true);
+                    moved = true;
+                }
+                _ => put_back(c, w),
+            }
+        }
+        if !moved {
+            return;
+        }
+    }
 }
 
 /// Lay each flying lead that crosses another again, now that every lead is in, keeping the new one only if it
