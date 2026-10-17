@@ -41,7 +41,26 @@ const USAGE: &str = r#"usage: bbgen {build,check,find,studio,docs} ...
                                                     (a studio that's open already opens the circuit itself)
   docs                                              print where the circuit file's reference is (circuit-file.md)"#;
 
+/// Let a closed pipe end bbgen quietly, as it does other command-line tools (`bbgen check FILE --json | head`): Rust
+/// ignores SIGPIPE, so a write to a pipe nobody reads any more panics instead.
+#[cfg(unix)]
+fn quiet_broken_pipe() {
+    extern "C" {
+        fn signal(signum: i32, handler: usize) -> usize;
+    }
+    const SIGPIPE: i32 = 13; // the same on Linux and macOS
+    const SIG_DFL: usize = 0;
+    // SAFETY: called first thing in main, before any other thread starts; it only restores the default action.
+    unsafe {
+        signal(SIGPIPE, SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+fn quiet_broken_pipe() {}
+
 fn main() -> ExitCode {
+    quiet_broken_pipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("build") | Some("check") => run(&args),

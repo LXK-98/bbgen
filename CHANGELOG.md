@@ -9,6 +9,7 @@ fixes things. Each release's section here is its notes on GitHub.
   a pin or the chip's body on a hole the file takes: it used to short into LEDs placed by hand. When there's no
   other place for a chip, bbgen says so and names what's in the way, and it never returns a layout with a short
   of its own making.
+- A closed pipe (`bbgen check FILE --json | head`) ends bbgen quietly instead of panicking.
 
 ## 0.1.0 (2026-10-17)
 

@@ -54,3 +54,15 @@ fn builds_print_and_write_what_they_did() {
     let problems: Vec<String> = common::parallel(&all, |(g, p)| check(g, p)).into_iter().flatten().collect();
     assert!(problems.is_empty(), "\n{}", problems.join("\n"));
 }
+
+#[test]
+fn a_closed_pipe_ends_bbgen_quietly() {
+    // `bbgen check FILE --json | head -c 10`: the reader goes before bbgen has written, which used to panic
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_bbgen")).arg("check")
+        .arg(common::root().join("tests/hand-placed/knight-rider.yaml")).arg("--json")
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
+    drop(child.stdout.take());
+    let done = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&done.stderr);
+    assert!(!err.contains("panicked"), "{}", err);
+}
