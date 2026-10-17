@@ -611,8 +611,26 @@ LEDs.
 - A chain through a two-lead part (chip → resistor → hand-placed LED) is the usual case; check `LEG_LINK_COST`'s
   weight once the far side is known.
 - No benchmark places legs by hand around chips bbgen places, so the records hold either way; judge it on
-  run-2's circuit and the two in `tests/hand-placed/` by their drawings, and research first (how placers weigh
-  fixed pins: anchors in analytical placement).
+  run-2's circuit and the two in `tests/hand-placed/` by their drawings.
+
+**Research (October 2026).** In analytical placement, pre-placed I/O pads and terminals are vertices of the net
+model with fixed coordinates: each connection to one adds its position to the system, and that is what pulls the
+movable cells toward them ([Placement (EDA)](https://en.wikipedia.org/wiki/Placement_(electronic_design_automation));
+FastPlace, [Viswanathan & Chu](https://home.engineering.iastate.edu/cnchu/pubs/c20.pdf)). A part with no fixed
+place between two others (a resistor between a chip and an LED) is a movable cell whose best place is between its
+neighbours, so a chain of them still pulls the chip toward the pad. PCB placers cluster by connectivity with fixed
+parts as locked nodes ([MIT thesis 2025](https://dspace.mit.edu/handle/1721.1/164641); Altium's
+[cluster placer](https://www.altium.com/documentation/altium-designer/autoplacer-cmd-runautoplacerrunautoplacer-ad)).
+bbgen's estimate leaving hand-placed legs out is a placer forgetting its pads.
+
+**Tried (October 2026, reverted): legs placed by hand as fixed pins in `where_`.** Flexible jumpers, before → after:
+run-2's circuit with only the LEDs placed, at its seven LED positions
+([repro/knight-rider-run2-leds-only.yaml](repro/knight-rider-run2-leds-only.yaml) is the first): 10 → 6, 12 → 6,
+8 → 8, 11 → 7, 11 → 7, 7 → 6, 10 → 7. Drawn, the first is as tidy as the run's hand-tuned final: the chips in signal
+order, the decoder by the LEDs, no jumper across the board. But the first circuit (`tests/hand-placed/knight-rider.yaml`)
+went 11 → 14 and read messier: its LEDs are two parts deep (counter → diode → resistor → LED), so only the nets one
+part from an LED pull (A_Q0, B_Q2, and A_CARRY straight to L6). Both counters moved under the LEDs and long jumpers ran
+back to the diodes left in the middle. A partial pull distorts: the estimate needs the chains too.
 
 ## 18. A rigid wire crosses other rigid wires instead of going round or becoming a jumper
 
