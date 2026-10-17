@@ -445,3 +445,25 @@ pairs above are (picked start, other start, both counted from 1): 18 (8, 5), 02 
 13 (2, 8), 17 (1, 7), 07 (1, 3), 08 (4, 3). Keep them as placed files, so the test doesn't depend on the search:
 `bbgen dev build FILE --dump OUT.jsonl` writes the layout as its `placed` event, which `benchmarks/record.py`
 turns into `golden/placed/<name>.yaml` the same way.
+
+## 13. Chips are drawn as blue boards, not as ICs
+
+**Issue.** A chip in the breadboard drawing doesn't look like a chip. `footprint()` in
+[src/render.rs](../../src/render.rs) draws a DIP (`type: dip`) or a small KiCad part as one flat blue rectangle
+(`#24467a`) over its whole footprint, with gold pads and the pin names inside, so a 74HC595 looks like a small
+module on a blue board, the way the Pico is drawn (green, `#2f6e3d`). Someone building from the drawing should
+see the black chip they hold in their hand.
+
+**What a chip should look like.** A black body, narrower than its footprint, standing over the trench between
+its pin rows; a notch at pin 1's end (a dot by pin 1 as well); short silver legs from the body's sides into
+the holes; and its name (`74HC595`) printed along the body, with the ref (`U1`) as the label. Pin names stay
+outside the body by their holes, or move to the label side, as they read best. Modules (the Pico, the big
+KiCad modules) stay boards.
+
+**Where to start.** Only the drawing changes: `body_rect` in [src/parts.rs](../../src/parts.rs) also says which
+holes a part covers and where labels can't go (`src/circuit.rs`) and what the studio lights up for a part
+(`src/scene.rs`), so leave it as it is and draw the chip inside it. Which parts are chips: `Kind::Dip`, and
+`Kind::Kicad` parts with a DIP footprint (two rows, not `big`); SMD parts on a DIP adapter are an adapter
+board with the chip on it. Look at the drawings before and after (the examples, and 12, 13, 14 among the
+benchmarks). The drawings in `benchmarks/golden/expected/` will change on purpose; record them again with
+`benchmarks/record.py` ([benchmarks/README.md](../../benchmarks/README.md)).
