@@ -62,7 +62,7 @@ chips, modules and off-board parts), `text` (its checklist line, after the ref),
 `id` (`W6`), `num`, `group`, `nets` (what its ends are connected to), `color` (hex), `a` and `b` (each `hole`,
 `pin` for an off-board end, and `spec`, the end as written), `spec`, `via`, `points` (the wire's path, bends
 included; empty when it couldn't be placed), `flex` (a flexible jumper), `flying` (to an off-board pin),
-`laid_by` (`you` or `bbgen`), `slant`, `under` (raised modules it runs under), `text` (its checklist line,
+`laid_by` (`you` or `bbgen`), `slant`, `under` (the raised modules and two-lead parts it runs under), `text` (its checklist line,
 after the number).
 
 ## Steps as they're taken: `--events`

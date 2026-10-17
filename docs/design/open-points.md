@@ -678,6 +678,14 @@ Update circuit-file.md's promise either way.
 
 ## 19. A wire under a two-lead part: the docs and the checklist line
 
+**Done (October 2026).** `Circuit::under_of` counts the two-lead parts lying across a flat wire as well as raised
+modules, so the checklist line names them (`runs under R3: lay it flat, before it goes in`), as do `under` in
+`--json` and the studio's "Runs under"; the checklist's sorting into "Wires under parts" uses the same list.
+circuit-file.md now says a wire crosses no chip or module and may run under a two-lead part. Five benchmark
+checklists gained the note (07, 13, 14, 16, 17); nothing moved.
+
+The report follows.
+
 **Issue.** circuit-file.md says a wire bbgen lays on the board "crosses no part". But a flat wire may run under a
 two-lead part lying across it, on purpose: the checklist lists it under "Wires under parts", to lay first. The
 second Knight Rider run reported this as a bug (variant `v8-u4-e42.yaml` in run-2: W4 `bot+42` → `i42` under R14

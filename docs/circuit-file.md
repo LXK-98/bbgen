@@ -111,8 +111,9 @@ is joined with the fewest, shortest wires it can find, preferring straight runs 
 from the row next to the rail, and each off-board pin gets its own flying lead. The checklist lists
 them by net, rails' nets first.
 
-A wire bbgen lays on the board is always straight, crosses no part, runs along no other wire, and
-lies over no other wire's end or a pin's last free hole. Where no such wire will do, it goes the
+A wire bbgen lays on the board is always straight, crosses no chip or module, runs along no other wire,
+and lies over no other wire's end or a pin's last free hole. It may run under a resistor, diode or other
+two-lead part lying across it: the checklist then has you lay it first and says which part goes over it. Where no such wire will do, it goes the
 way you would by hand: along to a strip nothing uses yet and on from another of its holes (or
 across the trench in its column), two or three straight wires in all, like a feedback wire taken
 round the end of a chip. Only when that's no good either does it use a flexible jumper: a crowded

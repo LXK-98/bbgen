@@ -1348,7 +1348,8 @@ impl Circuit {
             .map(|(_, r)| r.as_str()).collect()
     }
 
-    /// The raised modules a flat wire lies under or ends under: it goes in before them.
+    /// The raised modules a flat wire lies under or ends under, and the two-lead parts lying across it: it goes in
+    /// before them.
     pub fn under_of(&self, w: &Wire) -> Vec<String> {
         if w.flex || !w.on_board() {
             return vec![];
@@ -1371,6 +1372,13 @@ impl Circuit {
                 if !refs.iter().any(|x| x == r) {
                     refs.push(r.to_string());
                 }
+            }
+        }
+        // a two-lead part lying across it, which goes in after it
+        for p in self.parts.iter().filter(|p| p.kind.is_lead() && p.pins.iter().all(|q| q.xy.is_some())) {
+            let legs = (p.pins[0].xy.unwrap(), p.pins[1].xy.unwrap());
+            if pts.windows(2).any(|s| crate::measure::cross(legs, (s[0], s[1]))) && !refs.contains(&p.r#ref) {
+                refs.push(p.r#ref.clone());
             }
         }
         refs.sort();

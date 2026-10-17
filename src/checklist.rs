@@ -230,15 +230,7 @@ pub fn steps(c: &Circuit, result: &Result) -> Vec<(String, String, String)> {
         if w.flex || !w.on_board() {
             return None;
         }
-        let pts = c.wire_points(w);
-        let mut over: Vec<usize> = c.under_of(w).iter().map(|r| rank(r)).collect();
-        for p in c.parts.iter().filter(|p| p.kind.is_lead() && p.pins.iter().all(|q| q.xy.is_some())) {
-            let legs = (p.pins[0].xy.unwrap(), p.pins[1].xy.unwrap());
-            if pts.windows(2).any(|s| crate::measure::cross(legs, (s[0], s[1]))) {
-                over.push(rank(&p.r#ref));
-            }
-        }
-        over.into_iter().min()
+        c.under_of(w).iter().map(|r| rank(r)).min()
     };
     let offboard = |w: &Wire| [&w.a, &w.b].into_iter().flatten().find_map(|e| e.pin).filter(|p| c.parts[p.part as usize].kind == Kind::Offboard);
 
