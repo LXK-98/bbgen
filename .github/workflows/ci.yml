@@ -9,14 +9,14 @@ jobs:
   bbgen:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # the tests build circuits with parts from KiCad's library, at the version their records were made with
       - name: KiCad's symbol and footprint libraries
         run: |
           sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
           sudo apt-get install -y -qq --no-install-recommends kicad-symbols kicad-footprints
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo test --release --locked
 
   studio:
@@ -25,20 +25,20 @@ jobs:
       run:
         working-directory: studio
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Tauri's system libraries
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev libdbus-1-dev
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: studio/src-tauri
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: studio/package.json
       - run: pnpm install --frozen-lockfile
