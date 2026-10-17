@@ -145,8 +145,8 @@ impl Model {
             let id = spec.get("id").map(Val::py_str).unwrap_or((i + 1).to_string());
             let kind = spec.get("type").map(Val::py_str).unwrap_or("full".into());
             let rails = spec.at("rails");
-            let top = rails.get("top").map(Val::py_str).unwrap_or("+-".into());
-            let bot = rails.get("bottom").or(rails.get("bot")).map(Val::py_str).unwrap_or("+-".into());
+            let top = rails.get("top").map(Val::py_str).unwrap_or(crate::board::RAIL_ORDER.into());
+            let bot = rails.get("bottom").or(rails.get("bot")).map(Val::py_str).unwrap_or(crate::board::RAIL_ORDER.into());
             let board = Board::new(id, i as u8, &kind, &top, &bot, spec.at("split_rails").truthy())?;
             if let Some(b) = spec.get("below").filter(|v| !v.is_null()) {
                 if let Some(up) = boards.iter().position(|(x, _)| x.id == b.py_str()) {
@@ -535,12 +535,12 @@ impl Model {
         let mut spots: Vec<(Row, i64, i32)> = Vec::new();
         match part.kind {
             Kind::Pico => {
-                for r in rows("ghi") { for &c in &cols { spots.push((r, c, 0)); } }
-                for r in rows("bcd") { for &c in &cols { spots.push((r, c, 180)); } }
+                for r in rows("dcb") { for &c in &cols { spots.push((r, c, 0)); } }
+                for r in rows("ihg") { for &c in &cols { spots.push((r, c, 180)); } }
             }
             Kind::Dip if part.width == 3 => {
-                for &c in &cols { spots.push((Row::F, c, 0)); }
-                for &c in &cols { spots.push((Row::E, c, 180)); }
+                for &c in &cols { spots.push((Row::E, c, 0)); }
+                for &c in &cols { spots.push((Row::F, c, 180)); }
             }
             Kind::Kicad => {
                 for r in TERMINAL { for &c in &cols { for rot in [0, 90, 180, 270] { spots.push((r, c, rot)); } } }
@@ -563,6 +563,12 @@ impl Model {
             }
         }
         if part.kind == Kind::Kicad {
+            // a pin on a net needs a free hole in its strip, not one the part's own body lies over
+            let open = |l: &Layout| l.xy.iter().all(|&(p, (x, y))| !self.net_of.contains_key(&p)
+                || l.taken.get(&(half_of(y), x)).copied().unwrap_or(0) < 5);
+            if out.iter().any(open) {
+                out.retain(open);
+            }
             let room = |l: &Layout| l.xy.iter().map(|(_, (_, y))| if *y < 8 { y - 3 } else { 14 - y }).min().unwrap();
             let mut best: Vec<((i32, bool), i64)> = Vec::new();
             for o in &out {
@@ -1339,15 +1345,17 @@ fn describe(model: &Model, data: &Val, changes: &Changes, ranks: &[(String, i64)
 /// The layout with every footprint part bbgen places moved a row up, or a row down, where they all can go.
 fn shifted(model: &Model, state: &[(usize, usize)]) -> Vec<Changes> {
     let mut out = Vec::new();
+    // a row down the drawing, then a row up
     for dr in [1i32, -1] {
         let mut change: Vec<(usize, usize)> = Vec::new();
         let mut ok = true;
         for &(a, ch) in state {
             let now = &model.choices[a][ch];
             let (b, row, col) = parse_hole(&now.at).unwrap();
-            let r = (row.name().as_bytes()[0] as i32 + dr) as u8 as char;
-            let at = format!("{}{}{}", b.map(|b| format!("{}:", b)).unwrap_or_default(), r, col.unwrap());
-            match (0..model.choices[a].len()).find(|&c| model.choices[a][c].at == at && model.choices[a][c].rot == now.rot) {
+            let i = TERMINAL.iter().position(|&t| t == row).map(|i| i as i32 + dr);
+            let next = i.and_then(|i| usize::try_from(i).ok()).and_then(|i| TERMINAL.get(i));
+            let at = next.map(|r| format!("{}{}{}", b.map(|b| format!("{}:", b)).unwrap_or_default(), r.name(), col.unwrap()));
+            match at.and_then(|at| (0..model.choices[a].len()).find(|&c| model.choices[a][c].at == at && model.choices[a][c].rot == now.rot)) {
                 Some(c) => change.push((a, c)),
                 None => {
                     ok = false;

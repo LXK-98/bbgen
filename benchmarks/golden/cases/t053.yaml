@@ -1,8 +1,8 @@
 parts:
   Pico:
     type: pico
-    at: h22
+    at: c22
 wires:
-- - d15
-  - g15
+- - g15
+  - d15
 nets: {}

@@ -1,6 +1,6 @@
-warning DANGLING     W1 ends in d10, where nothing else is connected
-warning DANGLING     W1 ends in g12, where nothing else is connected
-warning DANGLING     W2 ends in a5, where nothing else is connected
+warning DANGLING     W1 ends in g10, where nothing else is connected
+warning DANGLING     W1 ends in d12, where nothing else is connected
+warning DANGLING     W2 ends in j5, where nothing else is connected
 check: 0 errors, 3 warnings
 wrote OUT/t094.svg
 wrote OUT/t094.md

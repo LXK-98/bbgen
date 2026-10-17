@@ -1,4 +1,4 @@
-warning DIAGONAL     R1 slants (bot+47 → j48): bot+48 instead of bot+47 would make it straight
+warning DIAGONAL     R1 slants (bot+47 → a48): bot+48 instead of bot+47 would make it straight
 check: 0 errors, 1 warning
 wrote OUT/t095.svg
 wrote OUT/t095.md

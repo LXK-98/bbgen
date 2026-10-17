@@ -1,4 +1,5 @@
-check: 0 errors, 0 warnings
+warning OVER_PART    W100 ends in 2:i40, under R4: move one of them
+check: 0 errors, 1 warning
 wrote OUT/16-ipod-m2.svg
 wrote OUT/16-ipod-m2.md
 exit 0

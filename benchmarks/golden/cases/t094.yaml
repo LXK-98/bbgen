@@ -3,8 +3,8 @@ parts:
     type: offboard
     pins: 1
 wires:
-- - d10
-  - g12
-- - a5
+- - g10
+  - d12
+- - j5
   - J1.1
 nets: {}

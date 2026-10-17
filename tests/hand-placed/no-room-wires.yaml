@@ -4,17 +4,17 @@ title: No room left for the chip, by wires
 boards: [half]
 parts:
   U1: {type: dip, pins: 8, labels: [GND, TRIG, OUT, RST, CTRL, THR, DIS, VCC]}
-  L1: {type: led, pins: [a3, top-]}
+  L1: {type: led, pins: [j3, top-]}
 wires:
-  - [b3, a6]
-  - [b6, a9]
-  - [b9, a12]
-  - [b12, a15]
-  - [b15, a18]
-  - [b18, a21]
-  - [b21, a24]
-  - [b24, a27]
-  - [b27, a30]
+  - [i3, j6]
+  - [i6, j9]
+  - [i9, j12]
+  - [i12, j15]
+  - [i15, j18]
+  - [i18, j21]
+  - [i21, j24]
+  - [i24, j27]
+  - [i27, j30]
 nets:
   GND: {pins: [U1.GND, L1.K], rail: -}
   VCC: {pins: [U1.VCC, U1.RST], rail: +}

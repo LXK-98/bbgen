@@ -15,15 +15,15 @@ describe.skipIf(!have)('lookups on eeprom.yaml', () => {
 	const ix = have ? indexScene(scene) : (null as never);
 
 	it('names strips', () => {
-		expect(stripId('e33', scene)).toEqual({ id: '1:top:33', label: 'a–e 33' });
-		expect(stripId('f30', scene)).toEqual({ id: '1:bot:30', label: 'f–j 30' });
+		expect(stripId('e33', scene)).toEqual({ id: '1:ae:33', label: 'a–e 33' });
+		expect(stripId('f30', scene)).toEqual({ id: '1:fj:30', label: 'f–j 30' });
 		expect(stripId('top+7', scene)?.label).toBe('top+ rail');
 		expect(stripId('nonsense', scene)).toBeNull();
 	});
 
 	it('knows what is in a strip', () => {
-		// U1.5 SDA sits in e33; W6 (from the Pico's GP16) ends in b33, the same strip
-		const s = ix.strip.get(ix.stripOf.get('e33')!)!;
+		// U1.5 SDA sits in f33; W6 (from the Pico's GP16) ends in i33, the same strip
+		const s = ix.strip.get(ix.stripOf.get('f33')!)!;
 		expect(s.pins.map((p) => p.pin)).toContain('U1.5 SDA');
 		expect(s.wires).toContain('W6');
 		expect(s.nets).toEqual(['SDA']);
@@ -49,7 +49,7 @@ describe.skipIf(!have)('lookups on eeprom.yaml', () => {
 	});
 
 	it("finds a pin's hole", () => {
-		expect(pinHole('U1.5', ix)).toBe('e33');
+		expect(pinHole('U1.5', ix)).toBe('f33');
 		expect(selectorsFor('pin:U1.5', scene, ix)).toContain('[data-wire="W6"]');
 	});
 

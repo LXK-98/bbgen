@@ -5,50 +5,50 @@ notes:
 parts:
   U1:
     symbol: Timer:NE555P
-    at: e60
+    at: f55
     rot: 180
   RA:
     type: resistor
     value: 1k
     pins:
-    - h60
-    - h59
+    - c55
+    - c54
   RB:
     type: resistor
     value: 10k
     pins:
-    - j59
-    - j58
+    - a54
+    - a56
   C1:
     type: electrolytic
     value: 10uF
     pins:
-    - b61
-    - b60
+    - i54
+    - i55
   C2:
     type: capacitor
     value: 10nF
     pins:
-    - j57
-    - bot-57
+    - b52
+    - bot-52
   C3:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - top+59
-    - top-59
+    - top+54
+    - top-54
   R3:
     type: resistor
     value: 330R
     pins:
-    - d58
-    - d54
+    - h53
+    - h51
   D1:
     type: led
     pins:
-    - b54
-    - top-54
+    - j51
+    - top-51
   J1:
     type: offboard
     title: Bench supply

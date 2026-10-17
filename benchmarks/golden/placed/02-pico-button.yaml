@@ -8,30 +8,30 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: i5
+    at: b5
     rot: 0
   SW1:
     type: dip
     pins: 4
     title: tactile switch
-    at: e29
+    at: f29
     rot: 180
   R1:
     type: resistor
     value: 10k
     pins:
-    - a11
+    - j11
     - top-11
   R2:
     type: resistor
     value: 330R
     pins:
-    - c1
-    - c3
+    - h1
+    - h3
   D1:
     type: led
     pins:
-    - a3
+    - j3
     - top-3
 nets:
   3V3:

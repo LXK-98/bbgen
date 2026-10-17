@@ -109,7 +109,7 @@ pub fn lead_plan(c: &Circuit) -> IndexMap<PinId, Hole> {
                 (Some(h), Some(n)) if !h.row.is_rail() => (h, n),
                 _ => continue,
             };
-            let side = if h.row.top_half() { "top" } else { "bot" };
+            let side = if h.row.upper() { "top" } else { "bot" };
             if rows_of(n).iter().any(|r| r.side() == side) {
                 for r in RAILS.iter().filter(|r| r.side() == side) {
                     needed.insert(Hole::new(h.board, *r, h.col));

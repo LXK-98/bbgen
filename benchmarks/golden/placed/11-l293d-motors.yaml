@@ -6,32 +6,32 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: d60
+    at: g59
     rot: 180
   U1:
     symbol: Driver_Motor:L293D
-    at: f30
+    at: e30
     rot: 0
   C1:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - b30
-    - b33
+    - i30
+    - i33
   C2:
     type: electrolytic
     value: 100uF
     pins:
-    - g37
-    - g34
+    - a37
+    - bot-37
   C3:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - i37
-    - i34
+    - d37
+    - d34
   J1:
     type: offboard
     title: Motor A

@@ -3,7 +3,7 @@ parts:
     type: resistor
     value: 4k7
     pins:
-    - a1
-    - a5
+    - j1
+    - j5
 wires: []
 nets: {}

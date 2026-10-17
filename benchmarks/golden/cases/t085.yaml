@@ -3,7 +3,7 @@ parts:
     type: dip
     pins: 8
     width: 10
-    at: j20
+    at: a20
     raised: false
     labels:
     - VCC
@@ -16,7 +16,7 @@ parts:
     - W
 wires:
 - - U1.A
-  - f30
+  - e30
 nets:
   A:
   - U1.A

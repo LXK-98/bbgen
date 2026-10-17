@@ -1,6 +1,6 @@
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
 wires: []
 nets: {}

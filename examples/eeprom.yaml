@@ -3,14 +3,14 @@ notes: ["The LED's long leg is the anode."]   # copied into the checklist
 
 boards:                       # optional; default is one full-size board
   - type: full                # full (63 columns) or half (30)
-    rails: {top: "+-", bottom: "+-"}   # rail order top to bottom, as printed on yours
+    rails: {top: "-+", bottom: "-+"}   # rail order top to bottom, as printed on yours
     split_rails: false        # true if your rails break in the middle
 
 parts:
-  Pico: {type: pico, at: h3}  # pin 1 in h3, USB to the left
-  U1: {type: dip, pins: 8, width: 3, at: f30, title: 24LC256,
+  Pico: {type: pico, at: c3}  # pin 1 in c3, USB to the left
+  U1: {type: dip, pins: 8, width: 3, at: e30, title: 24LC256,
        labels: [A0, A1, A2, GND, SDA, SCL, WP, VCC]}
-  R1: {type: resistor, value: 330R, pins: [Pico.GP15, j27]}
+  R1: {type: resistor, value: 330R, pins: [Pico.GP15, b27]}
   D1: {type: led, pins: [R1.2, bot-]}
   C1: {type: capacitor, value: 100nF, pins: [top+33, top-33]}
   J1: {type: offboard, title: Logic analyzer, cols: 2, labels: {1: SDA, 2: SCL, 3: GND, 4: "5V!"}}

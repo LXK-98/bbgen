@@ -1,8 +1,8 @@
 warning NESTED       W2 lies over W1, hiding it, and has to come out before it can: buildable, but hard to trace (nested: flex makes the outer one a flexible jumper)
-warning DANGLING     W1 ends in a12, where nothing else is connected
-warning DANGLING     W1 ends in a18, where nothing else is connected
-warning DANGLING     W2 ends in a10, where nothing else is connected
-warning DANGLING     W2 ends in a20, where nothing else is connected
+warning DANGLING     W1 ends in j12, where nothing else is connected
+warning DANGLING     W1 ends in j18, where nothing else is connected
+warning DANGLING     W2 ends in j10, where nothing else is connected
+warning DANGLING     W2 ends in j20, where nothing else is connected
 check: 0 errors, 5 warnings
 wrote OUT/t103.svg
 wrote OUT/t103.md

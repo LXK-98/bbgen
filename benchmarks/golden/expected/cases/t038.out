@@ -1,7 +1,8 @@
 error   BAD_NET      nets.Y: 'Nope.1' is not a part pin (like U1.3 or U1.VCC)
 error   BAD_NET      nets.Y: Pico has no pin 'GP99'
 error   TWO_NETS     Pico.20 GP15 is in both DRIVE and X
-check: 3 errors, 0 warnings
+warning OVER_PART    R1 lies over D1 (a22 → a27): put its legs where it clears the part
+check: 3 errors, 1 warning
 wrote OUT/t038.svg
 wrote OUT/t038.md
 exit 1

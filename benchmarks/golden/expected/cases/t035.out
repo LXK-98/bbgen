@@ -1,5 +1,5 @@
 error   SHORT        nets GP16, LED are connected together (Pico.21 GP16, R1.2, D1.1 A)
-warning OVER_PART    R1 lies over Pico (i22 → b22): put its legs where it clears the part
+warning OVER_PART    R1 lies over Pico (b22 → i22): put its legs where it clears the part
 check: 1 error, 1 warning
 wrote OUT/t035.svg
 wrote OUT/t035.md

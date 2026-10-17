@@ -1,108 +1,108 @@
 {
  "01-led": {
-  "hash": "97d58a1480",
-  "score": 12.718304780320999,
+  "hash": "c0e295c936",
+  "score": 13.755698656703686,
   "events": 30
  },
  "02-pico-button": {
-  "hash": "c3ada2d524",
-  "score": 57.0,
-  "events": 127
+  "hash": "4564cce766",
+  "score": 56.0,
+  "events": 128
  },
  "03-pico-pot": {
-  "hash": "562e1ee2d9",
+  "hash": "2417582240",
   "score": 37.0,
-  "events": 66
+  "events": 74
  },
  "04-555-blinker": {
-  "hash": "f19f7bd532",
-  "score": 45.718304780321,
-  "events": 157
+  "hash": "db0fbf70ac",
+  "score": 51.75569865670369,
+  "events": 226
  },
  "05-555-4017-chaser": {
-  "hash": "f8ea7a20f3",
-  "score": 200.9163068251589,
-  "events": 278
+  "hash": "8f383cbc00",
+  "score": 217.98815343446628,
+  "events": 146
  },
  "06-lm386-amp": {
-  "hash": "3a7a49dd1a",
-  "score": 67.56509096779688,
-  "events": 247
+  "hash": "4456dfc4dd",
+  "score": 77.41799588655756,
+  "events": 244
  },
  "07-lm358-amp": {
-  "hash": "3994a0016e",
-  "score": 99.49563245643888,
+  "hash": "c0cbe9dd89",
+  "score": 93.56350608985485,
   "events": 227
  },
  "08-relay-driver": {
-  "hash": "32d7701fc7",
-  "score": 59.11803544230423,
-  "events": 201
+  "hash": "d03bd33535",
+  "score": 57.11803544230423,
+  "events": 193
  },
  "09-pico-595-leds": {
-  "hash": "5379ec46e3",
-  "score": 222.40312423743285,
-  "events": 197
+  "hash": "982276e7c1",
+  "score": 217.32455532033677,
+  "events": 223
  },
  "10-atmega328-breadboard": {
-  "hash": "b2f2d3ccdf",
-  "score": 60.82410066895128,
-  "events": 192
+  "hash": "6cfe2bcb1e",
+  "score": 59.402174448307015,
+  "events": 152
  },
  "11-l293d-motors": {
-  "hash": "af26b73a82",
-  "score": 203.95804702645185,
-  "events": 185
+  "hash": "14f346c969",
+  "score": 196.5318057268797,
+  "events": 243
  },
  "12-pico-i2c": {
-  "hash": "85fb99b1e6",
-  "score": 179.0,
-  "events": 214
+  "hash": "49feb802ca",
+  "score": 181.0,
+  "events": 247
  },
  "13-ben-eater-register": {
-  "hash": "9cee4673df",
-  "score": 837.2454114753848,
-  "events": 328
+  "hash": "0f9b98b99f",
+  "score": 718.4089970172432,
+  "events": 350
  },
  "14-7seg-multiplexed": {
-  "hash": "4ea45b6447",
-  "score": 1040.74290366672,
-  "events": 322
+  "hash": "0944a67d03",
+  "score": 1025.8815170817593,
+  "events": 319
  },
  "15-ipod-m1": {
-  "hash": "77ccadb9b5",
-  "score": 273.7285087085695,
-  "events": 277
+  "hash": "837ecd4c4c",
+  "score": 249.6515799509947,
+  "events": 211
  },
  "16-ipod-m2": {
-  "hash": "089d20f16b",
-  "score": 2401.177874009707,
-  "events": 594
+  "hash": "73e06f9f2d",
+  "score": 2302.2462540427155,
+  "events": 771
  },
  "17-esp32-devkit": {
-  "hash": "400881a370",
-  "score": 174.605551275464,
-  "events": 249
+  "hash": "f1cdde519d",
+  "score": 162.0,
+  "events": 230
  },
  "18-traffic-light": {
-  "hash": "a789d8040f",
-  "score": 66.0,
-  "events": 158
+  "hash": "39963a4375",
+  "score": 65.0,
+  "events": 155
  },
  "19-two-supplies": {
-  "hash": "85e6f6a977",
-  "score": 45.14408201859587,
-  "events": 198
+  "hash": "0f25cbac94",
+  "score": 39.755698656703686,
+  "events": 223
  },
  "20-esp32-offboard": {
-  "hash": "58bc436d3a",
-  "score": 83.4206317235401,
-  "events": 263
+  "hash": "d9e13a743c",
+  "score": 90.73336514306433,
+  "events": 257
  },
  "21-esp32-under": {
-  "hash": "23f6488a6f",
-  "score": 110.0,
-  "events": 178
+  "hash": "b8305f5ab4",
+  "score": 119.0,
+  "events": 221
  },
  "_kicad": [
   "/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/5a7d69b241b1417e15f791cb32499119ec931accda6a18544b2f9969d60da867/files"

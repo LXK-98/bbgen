@@ -5,12 +5,12 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: d59
+    at: g59
     rot: 180
   U1:
     symbol: 74xx:74HC595
     footprint: Package_DIP:DIP-16_W7.62mm
-    at: f29
+    at: e27
     rot: 0
   C1:
     type: capacitor
@@ -23,90 +23,90 @@ parts:
     type: resistor
     value: 330R
     pins:
-    - b30
-    - b25
+    - h28
+    - h25
   D1:
     type: led
     pins:
-    - e25
-    - e23
+    - j25
+    - top-25
   R2:
     type: resistor
     value: 330R
     pins:
-    - h29
-    - h24
+    - d27
+    - d22
   D2:
     type: led
     pins:
-    - j24
-    - bot-24
+    - a22
+    - bot-22
   R3:
     type: resistor
     value: 330R
     pins:
-    - j30
-    - j25
+    - c28
+    - c23
   D3:
     type: led
     pins:
-    - f25
-    - f23
+    - e23
+    - e25
   R4:
     type: resistor
     value: 330R
     pins:
-    - g31
-    - g26
+    - a29
+    - a24
   D4:
     type: led
     pins:
-    - i26
-    - i23
+    - j21
+    - top-21
   R5:
     type: resistor
     value: 330R
     pins:
-    - h32
-    - h37
+    - c30
+    - c35
   D5:
     type: led
     pins:
-    - i37
-    - i36
+    - a35
+    - bot-35
   R6:
     type: resistor
     value: 330R
     pins:
-    - d38
-    - d37
+    - a31
+    - a36
   D6:
     type: led
     pins:
-    - a37
-    - top-37
+    - j36
+    - top-36
   R7:
     type: resistor
     value: 330R
     pins:
-    - g34
-    - g39
+    - d32
+    - d37
   D7:
     type: led
     pins:
-    - a39
-    - top-39
+    - b37
+    - bot-37
   R8:
     type: resistor
     value: 330R
     pins:
-    - f27
-    - d27
+    - g35
+    - g39
   D8:
     type: led
     pins:
-    - a27
-    - top-27
+    - j39
+    - top-39
 nets:
   3V3:
     pins:

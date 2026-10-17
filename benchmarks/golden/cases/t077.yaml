@@ -2,7 +2,7 @@ parts:
   U1:
     type: dip
     pins: 8
-    at: e30
+    at: f30
     rot: 180
     labels:
     - G1

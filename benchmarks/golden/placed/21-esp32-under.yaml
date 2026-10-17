@@ -53,45 +53,45 @@ parts:
     - IO22
     - IO23
     - GND3
-    at: j12
+    at: a33
     rot: 0
   U1:
     symbol: Sensor_Temperature:DS18B20
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: e43
+    at: f55
     rot: 270
   OLED:
     symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C
-    at: e5
+    at: f21
     rot: 90
   R1:
     type: resistor
     value: 4k7
     pins:
-    - top+42
-    - a42
+    - top+54
+    - j54
   R2:
     type: resistor
     value: 330R
     pins:
-    - a26
-    - a31
+    - j47
+    - j52
   D1:
     type: led
     pins:
-    - b31
-    - b34
+    - i52
+    - i55
   R3:
     type: resistor
     value: 10k
     pins:
-    - top+35
-    - a35
+    - top+60
+    - j60
   SW1:
     type: dip
     pins: 4
     title: button
-    at: e35
+    at: f60
     rot: 180
 nets:
   3V3:

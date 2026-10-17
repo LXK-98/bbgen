@@ -8,64 +8,64 @@ notes:
 parts:
   U1:
     symbol: MCU_Microchip_ATmega:ATmega328P-P
-    at: e61
+    at: f60
     rot: 180
   X1:
     type: capacitor
     value: 16MHz
     title: crystal
     pins:
-    - a53
-    - a52
+    - j52
+    - j51
   C1:
     type: capacitor
     value: 22pF
     pins:
-    - d53
-    - d54
+    - g52
+    - g53
   C2:
     type: capacitor
     value: 22pF
     pins:
-    - b52
-    - b54
+    - i51
+    - i53
   R1:
     type: resistor
     value: 10k
     pins:
-    - d55
-    - d61
+    - top+60
+    - j60
   C5:
     type: capacitor
     value: 100nF
     pins:
-    - a63
-    - a61
+    - h63
+    - h60
   C3:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - h53
-    - h55
+    - c52
+    - c54
   C4:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - top+57
-    - top-57
+    - top+55
+    - top-55
   R2:
     type: resistor
     value: 220R
     pins:
-    - i52
-    - i47
+    - b51
+    - b46
   D1:
     type: led
     pins:
-    - a47
-    - top-47
+    - j46
+    - top-46
   J1:
     type: offboard
     title: FTDI adapter

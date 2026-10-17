@@ -1,16 +1,16 @@
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
   R1:
     type: resistor
     pins:
     - Pico.GP15
-    - b22
+    - i22
   D1:
     type: led
     pins:
-    - a22
+    - j22
     - top-
 wires:
 - - Pico.38

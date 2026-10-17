@@ -36,8 +36,8 @@ export function stripId(hole: string, scene: Scene): { id: string; label: string
 	const t = TERMINAL.exec(hole);
 	if (t) {
 		const board = t[1] ?? scene.boards[0]?.id ?? '1';
-		const top = t[2] <= 'e';
-		return { id: `${board}:${top ? 'top' : 'bot'}:${t[3]}`, label: `${top ? 'a–e' : 'f–j'} ${t[3]}` };
+		const ae = t[2] <= 'e';
+		return { id: `${board}:${ae ? 'ae' : 'fj'}:${t[3]}`, label: `${ae ? 'a–e' : 'f–j'} ${t[3]}` };
 	}
 	const r = RAIL.exec(hole);
 	if (r) {

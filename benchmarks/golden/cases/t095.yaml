@@ -3,6 +3,6 @@ parts:
     type: resistor
     pins:
     - bot+47
-    - j48
+    - a48
 wires: []
 nets: {}

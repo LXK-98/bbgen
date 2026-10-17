@@ -6,116 +6,116 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: d62
+    at: g62
     rot: 180
   U1:
     symbol: 74xx:74HC595
     footprint: Package_DIP:DIP-16_W7.62mm
-    at: f13
+    at: e13
     rot: 0
   DISP1:
     symbol: Display_Character:CC56-12EWA
-    at: f29
+    at: e29
     rot: 0
   C1:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - c13
-    - c11
+    - h13
+    - h11
   R1:
     type: resistor
     value: 220R
     pins:
-    - a14
-    - a12
+    - j14
+    - j12
   R2:
     type: resistor
     value: 220R
     pins:
-    - g13
-    - g11
+    - d13
+    - d11
   R3:
     type: resistor
     value: 220R
     pins:
-    - h14
-    - h12
+    - c14
+    - c12
   R4:
     type: resistor
     value: 220R
     pins:
-    - h15
-    - h21
+    - c15
+    - c21
   R5:
     type: resistor
     value: 220R
     pins:
-    - j16
-    - j10
+    - a16
+    - a10
   R6:
     type: resistor
     value: 220R
     pins:
-    - g17
-    - e21
+    - d17
+    - f21
   R7:
     type: resistor
     value: 220R
     pins:
-    - h42
-    - h33
+    - c42
+    - c33
   R8:
     type: resistor
     value: 220R
     pins:
-    - i19
-    - i31
+    - b19
+    - b31
   Q1:
     symbol: Transistor_BJT:PN2222A
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: a11
+    at: j11
     rot: 270
   R9:
     type: resistor
     value: 1k
     pins:
-    - c8
-    - c10
+    - h8
+    - h10
   Q2:
     symbol: Transistor_BJT:PN2222A
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: f7
+    at: e7
     rot: 90
   R10:
     type: resistor
     value: 1k
     pins:
-    - h6
-    - h8
+    - c6
+    - c8
   Q3:
     symbol: Transistor_BJT:PN2222A
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: f4
-    rot: 270
+    at: e2
+    rot: 90
   R11:
     type: resistor
     value: 1k
     pins:
-    - i5
-    - i3
+    - b5
+    - b3
   Q4:
     symbol: Transistor_BJT:PN2222A
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: d3
+    at: g3
     rot: 90
   R12:
     type: resistor
     value: 1k
     pins:
-    - a7
-    - a4
+    - j7
+    - j4
 nets:
   3V3:
     pins:

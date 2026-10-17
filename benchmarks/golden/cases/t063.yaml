@@ -1,7 +1,7 @@
 parts:
   U1:
     symbol: Timer:NE555P
-    at: f10
+    at: e10
 wires:
 - - U1.VCC
   - top+

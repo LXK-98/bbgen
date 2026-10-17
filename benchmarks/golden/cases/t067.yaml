@@ -2,7 +2,7 @@ parts:
   U1:
     type: dip
     pins: 6
-    at: a10
+    at: j10
     rot: 90
 wires: []
 nets: {}

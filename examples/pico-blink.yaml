@@ -6,8 +6,8 @@ boards:
   - type: half
 
 parts:
-  Pico: {type: pico, at: h3}
-  R1: {type: resistor, value: 330R, pins: [Pico.GP15, j26]}
+  Pico: {type: pico, at: c3}
+  R1: {type: resistor, value: 330R, pins: [Pico.GP15, b26]}
   D1: {type: led, value: red, pins: [R1.2, bot-]}
 
 wires:

@@ -9,13 +9,13 @@ const MARKUP: &str = r##""#000\"/><img src=x onerror=\"alert(1)\">""##;
 
 /// A circuit whose parts are already placed (no search), and one bbgen has to place.
 fn placed(extra_wire: &str, net_color: &str, part_color: &str) -> String {
-    format!("parts:\n  Pico: {{type: pico, at: h3}}\n  R1: {{type: resistor, value: 330R, pins: [Pico.GP15, j26]{part_color}}}\n  \
+    format!("parts:\n  Pico: {{type: pico, at: c3}}\n  R1: {{type: resistor, value: 330R, pins: [Pico.GP15, a26]{part_color}}}\n  \
              D1: {{type: led, pins: [R1.2, bot-]}}\nwires:\n  - [Pico.3, bot-{extra_wire}]\n\
              nets:\n  GND: {{pins: [Pico.GND, D1.K]{net_color}}}\n  LED_DRIVE: [Pico.GP15, R1.1]\n  LED_A: [R1.2, D1.A]\n")
 }
 
 fn unplaced(extra_wire: &str, net_color: &str, part_color: &str) -> String {
-    format!("parts:\n  R1: {{type: resistor, value: 330R{part_color}}}\n  D1: {{type: led}}\nwires:\n  - [a1, a5{extra_wire}]\n\
+    format!("parts:\n  R1: {{type: resistor, value: 330R{part_color}}}\n  D1: {{type: led}}\nwires:\n  - [j1, j5{extra_wire}]\n\
              nets:\n  A: {{pins: [R1.2, D1.A]{net_color}}}\n  B: [R1.1, D1.K]\n")
 }
 

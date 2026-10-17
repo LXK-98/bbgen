@@ -499,8 +499,8 @@ impl Circuit {
             let id = spec.get("id").map(Val::py_str).unwrap_or((i + 1).to_string());
             let kind = spec.get("type").map(Val::py_str).unwrap_or("full".into());
             let rails = spec.at("rails");
-            let top = rails.get("top").map(Val::py_str).unwrap_or("+-".into());
-            let bot = rails.get("bottom").or(rails.get("bot")).map(Val::py_str).unwrap_or("+-".into());
+            let top = rails.get("top").map(Val::py_str).unwrap_or(crate::board::RAIL_ORDER.into());
+            let bot = rails.get("bottom").or(rails.get("bot")).map(Val::py_str).unwrap_or(crate::board::RAIL_ORDER.into());
             let mut board = Board::new(id, i as u8, &kind, &top, &bot, spec.at("split_rails").truthy())
                 .map_err(|e| format!("boards[{}]: {}", i, e))?;
             if self.boards.iter().any(|b| b.id == board.id) {

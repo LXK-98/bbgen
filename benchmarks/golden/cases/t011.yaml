@@ -1,7 +1,7 @@
 parts:
   Pico:
     type: pico
-    at: c40
+    at: h40
     rot: 180
   C1:
     type: capacitor

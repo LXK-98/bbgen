@@ -1,5 +1,5 @@
 error   STRAY        Pico.21 GP16 is connected to net LED but isn't in any net
-warning OVER_PART    R1 lies over Pico (i22 → b22): put its legs where it clears the part
+warning OVER_PART    R1 lies over Pico (b22 → i22): put its legs where it clears the part
 check: 1 error, 1 warning
 wrote OUT/t037.svg
 wrote OUT/t037.md

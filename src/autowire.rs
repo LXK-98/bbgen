@@ -268,9 +268,9 @@ fn wire_index(c: &Circuit, id: u64) -> Option<usize> {
 
 /// Lay each flat wire that crosses another flat wire again, now that every wire on the board is in: the cheapest
 /// pair of holes in the same two strips, kept if it costs less and crosses fewer. Nets without a rail are wired
-/// first, so one can take the row a rail's wire, laid later, has to cross on its way to the rail (a wire along row a
-/// over the strip a chip's supply pin drops from); a row further in crosses nothing. Where no other holes clear it,
-/// it becomes a flexible jumper: one flat wire never crosses another.
+/// first, so one can take the outer row a rail's wire, laid later, has to cross on its way to the rail (a wire along
+/// the row by the rails over the strip a chip's supply pin drops from); a row further in crosses nothing. Where no
+/// other holes clear it, it becomes a flexible jumper: one flat wire never crosses another.
 fn settle_crossings(c: &mut Circuit, node_pins: &NodePins, first: usize) {
     let to_rail = |w: &Wire| [&w.a, &w.b].iter().any(|e| e.as_ref().and_then(|e| e.hole).map(|h| h.is_rail()).unwrap_or(false));
     let crossing = |c: &Circuit, a: Xy, b: Xy| -> Vec<Wire> {
@@ -664,7 +664,7 @@ fn rails(c: &mut Circuit, dsu: &mut Dsu<Node>, node_pins: &NodePins) -> IndexMap
                 pieces.entry(r).or_default().push(n);
             }
         }
-        for (side, half) in [("top", StripKind::AE), ("bot", StripKind::FJ)] {
+        for (side, half) in [("top", StripKind::FJ), ("bot", StripKind::AE)] {
             let rail = Row::parse(&format!("{}{}", side, sign)).unwrap();
             let strips: Vec<Node> = every.iter().copied().filter(|s| rail_of(s) == Some(rail)).collect();
             if mine.contains(&rail) || strips.is_empty() || strips.iter().any(|s| owner.contains_key(s)) {
@@ -1268,7 +1268,7 @@ fn empty_strips(c: &mut Circuit) -> HashSet<Strip> {
     let mut out = HashSet::default();
     for b in &c.boards {
         for col in 1..=b.columns {
-            for kind in [StripKind::AE, StripKind::FJ] {
+            for kind in [StripKind::FJ, StripKind::AE] {
                 let strip = Strip { board: b.index, kind, n: col };
                 if b.strip_holes(strip).iter().all(|&h| {
                     let k = pyf::key(b.xy(h));

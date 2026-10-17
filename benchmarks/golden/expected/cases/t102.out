@@ -1,8 +1,8 @@
-error   END_COVERED  W2 ends in a15, under W1, which goes in first: W2 can't be plugged in. Move one of them
-warning DANGLING     W1 ends in a10, where nothing else is connected
-warning DANGLING     W1 ends in a20, where nothing else is connected
-warning DANGLING     W2 ends in a15, where nothing else is connected
-warning DANGLING     W2 ends in a25, where nothing else is connected
+error   END_COVERED  W2 ends in j15, under W1, which goes in first: W2 can't be plugged in. Move one of them
+warning DANGLING     W1 ends in j10, where nothing else is connected
+warning DANGLING     W1 ends in j20, where nothing else is connected
+warning DANGLING     W2 ends in j15, where nothing else is connected
+warning DANGLING     W2 ends in j25, where nothing else is connected
 check: 1 error, 4 warnings
 wrote OUT/t102.svg
 wrote OUT/t102.md

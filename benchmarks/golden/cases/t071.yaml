@@ -3,6 +3,6 @@ parts:
     type: dip
     pins: 4
     width: 2
-    at: f10
+    at: e10
 wires: []
 nets: {}

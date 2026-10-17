@@ -7,49 +7,49 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: g4
+    at: d4
     rot: 0
   D1:
     type: led
     color: red
     pins:
-    - a24
+    - j24
     - top-24
   D2:
     type: led
     color: yellow
     pins:
-    - a27
+    - j27
     - top-27
   D3:
     type: led
     color: green
     pins:
-    - a31
+    - j31
     - top-31
   R1:
     type: resistor
     value: 220R
     pins:
-    - i20
-    - i24
+    - b20
+    - b24
   R2:
     type: resistor
     value: 220R
     pins:
-    - j22
-    - j27
+    - a22
+    - a27
   R3:
     type: resistor
     value: 220R
     pins:
-    - c28
-    - c31
+    - h28
+    - h31
   SW1:
     type: dip
     pins: 4
     title: pedestrian button
-    at: f29
+    at: e29
     rot: 0
 nets:
   RED:

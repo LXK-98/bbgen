@@ -7,44 +7,44 @@ parts:
   U1:
     symbol: Amplifier_Operational:LM358
     footprint: Package_DIP:DIP-8_W7.62mm
-    at: e61
+    at: f61
     rot: 180
   R1:
     type: resistor
     value: 10k
     pins:
     - top+57
-    - a57
+    - j57
   R2:
     type: resistor
     value: 10k
     pins:
-    - j58
+    - a58
     - bot-58
   R3:
     type: resistor
     value: 100k
     pins:
-    - h56
-    - h59
+    - c56
+    - c59
   R4:
     type: resistor
     value: 10k
     pins:
-    - i63
-    - i60
+    - b63
+    - b60
   R5:
     type: resistor
     value: 100k
     pins:
-    - d60
-    - d61
+    - g60
+    - g61
   C1:
     type: capacitor
     value: 1uF
     pins:
-    - b62
-    - b59
+    - i62
+    - i59
   C3:
     type: capacitor
     value: 100nF
@@ -56,8 +56,8 @@ parts:
     type: electrolytic
     value: 10uF
     pins:
-    - c57
-    - c58
+    - h57
+    - h58
   J1:
     type: offboard
     title: Input

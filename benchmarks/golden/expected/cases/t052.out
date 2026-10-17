@@ -1,6 +1,6 @@
-error   HOLE_TAKEN   e18: W1 and Pico's USB cable both want this hole
-warning OVER_PART    W1 runs over Pico's USB cable (e18 → top-18): move a part to make room
-warning DANGLING     W1 ends in e18, where nothing else is connected
+error   HOLE_TAKEN   f18: W1 and Pico's USB cable both want this hole
+warning OVER_PART    W1 runs over Pico's USB cable (f18 → top-18): move a part to make room
+warning DANGLING     W1 ends in f18, where nothing else is connected
 warning DANGLING     W1 ends in top-18, where nothing else is connected
 check: 1 error, 3 warnings
 wrote OUT/t052.svg

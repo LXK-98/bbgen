@@ -1,12 +1,12 @@
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
   R1:
     type: resistor
     pins:
     - Pico.GP15
-    - j27
+    - a27
   D1:
     type: led
     pins:
@@ -15,10 +15,10 @@ parts:
 wires:
 - - Pico.3
   - bot-
-- - a40
-  - a50
-- - a45
-  - b45
+- - j40
+  - j50
+- - j45
+  - i45
 nets:
   GND:
   - Pico.GND

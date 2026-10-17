@@ -6,107 +6,107 @@ notes:
 parts:
   U1:
     symbol: Timer:NE555P
-    at: e61
-    rot: 180
+    at: e57
+    rot: 0
   U2:
     symbol: 4xxx:4017
     footprint: Package_DIP:DIP-16_W7.62mm
-    at: f45
+    at: e45
     rot: 0
   RA:
     type: resistor
     value: 1k
     pins:
-    - h61
-    - h60
+    - top+58
+    - j58
   RB:
     type: resistor
     value: 47k
     pins:
-    - j60
-    - j59
+    - h58
+    - h59
   C1:
     type: electrolytic
     value: 10uF
     pins:
-    - b60
-    - b61
+    - d58
+    - d57
   C2:
     type: capacitor
     value: 10nF
     pins:
-    - j58
-    - bot-58
+    - j60
+    - top-60
   C3:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - top+59
-    - top-59
+    - b60
+    - b57
   C4:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - b45
-    - b46
+    - i45
+    - i46
   R1:
     type: resistor
     value: 470R
     pins:
-    - j42
-    - bot-42
+    - g43
+    - g46
   D1:
     type: led
     pins:
-    - h47
-    - h44
+    - c47
+    - c44
   D2:
     type: led
     pins:
-    - j46
-    - j44
+    - a46
+    - a44
   D3:
     type: led
     pins:
-    - f43
-    - e43
+    - j42
+    - j43
   D4:
     type: led
     pins:
-    - c55
-    - c53
+    - e43
+    - f43
   D5:
     type: led
     pins:
-    - a51
-    - a53
+    - j51
+    - j53
   D6:
     type: led
     pins:
-    - g45
-    - g42
+    - d45
+    - d42
   D7:
     type: led
     pins:
-    - a42
-    - a43
+    - b41
+    - b42
   D8:
     type: led
     pins:
-    - h50
-    - h53
+    - c50
+    - c53
   D9:
     type: led
     pins:
-    - j54
-    - j53
+    - a54
+    - a53
   D10:
     type: led
     pins:
-    - d50
-    - d53
+    - g50
+    - g53
   J1:
     type: offboard
     title: 9 V supply

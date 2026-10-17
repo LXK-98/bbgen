@@ -2,7 +2,7 @@ parts:
   U1:
     type: dip
     pins: 6
-    at: e27
+    at: f27
     rot: 180
     labels: &id001
     - VIN
@@ -14,29 +14,29 @@ parts:
   U2:
     type: dip
     pins: 6
-    at: e10
+    at: f10
     rot: 180
     labels: *id001
 wires:
 - from: U2.EN
   to: U1.EN
   flex: true
-- - a14
-  - a24
-- - b14
-  - b24
-- - c14
-  - c24
-- - d14
-  - d24
-- - g14
-  - g24
-- - h14
-  - h24
-- - i14
-  - i24
 - - j14
   - j24
+- - i14
+  - i24
+- - h14
+  - h24
+- - g14
+  - g24
+- - d14
+  - d24
+- - c14
+  - c24
+- - b14
+  - b24
+- - a14
+  - a24
 nets:
   EN:
   - U1.EN

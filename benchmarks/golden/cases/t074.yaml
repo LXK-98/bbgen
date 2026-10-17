@@ -3,7 +3,7 @@ parts:
     type: capacitor
     pins:
     - top+10
-    - a10
+    - j10
 nets:
   GND:
     pins:

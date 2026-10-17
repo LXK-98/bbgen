@@ -1,8 +1,8 @@
-error   END_COVERED  W6 ends in e11, under W5, which goes in first: W6 can't be plugged in. Move one of them
-error   END_COVERED  W6 ends in a19, under W1, which goes in first: W6 can't be plugged in. Move one of them
-warning DIAGONAL     W6 slants (e11 → a19): every straight route is blocked (by W1, W2, W3, W4, W5). Move parts to make room, bend it with via:, or accept it with slant: <reason> on W6
-warning DANGLING     W6 ends in e11, where nothing else is connected
-warning DANGLING     W6 ends in a19, where nothing else is connected
+error   END_COVERED  W6 ends in f11, under W5, which goes in first: W6 can't be plugged in. Move one of them
+error   END_COVERED  W6 ends in j19, under W1, which goes in first: W6 can't be plugged in. Move one of them
+warning DIAGONAL     W6 slants (f11 → j19): every straight route is blocked (by W1, W2, W3, W4, W5). Move parts to make room, bend it with via:, or accept it with slant: <reason> on W6
+warning DANGLING     W6 ends in f11, where nothing else is connected
+warning DANGLING     W6 ends in j19, where nothing else is connected
 check: 2 errors, 3 warnings
 wrote OUT/t092.svg
 wrote OUT/t092.md

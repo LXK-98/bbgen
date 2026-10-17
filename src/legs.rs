@@ -28,9 +28,15 @@ pub fn is_round(kind: Kind) -> bool {
     matches!(kind, Kind::Led | Kind::Electrolytic)
 }
 
-/// Python's sort order for strips: (board id, kind's name, n).
+/// The order strips are tried in: (board id, kind, n), the kinds as Python sorted their names when the upper half was
+/// called a-e: the upper half, the bottom rails, the lower half, the top rails.
 pub fn strip_order(c: &Circuit, a: &Strip, b: &Strip) -> std::cmp::Ordering {
-    (c.boards[a.board as usize].id.as_str(), a.kind.name(), a.n).cmp(&(c.boards[b.board as usize].id.as_str(), b.kind.name(), b.n))
+    let kind = |k: StripKind| match k {
+        StripKind::FJ => (0, ""),
+        StripKind::AE => (2, ""),
+        StripKind::Rail(r) => (if r.side() == "bot" { 1 } else { 3 }, r.name()),
+    };
+    (c.boards[a.board as usize].id.as_str(), kind(a.kind), a.n).cmp(&(c.boards[b.board as usize].id.as_str(), kind(b.kind), b.n))
 }
 
 fn sorted_strips(c: &Circuit, set: impl IntoIterator<Item = Strip>) -> Vec<Strip> {
@@ -69,7 +75,7 @@ fn drops(c: &Circuit, plan: &IndexMap<String, Vec<String>>, net_of: &HashMap<Pin
                 Some(h) if !h.is_rail() => h,
                 _ => continue,
             };
-            let top = h.row.top_half();
+            let top = h.row.upper();
             let side = if top { "top" } else { "bot" };
             let rails: Vec<&String> = net_of.get(&PinId { part: pi as u16, pin: k as u16 }).and_then(|n| plan.get(n))
                 .map(|r| r.iter().filter(|r| r.starts_with(side)).collect()).unwrap_or_default();
@@ -77,7 +83,7 @@ fn drops(c: &Circuit, plan: &IndexMap<String, Vec<String>>, net_of: &HashMap<Pin
             if let Some(r) = rails.first() {
                 let row = Row::parse(r).unwrap();
                 if own.has(row, h.col) {
-                    out.push((Hole::new(own.index, if top { Row::A } else { Row::J }, h.col), Hole::new(own.index, row, h.col)));
+                    out.push((Hole::new(own.index, if top { Row::J } else { Row::A }, h.col), Hole::new(own.index, row, h.col)));
                 }
             }
         }
@@ -244,7 +250,7 @@ impl<'a> Legs<'a> {
     }
 
     fn drop_kept(&self, hole: Hole, rails: &[String]) -> bool {
-        let side = if hole.row.top_half() { "top" } else { "bot" };
+        let side = if hole.row.upper() { "top" } else { "bot" };
         rails.iter().filter(|r| r.starts_with(side)).any(|r| self.c.lead_room.contains(&Hole::new(hole.board, Row::parse(r).unwrap(), hole.col)))
     }
 

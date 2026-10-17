@@ -8,13 +8,13 @@ parts:
   C1:
     type: capacitor
     pins:
-    - a10
-    - a12
+    - j10
+    - j12
   C2:
     type: capacitor
     pins:
-    - j10
-    - j12
+    - a10
+    - a12
 nets:
   5V:
     pins:

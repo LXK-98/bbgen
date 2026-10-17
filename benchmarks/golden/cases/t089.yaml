@@ -1,4 +1,4 @@
 wires:
-- from: a1
-  to: b5
+- from: j1
+  to: i5
   slant: true

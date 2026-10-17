@@ -10,12 +10,12 @@ boards:
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
   U1:
     type: dip
     pins: 8
     width: 3
-    at: f30
+    at: e30
     title: 24LC256
     labels:
     - A0
@@ -31,7 +31,7 @@ parts:
     value: 330R
     pins:
     - Pico.GP15
-    - j27
+    - a27
   D1:
     type: led
     pins:

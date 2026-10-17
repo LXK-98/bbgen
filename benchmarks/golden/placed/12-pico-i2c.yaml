@@ -6,29 +6,29 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: d58
+    at: g57
     rot: 180
   U1:
     symbol: Memory_EEPROM:24LC256
     footprint: Package_DIP:DIP-8_W7.62mm
-    at: f22
+    at: e22
     rot: 0
   OLED:
     symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C
-    at: e17
+    at: f17
     rot: 90
   R1:
     type: resistor
     value: 4k7
     pins:
-    - b18
-    - b20
+    - i18
+    - i20
   R2:
     type: resistor
     value: 4k7
     pins:
-    - b22
-    - b24
+    - i22
+    - i24
   C1:
     type: capacitor
     value: 100nF
@@ -40,13 +40,13 @@ parts:
     type: dip
     pins: 4
     title: button 1
-    at: f36
+    at: e35
     rot: 0
   SW2:
     type: dip
     pins: 4
     title: button 2
-    at: e32
+    at: f30
     rot: 180
 nets:
   3V3:

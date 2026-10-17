@@ -2,18 +2,18 @@ parts:
   C1:
     type: electrolytic
     pins:
-    - c20
-    - c21
+    - h20
+    - h21
   R1:
     type: resistor
     pins:
-    - d13
-    - d15
+    - g13
+    - g15
   R2:
     type: resistor
     pins:
-    - d25
-    - d27
+    - g25
+    - g27
 nets:
   X:
   - R1.2

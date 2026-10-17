@@ -27,14 +27,14 @@ parts:
 
   # The LEDs, placed by hand: a row at the top, right of the middle, cathodes in the top ground rail
   # (L6's cathode goes to U2's carry out instead, so it lies along row a).
-  L1: {type: led, pins: [a39, top-39]}
-  L2: {type: led, pins: [a41, top-41]}
-  L3: {type: led, pins: [a43, top-43]}
-  L4: {type: led, pins: [a45, top-45]}
-  L5: {type: led, pins: [a47, top-47]}
-  L6: {type: led, pins: [a49, a50]}
-  L7: {type: led, pins: [a51, top-51]}
-  L8: {type: led, pins: [a53, top-53]}
+  L1: {type: led, pins: [j39, top-39]}
+  L2: {type: led, pins: [j41, top-41]}
+  L3: {type: led, pins: [j43, top-43]}
+  L4: {type: led, pins: [j45, top-45]}
+  L5: {type: led, pins: [j47, top-47]}
+  L6: {type: led, pins: [j49, j50]}
+  L7: {type: led, pins: [j51, top-51]}
+  L8: {type: led, pins: [j53, top-53]}
 
   R1: {type: resistor, value: 1k}
   R2: {type: resistor, value: 1k}

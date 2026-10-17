@@ -2,7 +2,7 @@ parts:
   U1:
     type: dip
     pins: 6
-    at: e42
+    at: f42
     rot: 180
     labels:
     - OUT
@@ -15,6 +15,6 @@ wires:
 - from: U1.OUT
   to: U1.IN-
   via:
-  - d39
   - g39
+  - d39
 nets: {}

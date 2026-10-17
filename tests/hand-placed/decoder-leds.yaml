@@ -26,14 +26,14 @@ parts:
   C7: {type: electrolytic, value: 100uF}
 
   # The LEDs, placed by hand: a row of 8 along the top edge, anode in row a, cathode in the ground rail.
-  D1: {type: led, pins: [a45, top-45]}
-  D2: {type: led, pins: [a47, top-47]}
-  D3: {type: led, pins: [a49, top-49]}
-  D4: {type: led, pins: [a51, top-51]}
-  D5: {type: led, pins: [a53, top-53]}
-  D6: {type: led, pins: [a55, top-55]}
-  D7: {type: led, pins: [a57, top-57]}
-  D8: {type: led, pins: [a59, top-59]}
+  D1: {type: led, pins: [j45, top-45]}
+  D2: {type: led, pins: [j47, top-47]}
+  D3: {type: led, pins: [j49, top-49]}
+  D4: {type: led, pins: [j51, top-51]}
+  D5: {type: led, pins: [j53, top-53]}
+  D6: {type: led, pins: [j55, top-55]}
+  D7: {type: led, pins: [j57, top-57]}
+  D8: {type: led, pins: [j59, top-59]}
 
   R11: {type: resistor, value: 1k}
   R12: {type: resistor, value: 1k}

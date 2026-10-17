@@ -54,40 +54,40 @@ parts:
   U1:
     symbol: Sensor_Temperature:DS18B20
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: f55
-    rot: 270
+    at: f53
+    rot: 90
   OLED:
     symbol: Display_Graphic:ER_OLEDM0.91_1x-I2C
-    at: f61
+    at: e61
     rot: 270
   R1:
     type: resistor
     value: 4k7
     pins:
-    - h53
-    - h54
+    - top+54
+    - j54
   R2:
     type: resistor
     value: 330R
     pins:
-    - d63
-    - f63
+    - g63
+    - e63
   D1:
     type: led
     pins:
-    - i63
-    - i61
+    - b63
+    - b61
   R3:
     type: resistor
     value: 10k
     pins:
-    - bot+41
-    - h41
+    - bot+45
+    - c45
   SW1:
     type: dip
     pins: 4
     title: button
-    at: f41
+    at: e45
     rot: 0
 nets:
   3V3:

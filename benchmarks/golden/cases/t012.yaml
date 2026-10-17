@@ -1,7 +1,7 @@
 parts:
   Pico:
     type: pico
-    at: h20
+    at: c20
   C1:
     type: capacitor
     pins:

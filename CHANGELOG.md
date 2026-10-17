@@ -5,6 +5,15 @@ fixes things. Each release's section here is its notes on GitHub.
 
 ## Unreleased
 
+- **The board is drawn the way breadboards are made.** With column 1 at the left, row `j` is now at the top and
+  row `a` at the bottom, and each pair of rails has its `-` rail above its `+` rail, as on BusBoard's BB830, the
+  MB-102 boards and Adafruit's. The drawing used to be the mirror image of a real board: its hole names didn't
+  match the ones printed on yours, and a chip placed by its pin 1 (`at:`) could only go in upside down. A hole's
+  name now means the hole with that name on your board. A file that places parts by hand keeps its drawing if
+  its rows are swapped `a`↔`j`, `b`↔`i`, `c`↔`h`, `d`↔`g`, `e`↔`f`; the rails now default to `-+` (top to
+  bottom) on both sides.
+- Placement keeps a part's body off every hole of its own pins' strips, leaving each pin a hole for its wire: a
+  module whose body hangs over its pins' strips (an OLED) could be placed with no way to wire it.
 - Placement no longer puts a chip's pin in a strip where the file has put a leg or a wire end of another net, or
   a pin or the chip's body on a hole the file takes: it used to short into LEDs placed by hand. When there's no
   other place for a chip, bbgen says so and names what's in the way, and it never returns a layout with a short

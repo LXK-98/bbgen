@@ -19,15 +19,15 @@ notes: ["The LED's long leg is the anode."]   # copied into the checklist
 
 boards:                       # optional; default is one full-size board
   - type: full                # full (63 columns) or half (30)
-    rails: {top: "+-", bottom: "+-"}   # rail order top to bottom, as printed on yours
+    rails: {top: "-+", bottom: "-+"}   # rail order top to bottom, as printed on yours
     split_rails: false        # true if your rails break in the middle
                               # below: 1 snaps this board on under board 1
 
 parts:
-  Pico: {type: pico, at: h3}  # pin 1 in h3, USB to the left
-  U1: {type: dip, pins: 8, width: 3, at: f30, title: 24LC256,
+  Pico: {type: pico, at: c3}  # pin 1 in c3, USB to the left
+  U1: {type: dip, pins: 8, width: 3, at: e30, title: 24LC256,
        labels: [A0, A1, A2, GND, SDA, SCL, WP, VCC]}
-  R1: {type: resistor, value: 330R, pins: [Pico.GP15, j27]}
+  R1: {type: resistor, value: 330R, pins: [Pico.GP15, b27]}
   D1: {type: led, pins: [R1.2, bot-]}
   C1: {type: capacitor, value: 100nF, pins: [top+33, top-33]}
   J1: {type: offboard, title: Logic analyzer, cols: 2, labels: {1: SDA, 2: SCL, 3: GND, 4: "5V!"}}
@@ -58,9 +58,13 @@ nets:                         # what should be connected; the check holds the bo
 ## Holes
 
 - Terminal holes are `<row><column>`: rows `a`-`e` and `f`-`j`, columns from 1. Each column's
-  a-e is one strip and its f-j another, with the trench between e and f (0.3 in apart).
-- Rails are `top+`, `top-`, `bot+`, `bot-`, with a column: `top+12`. Rail holes come in groups
-  of five, so some columns have none:
+  a-e is one strip and its f-j another, with the trench between e and f (0.3 in apart). The board
+  lies as you'd have it with column 1 at your left: row `j` at the top, row `a` at the bottom,
+  nearest you. That's how breadboards print their rows (BusBoard's BB830, the MB-102 boards,
+  Adafruit's), so the hole names match the ones on yours.
+- Rails are `top+`, `top-`, `bot+`, `bot-`, with a column: `top+12`. Lying that way, a board has
+  its `-` rail above its `+` rail on both sides, and bbgen takes that unless `rails:` says otherwise.
+  Rail holes come in groups of five, so some columns have none:
 
   | board | columns with rail holes | columns without |
   |---|---|---|
@@ -71,7 +75,7 @@ nets:                         # what should be connected; the check holds the bo
 - With several boards (placed left to right), prefix the board id: `2:a12`. Board ids default to
   1, 2, ...
 - A board with `below: 1` is snapped on under board 1 instead, long side to long side, on the same
-  0.1 in grid: its row `a` is 1.0 in under board 1's row `i`, so a 1.0 in wide module (an ESP32
+  0.1 in grid: its row `j` is 1.0 in under board 1's row `b`, so a 1.0 in wide module (an ESP32
   DevKit) sits across the two with a row of pins in each. A wire from one board to another is
   always a flexible jumper.
 
@@ -233,22 +237,22 @@ holes under it aren't taken, and flat wires may end there or run beneath it, out
 and the checklist lists the module after them and marks each one that runs under it; the drawing
 shows it see-through over them. Nothing else fits under it: a two-lead part's leg, or a flexible
 jumper's or a flying lead's plug, there is an error (`HOLE_TAKEN`). That's how a 1.0 in wide
-module fits on one board, with its pins in rows `b` and `j`.
+module fits on one board, with its pins in rows `a` and `i`.
 
 ## Where parts land
 
 The rows are spaced like the holes, with the trench counting as two more: `a`-`e` are 1 apart,
 and `e` to `f` is 3. So:
 
-- **A DIP** (`width: 3`) straddles the trench only with pin 1 in row `f` (`rot: 0`) or row `e`
+- **A DIP** (`width: 3`) straddles the trench only with pin 1 in row `e` (`rot: 0`) or row `f`
   (`rot: 180`). Anywhere else its two rows land in the same half, shorting each pair of
   opposite pins, or in the trench (`OFF_HOLES`). Unrotated, pins 1 to n/2 run right from pin 1
   and the rest come back along the row above, so the last pin sits above pin 1. `rot: 180`
   turns that around: pin 1 top-right, pins running left, notch to the right. `rot: 90` and
   `270` stand a part across the columns, which puts each row of pins in one strip.
-- **A Pico** with pin 1 in `h<col>` has pins 1-20 in row `h`, running right from `<col>`, and
-  pins 21-40 in row `c`, running back left, so pin 40 is above pin 1. Its body blocks rows `d`
-  to `g`, which leaves each of its strips two free holes: `a` and `b` on top, `i` and `j` below.
+- **A Pico** with pin 1 in `c<col>` has pins 1-20 in row `c`, running right from `<col>`, and
+  pins 21-40 in row `h`, running back left, so pin 40 is above pin 1. Its body blocks rows `d`
+  to `g`, which leaves each of its strips two free holes: `i` and `j` on top, `a` and `b` below.
   Only two wires can run along the rows from one side of the Pico over the same stretch, so
   spread its connections over both sides and both ends.
 

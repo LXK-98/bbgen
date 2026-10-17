@@ -6,13 +6,13 @@ boards:
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
   R1:
     type: resistor
     value: 330R
     pins:
     - Pico.GP15
-    - j26
+    - a26
   D1:
     type: led
     value: red

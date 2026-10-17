@@ -2,6 +2,6 @@ parts:
   U1:
     type: dip
     pins: 8
-    at: f10
+    at: e10
 wires: []
 nets: {}

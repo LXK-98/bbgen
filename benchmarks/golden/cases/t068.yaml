@@ -8,12 +8,12 @@ parts:
   R1:
     type: resistor
     pins:
-    - a5
-    - a9
+    - j5
+    - j9
 wires:
-- - b5
+- - i5
   - J1.A
-- - b9
+- - i9
   - J1.2
 nets:
   N1:

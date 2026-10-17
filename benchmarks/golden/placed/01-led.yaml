@@ -13,12 +13,12 @@ parts:
     value: 330R
     pins:
     - top+60
-    - a60
+    - j60
   D1:
     type: led
     pins:
-    - c60
-    - c59
+    - h60
+    - h59
 nets:
   5V:
     pins:

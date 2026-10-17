@@ -16,7 +16,7 @@ parts:
     - Y
     - Z
     - W
-    at: i10
+    at: b10
     rot: 180
 nets:
   A:

@@ -1,4 +1,5 @@
-check: 0 errors, 0 warnings
+warning OVER_PART    R1 lies over D1 (a22 → a27): put its legs where it clears the part
+check: 0 errors, 1 warning
 wrote OUT/t031.svg
 wrote OUT/t031.md
 exit 0

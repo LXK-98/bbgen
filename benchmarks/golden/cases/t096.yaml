@@ -1,8 +1,8 @@
 parts: {}
 wires:
-- - a10
-  - a20
-- from: a15
-  to: c40
+- - j10
+  - j20
+- from: j15
+  to: h40
   flex: true
 nets: {}

@@ -16,7 +16,7 @@ parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
     footprint: Module:RaspberryPi_Pico_Common_THT
-    at: 2:i2
+    at: 2:d2
     rot: 0
   U12:
     symbol: Regulator_Linear:ME6211C30M5
@@ -24,7 +24,7 @@ parts:
       pins: 6
       map:
         '5': 6
-    at: 2:e60
+    at: f31
     rot: 180
   U11:
     symbol: Regulator_Linear:AP2112K-1.8
@@ -32,7 +32,7 @@ parts:
       pins: 6
       map:
         '5': 6
-    at: e43
+    at: 2:f45
     rot: 180
   U13:
     symbol: Amplifier_Operational:TLV9061xDBV
@@ -40,98 +40,98 @@ parts:
       pins: 6
       map:
         '5': 6
-    at: e30
+    at: f41
     rot: 180
   RV1:
     footprint: Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical
     title: 3296W 10k
-    at: f24
-    rot: 90
+    at: e43
+    rot: 270
   R1:
     type: resistor
     value: 10k
     pins:
-    - h30
-    - h24
+    - c41
+    - c43
   R2:
     type: resistor
     value: 10k
     pins:
-    - bot+24
-    - j24
+    - b41
+    - b43
   R5:
     type: resistor
     value: 10k
     pins:
-    - a23
-    - a28
+    - j44
+    - j39
   R6:
     type: resistor
     value: 10k
     pins:
-    - a30
-    - a35
+    - i41
+    - i46
   R3:
     type: resistor
     value: 10k
     pins:
-    - 2:b15
-    - 2:b19
+    - i29
+    - i30
   R4:
     type: resistor
     value: 10k
     pins:
-    - 2:a11
-    - 2:a14
+    - 2:i43
+    - 2:i39
   C5:
     type: electrolytic
     value: 10uF
     near: U12
     pins:
-    - 2:b60
-    - 2:b59
+    - h31
+    - h30
   C1:
     type: capacitor
     value: 1uF
     near: U12
     pins:
-    - 2:top+61
-    - 2:top-61
+    - g31
+    - g30
   C2:
     type: capacitor
     value: 1uF
     near: U12
     pins:
-    - 2:bot+54
-    - 2:bot-54
+    - bot+30
+    - bot-30
   C3:
     type: capacitor
     value: 1uF
     near: U11
     pins:
-    - b43
-    - b42
+    - 2:h45
+    - 2:h44
   C4:
     type: capacitor
     value: 1uF
     near: U11
     pins:
-    - i43
-    - bot-43
+    - 2:j40
+    - 2:j39
   C6:
     type: capacitor
     value: 100nF
     near: U13
     pins:
-    - bot+31
-    - bot-31
+    - bot+42
+    - bot-42
   U1:
     symbol: Logic_LevelTranslator:SN74LVC8T245
     footprint: Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm
     adapter:
       pins: 24
       width: 6
-    at: f47
+    at: e51
     rot: 0
   U2:
     symbol: Logic_LevelTranslator:SN74LVC8T245
@@ -139,7 +139,7 @@ parts:
     adapter:
       pins: 24
       width: 6
-    at: 2:f24
+    at: 2:e48
     rot: 0
   U3:
     symbol: Logic_LevelTranslator:SN74LVC8T245
@@ -147,82 +147,82 @@ parts:
     adapter:
       pins: 24
       width: 6
-    at: 2:b52
-    rot: 180
+    at: 2:c24
+    rot: 0
   U4:
     symbol: Logic_LevelTranslator:SN74LVC1T45DBV
     adapter:
       pins: 6
-    at: f60
-    rot: 0
+    at: 2:f40
+    rot: 180
   R7:
     type: resistor
     value: 10k
     pins:
-    - 2:h52
-    - 2:h57
+    - 2:c45
+    - 2:c47
   R8:
     type: resistor
     value: 10k
     pins:
-    - 2:i52
-    - 2:i56
+    - 2:h40
+    - 2:h42
   C7:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - a60
-    - top-60
+    - b52
+    - bot-52
   C8:
     type: capacitor
     value: 100nF
     near: U1
     pins:
-    - h60
-    - h57
+    - 2:j25
+    - 2:j26
   C9:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - 2:j25
-    - 2:bot-25
+    - 2:b49
+    - 2:bot-49
   C10:
     type: capacitor
     value: 100nF
     near: U2
     pins:
-    - 2:h51
-    - 2:h50
+    - 2:a45
+    - 2:bot-45
   C11:
     type: capacitor
     value: 100nF
     near: U3
     pins:
-    - 2:a53
-    - 2:top-53
+    - 2:a25
+    - 2:bot-25
   C12:
     type: capacitor
     value: 100nF
     near: U3
     pins:
-    - 2:j51
-    - 2:bot-51
+    - 2:h25
+    - 2:h26
   C13:
     type: capacitor
     value: 100nF
     near: U4
     pins:
-    - g60
-    - g61
+    - 2:a39
+    - 2:bot-39
   C14:
     type: capacitor
     value: 100nF
     near: U4
     pins:
-    - 2:b6
-    - 2:b4
+    - 2:a40
+    - 2:bot-40
   J1:
     type: offboard
     title: Interposer J1

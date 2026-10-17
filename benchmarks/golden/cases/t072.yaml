@@ -3,7 +3,7 @@ parts:
     type: led
     color: green
     pins:
-    - a10
-    - a12
+    - j10
+    - j12
 wires: []
 nets: {}

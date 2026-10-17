@@ -1,28 +1,34 @@
 //! Breadboard geometry, in grid units of 0.1 in (one hole pitch).
 //!
-//! Each column's a-e holes form one strip and its f-j holes another, with the trench between e and f. The
-//! four rails (top+, top-, bot+, bot-) run along the board in groups of five; each rail is one strip unless
-//! the board splits it in the middle.
+//! The drawing shows the board as it lies with column 1 at the left: row j at the top, a at the bottom (BusBoard's
+//! BB830 and the MB-102 boards print their rows this way round, and Fritzing draws them so). Each column's f-j
+//! holes form one strip and its a-e holes another, with the trench between f and e. The four rails (top+, top-,
+//! bot+, bot-) run along the board in groups of five; each rail is one strip unless the board splits it in the
+//! middle.
 
 pub type Xy = (f64, f64);
 
-/// A row of holes: a-j, then the four rails, in the order Python's `(*ROW_Y, *RAILS)` lists them.
+/// A row of holes: the terminal rows down the drawing (j to a), then the four rails. Rows sort down the drawing.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Row {
-    A, B, C, D, E, F, G, H, I, J, TopP, TopM, BotP, BotM,
+    J, I, H, G, F, E, D, C, B, A, TopP, TopM, BotP, BotM,
 }
 
-pub const ROWS: [Row; 14] = [Row::A, Row::B, Row::C, Row::D, Row::E, Row::F, Row::G, Row::H, Row::I, Row::J,
+pub const ROWS: [Row; 14] = [Row::J, Row::I, Row::H, Row::G, Row::F, Row::E, Row::D, Row::C, Row::B, Row::A,
                              Row::TopP, Row::TopM, Row::BotP, Row::BotM];
-pub const TERMINAL: [Row; 10] = [Row::A, Row::B, Row::C, Row::D, Row::E, Row::F, Row::G, Row::H, Row::I, Row::J];
+/// The terminal rows, down the drawing.
+pub const TERMINAL: [Row; 10] = [Row::J, Row::I, Row::H, Row::G, Row::F, Row::E, Row::D, Row::C, Row::B, Row::A];
+/// The rails' order, top to bottom, on each side unless the file says otherwise: on the boards this draws (column 1
+/// at the left) the minus rail runs above the plus rail on both sides.
+pub const RAIL_ORDER: &str = "-+";
 pub const RAILS: [Row; 4] = [Row::TopP, Row::TopM, Row::BotP, Row::BotM];
 pub const OUTLINE_Y: (f64, f64) = (-1.2, 18.2);
 pub const STACK: f64 = 20.0;
 
 impl Row {
     pub fn name(self) -> &'static str {
-        ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "top+", "top-", "bot+", "bot-"][self as usize]
+        ["j", "i", "h", "g", "f", "e", "d", "c", "b", "a", "top+", "top-", "bot+", "bot-"][self as usize]
     }
 
     pub fn parse(s: &str) -> Option<Row> {
@@ -33,14 +39,14 @@ impl Row {
         self as u8 >= Row::TopP as u8
     }
 
-    /// ROW_Y for a terminal row.
+    /// How far down the board a terminal row is.
     pub fn terminal_y(self) -> i32 {
         [3, 4, 5, 6, 7, 10, 11, 12, 13, 14][self as usize]
     }
 
-    /// a-e: the top half of the terminal area.
-    pub fn top_half(self) -> bool {
-        (self as u8) <= Row::E as u8
+    /// f-j: the upper half of the terminal area, by the top rails.
+    pub fn upper(self) -> bool {
+        (self as u8) <= Row::F as u8
     }
 
     /// The rail's sign, '+' or '-' (rails only).
@@ -75,15 +81,15 @@ impl Hole {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Strip {
     pub board: u8,
-    /// 0: a-e, 1: f-j, else a rail's row
+    /// f-j, a-e, or a rail's row
     pub kind: StripKind,
     pub n: i32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum StripKind {
-    AE,
     FJ,
+    AE,
     Rail(Row),
 }
 
@@ -237,7 +243,7 @@ impl Board {
 
     pub fn strip(&self, hole: Hole) -> Strip {
         if !hole.row.is_rail() {
-            let kind = if hole.row.top_half() { StripKind::AE } else { StripKind::FJ };
+            let kind = if hole.row.upper() { StripKind::FJ } else { StripKind::AE };
             return Strip { board: self.index, kind, n: hole.col };
         }
         Strip { board: self.index, kind: StripKind::Rail(hole.row), n: (self.split_rails && hole.col > self.split_after) as i32 }
@@ -245,14 +251,14 @@ impl Board {
 
     pub fn strip_holes(&self, strip: Strip) -> Vec<Hole> {
         match strip.kind {
-            StripKind::AE => [Row::A, Row::B, Row::C, Row::D, Row::E].iter().map(|&r| Hole::new(self.index, r, strip.n)).collect(),
-            StripKind::FJ => [Row::F, Row::G, Row::H, Row::I, Row::J].iter().map(|&r| Hole::new(self.index, r, strip.n)).collect(),
+            StripKind::FJ => [Row::J, Row::I, Row::H, Row::G, Row::F].iter().map(|&r| Hole::new(self.index, r, strip.n)).collect(),
+            StripKind::AE => [Row::E, Row::D, Row::C, Row::B, Row::A].iter().map(|&r| Hole::new(self.index, r, strip.n)).collect(),
             StripKind::Rail(row) => self.rail_cols.iter().map(|&c| Hole::new(self.index, row, c))
                 .filter(|h| self.strip(*h) == strip).collect(),
         }
     }
 
-    /// Every hole: the terminal rows column by column within each row, then the rails.
+    /// Every hole: the terminal rows down the drawing, column by column within each row, then the rails.
     pub fn holes(&self) -> Vec<Hole> {
         let mut out = Vec::with_capacity(10 * self.columns as usize + 4 * self.rail_cols.len());
         for row in TERMINAL {

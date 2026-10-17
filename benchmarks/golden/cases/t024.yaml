@@ -3,11 +3,11 @@ parts:
     type: dip
     pins: 8
     width: 6
-    at: f10
+    at: e10
   U2:
     type: dip
     pins: 6
-    at: e40
+    at: f40
     rot: 180
     labels:
     - VIN

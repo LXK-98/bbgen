@@ -1,5 +1,5 @@
 # The Knight Rider LED runner from the first project built with the breadboard skill: the LEDs placed by hand, the
-# rest left to bbgen. Placement used to put U3's Q4 in e47, the strip of L1's anode (SHORT nets B_Q4, LED1).
+# rest left to bbgen. Placement used to put U3's Q4 in f47, the strip of L1's anode (SHORT nets B_Q4, LED1).
 title: Knight Rider LED runner (555 + 2x CD4017, 8 LEDs)
 notes:
   - "Runs on 9 V (a 9 V battery or a bench supply); the CD4017s drive the LEDs straight from their outputs, ~6 mA each at 9 V."
@@ -27,14 +27,14 @@ parts:
 
   # The LEDs, placed by hand: a row at the top right, cathodes in the top ground rail
   # (L6's cathode goes to U2's carry out instead, so it lies along row a).
-  L1: {type: led, pins: [a47, top-47]}
-  L2: {type: led, pins: [a49, top-49]}
-  L3: {type: led, pins: [a51, top-51]}
-  L4: {type: led, pins: [a53, top-53]}
-  L5: {type: led, pins: [a55, top-55]}
-  L6: {type: led, pins: [a57, a58]}
-  L7: {type: led, pins: [a59, top-59]}
-  L8: {type: led, pins: [a61, top-61]}
+  L1: {type: led, pins: [j47, top-47]}
+  L2: {type: led, pins: [j49, top-49]}
+  L3: {type: led, pins: [j51, top-51]}
+  L4: {type: led, pins: [j53, top-53]}
+  L5: {type: led, pins: [j55, top-55]}
+  L6: {type: led, pins: [j57, j58]}
+  L7: {type: led, pins: [j59, top-59]}
+  L8: {type: led, pins: [j61, top-61]}
 
   R1: {type: resistor, value: 1k}
   R2: {type: resistor, value: 1k}

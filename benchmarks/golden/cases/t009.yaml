@@ -8,12 +8,12 @@ parts:
     type: resistor
     pins:
     - top+59
-    - a59
+    - j59
   D1:
     type: led
     pins:
-    - c59
-    - c61
+    - h59
+    - h61
 nets:
   5V:
     pins:

@@ -12,40 +12,40 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: i4
+    at: b4
     rot: 0
   Q1:
     symbol: Transistor_BJT:PN2222A
     footprint: Package_TO_SOT_THT:TO-92_Inline_Wide
-    at: a28
+    at: j28
     rot: 90
   K1:
     symbol: Relay:DIPxx-1Axx-11x
-    at: e40
+    at: f40
     rot: 180
   R1:
     type: resistor
     value: 1k
     pins:
-    - e25
-    - e29
+    - f25
+    - f29
   D1:
     type: diode
     value: 1N4148
     pins:
-    - b35
-    - b39
+    - i35
+    - i39
   R2:
     type: resistor
     value: 1k
     pins:
     - top+27
-    - b27
+    - i27
   D2:
     type: led
     pins:
-    - c27
-    - c30
+    - h27
+    - h30
   J1:
     type: offboard
     title: Load

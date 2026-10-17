@@ -2,8 +2,8 @@ parts:
   R1:
     type: resistor
     pins:
-    - a1
-    - a5
+    - j1
+    - j5
 nets:
   X:
   - R1.1

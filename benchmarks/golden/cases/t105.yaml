@@ -1,11 +1,11 @@
 parts:
   Pico:
     type: pico
-    at: h3
+    at: c3
   U1:
     type: dip
     pins: 6
-    at: e27
+    at: f27
     rot: 180
     labels:
     - VIN
@@ -18,6 +18,6 @@ parts:
     type: resistor
     pins:
     - U1.CE
-    - a30
+    - j30
 wires: []
 nets: {}

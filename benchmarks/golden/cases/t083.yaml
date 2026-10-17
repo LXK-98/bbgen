@@ -3,7 +3,7 @@ parts:
     type: dip
     pins: 8
     width: 10
-    at: j20
+    at: a20
     raised: true
     labels:
     - VCC
@@ -17,10 +17,10 @@ parts:
   R1:
     type: resistor
     pins:
-    - g21
-    - g30
+    - d21
+    - d30
 wires:
-- from: h22
-  to: a40
+- from: c22
+  to: j40
   flex: true
 nets: {}

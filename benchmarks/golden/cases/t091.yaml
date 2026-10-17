@@ -3,7 +3,7 @@ parts:
     type: resistor
     pins:
     - bot+47
-    - j48
+    - a48
     slant: fits better
 wires: []
 nets: {}

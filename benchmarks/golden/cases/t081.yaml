@@ -3,7 +3,7 @@ parts:
     type: dip
     pins: 8
     width: 10
-    at: j20
+    at: a20
     raised: true
     labels:
     - VCC

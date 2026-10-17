@@ -2,7 +2,7 @@ parts:
   U1:
     type: dip
     pins: 4
-    at: f10
+    at: e10
     labels:
     - GND
     - A

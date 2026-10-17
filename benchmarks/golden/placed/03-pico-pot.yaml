@@ -4,19 +4,19 @@ notes:
 parts:
   Pico:
     symbol: MCU_Module:RaspberryPi_Pico
-    at: i2
-    rot: 0
+    at: i62
+    rot: 180
   RV1:
     footprint: Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical
     title: 10k pot
-    at: e29
-    rot: 180
+    at: e35
+    rot: 0
   C1:
     type: capacitor
     value: 100nF
     pins:
-    - a11
-    - top-11
+    - c36
+    - c35
 nets:
   3V3:
     pins:
